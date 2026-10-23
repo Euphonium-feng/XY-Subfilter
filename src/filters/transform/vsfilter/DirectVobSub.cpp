@@ -928,7 +928,7 @@ unsigned long long DirectVobSubImpl::GetHdrGeneration() const
             const_cast<volatile LONG*>(&m_hdr_generation), 0, 0));
 }
 
-CStringW DirectVobSubImpl::GetHdrStatusText() const
+CStringW DirectVobSubImpl::GetHdrStatusText()
 {
     CAutoLock cAutoLock(m_propsLock);
     const bool is_bitmap = m_xy_bool_opt[BOOL_IS_BITMAP];

@@ -138,7 +138,7 @@ public:
     // and report consumer cache status; other filters keep the defaults.
     virtual void BeginHdrOptionBatch() {}
     virtual void EndHdrOptionBatch() {}
-    virtual CStringW GetHdrStatusText() const;
+    virtual CStringW GetHdrStatusText();
 
     // Resolves INT_UI_LANGUAGE into the LANGID used for Win32 resource lookup.
     static LANGID ResolveUiLanguage(int ui_language);

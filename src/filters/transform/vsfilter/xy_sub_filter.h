@@ -83,7 +83,7 @@ public:
     // Internal property-page helpers. These are not part of the COM ABI.
     void BeginHdrOptionBatch() override;
     void EndHdrOptionBatch() override;
-    CStringW GetHdrStatusText() const override;
+    CStringW GetHdrStatusText() override;
 private:
     void SetYuvMatrix();
     void SetRgbOutputLevel();
