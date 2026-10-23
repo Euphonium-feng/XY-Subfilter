@@ -169,5 +169,42 @@ TEST(HdrColorTest, SixteenBitWordUsesTenBitPqSample)
     EXPECT_EQ(WORD(0x00 << 8), HdrColor::MapComponentTo16BitWord(0, off));
 }
 
+
+// Text subtitles go through the same MapArgb path as the PGS palette, so the
+// guarantees the renderer relies on are asserted here as well.
+TEST(HdrColorTest, TextColorOffModeIsIdentity)
+{
+    const HdrColor::Config off = HdrColor::NormalizeConfig(HdrColor::MAP_OFF, 203.0);
+    // Alpha encodes opacity for text and must survive untouched.
+    for (int a = 0; a <= 255; a += 15) {
+        const DWORD argb = (DWORD(a) << 24) | 0x00FFEEDD;
+        EXPECT_EQ(argb, HdrColor::MapArgb(argb, off)) << "alpha=" << a;
+    }
+}
+
+TEST(HdrColorTest, TextColorPqKeepsAlphaAndLowersWhite)
+{
+    const HdrColor::Config pq = HdrColor::NormalizeConfig(HdrColor::MAP_PQ, 203.0);
+    const DWORD white = 0xFF808080;   // opaque mid-grey text
+    const DWORD mapped = HdrColor::MapArgb(white, pq);
+
+    EXPECT_EQ(0xFFu, mapped >> 24);            // alpha untouched
+    EXPECT_EQ(148, int((mapped >> 16) & 0xFF)); // Q = 148 for 203 nits
+    EXPECT_EQ(148, int((mapped >> 8) & 0xFF));
+    EXPECT_EQ(148, int(mapped & 0xFF));
+}
+
+TEST(HdrColorTest, TextColorRelativeWhiteKeepsCodeSpace)
+{
+    const HdrColor::Config rel =
+        HdrColor::NormalizeConfig(HdrColor::MAP_RELATIVE_WHITE, 203.0);
+    // Full white stays at full code value: the scaling is in linear light and
+    // is undone by the gamma encode.
+    EXPECT_EQ(255, HdrColor::MapComponent(255, rel));
+    EXPECT_EQ(0, HdrColor::MapComponent(0, rel));
+    // Mid grey brightens because the target white is above SDR white.
+    EXPECT_GE(HdrColor::MapComponent(128, rel), 128);
+}
+
 }
 #endif // __TEST_HDR_COLOR_H__

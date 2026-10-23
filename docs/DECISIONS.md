@@ -99,3 +99,61 @@
 `IDirectVobSubXy.h` 的选项 ID 是跨 DLL 的 ABI 契约：外部消费者（如 madVR）把自己编译进去的常量值传给 provider。若在枚举中间插入新项，其后所有 ID 都会位移，导致既有消费者读写错误的选项。
 
 因此 `INT_PGS_HDR_MODE`、`INT_PGS_HDR_WHITE_NITS`、`INT_UI_LANGUAGE` 三个新 ID 追加在 `OPTION_COUNT` 之前、既有最后一项 `INT_TEXT_RENDERER_MODE` 之后，既有 ID 数值全部保持不变。当前最大 ID 为 98，仍在 `MAX_OPTION_ID = 127` 之内。
+
+## D15：文本字幕单独一组选项
+
+位图（`INT_PGS_HDR_MODE`）与文本（`INT_TEXT_HDR_MODE`）各有独立模式，共用 `INT_PGS_HDR_WHITE_NITS` 白点。
+
+理由：两者的历史色彩约定不同。PGS 调色板是原生 YCbCr，而 ASS 文本颜色是 RGB，且 VSFilter 传统上按 BT.601 处理并被固化在大量字幕里。共用开关会导致：想关掉文本映射（某个 ASS 字幕映射后偏色）时连位图一起关掉。
+
+被否方案：共用一个开关（无法单独调节）、只加一个跟随布尔开关（无法给文本选不同模式）。
+
+## D16：libass 与旧渲染器各设显式插入点，不放在 TransColor
+
+`XySubRenderFrameCreater::TransColor` 是进程级单例，libass 文本、旧渲染器文本、PGS 位图都走它。在该处统一插入会连带影响位图路径，语义混杂且无法区分两者。
+
+实际采用：
+
+- **libass**：`ASS_Image` 颜色在六处 call site 经 `MapTextColor()` 映射，再交给 `TransColor`。
+- **旧渲染器**：`CLine::PaintAll` 构造 `switchpts` 后经 `TransColorWithHdr()` 映射。
+
+两处都复用 `HdrColor::MapArgb`，行为一致但不互相污染。
+
+## D17：不原地改写 ASS_Image::color
+
+最初的设想是在 `ass_render_frame` 返回后遍历链表改写 `color` 字段，这样一处改动即可覆盖所有 call site。放弃的原因：`ASS_Image` 链表由 libass 持有，其生命周期与内部状态不由本项目控制，原地写入属于对第三方数据结构的未定义使用。
+
+改为在合成时用局部变量映射（六处 call site 各取一次），代价是每个图元多一次函数调用，实际开销可忽略（每帧每图元一次，而非每像素）。
+
+## D18：HDR 配置变化时清空两层缓存
+
+libass 路径有两层缓存：整帧缓存 `m_last_frame`（`changed == 0` 时复用）与 `BitmapMruCache`（按 `GroupedDrawItemsHashKey` 复用合成位图）。
+
+`SetHdrConfig` 在配置真正变化时置空 `m_last_frame` 并调用 `Deinit()`，后者清空 `BitmapMruCache`、`ClipperAlphaMaskMruCache`、`TextInfoCache`、`AssTagListMruCache`、`ScanLineDataMruCache` 等派生物。
+
+旧渲染器路径另有 `DrawItemHashKey`，其 `operator==` 对完整 `switchpts[6]` 做 `memcmp`，映射后的颜色已参与比较，因此无需额外把配置塞进哈希。
+
+## D19：PQ 模式下文本也强制全幅 RGB
+
+与 D9 同理：PQ 码值是绝对量，若再压进 TV 范围（16–235），白点会被二次拉低约 9%。`SetRgbOutputLevel` 在 `INT_TEXT_HDR_MODE == PGS_HDR_MODE_PQ` 时对文本路径也强制 `SetRgbOutputTvLevel(false)`。
+
+## D20：资源编译必须同时定义 AFX_TARG_ENU 与 AFX_TARG_CHS
+
+`VSFilter.props` 的 `ResourceCompile` 原先只定义 `AFX_TARG_ENU`。`.rc` 的中文块条件是 `#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHS)`，在 `AFX_RESOURCE_DLL` 已定义的前提下，缺少 `AFX_TARG_CHS` 会让整块中文资源被预处理器丢弃。
+
+即上一版提交的"中文化"实际是死代码。现已改为同时定义两个 `AFX_TARG_*`。MFC 按线程 UI 语言在编译进同一 DLL 的多个语言块中选择。
+
+## D21：对话框字体改用 Microsoft YaHei UI
+
+原有 26 处 `FONT` 指令全部是 `MS Sans Serif` 或 `MS Shell Dlg`：
+
+- `MS Sans Serif` 来自 `SSERIFE.FON`，是**光栅字体**，没有 CJK 字形，且光栅字体不参与 GDI 字体链接，中文标签会整片不显示。
+- `MS Shell Dlg` 是逻辑字体，可解析到可链接的矢量字体。
+
+统一改为 `Microsoft YaHei UI`（`msyh.ttc`，Vista 起随所有语言版本的 Windows 提供），字号从 8 调到 9，因为雅黑在同字号下笔画更细、显得偏小。
+
+## D22：属性页在宿主 UI 线程显式切换资源语言
+
+`SetThreadUILanguage` 只影响调用线程。属性页由宿主（播放器/属性框架）的 UI 线程创建，不会继承滤镜线程的语言设置，因此仅靠 `ApplyUiLanguage` 无法让页面按所选语言加载。
+
+现在 `GetPageInfo` 与 `Activate` 一进入就调用 `DirectVobSubImpl::ApplyActiveUiLanguageToCurrentThread()`，读取由 `INT_UI_LANGUAGE` 发布的静态语言值并设置当前线程，使随后的 `LoadString` 与 `CreateDialogParam` 命中对应语言块。

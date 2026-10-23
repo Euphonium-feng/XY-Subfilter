@@ -1,4 +1,4 @@
-/*
+﻿/*
  *  Copyright (C) 2003-2006 Gabest
  *  http://www.gabest.org
  *
@@ -1227,9 +1227,21 @@ void CLine::Compact()
     }
 }
 
+// Applies the HDR colour mapping (when configured) before the colour is
+// converted into the output colour space. Alpha is preserved by MapArgb, so
+// the coverage mask built later is unaffected.
+static DWORD TransColorWithHdr( DWORD argb, const HdrColor::Config* hdr_config )
+{
+    if (hdr_config) {
+        argb = HdrColor::MapArgb(argb, *hdr_config);
+    }
+    return XySubRenderFrameCreater::GetDefaultCreater()->TransColor(argb);
+}
+
 CRectCoor2 CLine::PaintAll( CompositeDrawItemList* output, const CRectCoor2& clipRect, 
     const CPointCoor2& margin,
-    const SharedPtrCClipperPaintMachine &clipper, CPoint p, const CPoint& org, const int time, const int alpha )
+    const SharedPtrCClipperPaintMachine &clipper, CPoint p, const CPoint& org, const int time, const int alpha,
+    const HdrColor::Config* hdr_config )
 {
     CRectCoor2 bbox(0, 0, 0, 0);
     POSITION pos = GetHeadPosition();
@@ -1278,7 +1290,7 @@ CRectCoor2 CLine::PaintAll( CompositeDrawItemList* output, const CRectCoor2& cli
             COLORREF shadow = revcolor(w->m_style.get().colors[3]) | (a<<24);
 
             DWORD sw[6] = {shadow, -1};
-            sw[0] = XySubRenderFrameCreater::GetDefaultCreater()->TransColor(sw[0]);
+            sw[0] = TransColorWithHdr(sw[0], hdr_config);
             if(w->m_style.get().borderStyle == 0)
             {
                 outputItem.shadow.reset( 
@@ -1301,7 +1313,7 @@ CRectCoor2 CLine::PaintAll( CompositeDrawItemList* output, const CRectCoor2& cli
             if(alpha > 0) aoutline += MulDiv(alpha, 0xff - w->m_style.get().alpha[2], 0xff);
             COLORREF outline = revcolor(w->m_style.get().colors[2]) | ((0xff-aoutline)<<24);
             DWORD sw[6] = {outline, -1};
-            sw[0] = XySubRenderFrameCreater::GetDefaultCreater()->TransColor(sw[0]);
+            sw[0] = TransColorWithHdr(sw[0], hdr_config);
             if(w->m_style.get().borderStyle == 0)
             {
                 outputItem.outline.reset( 
@@ -1357,9 +1369,9 @@ CRectCoor2 CLine::PaintAll( CompositeDrawItemList* output, const CRectCoor2& cli
             sw[3] = (int)( (w->m_style.get().outlineWidthX + t*w->m_width)*w->m_target_scale_x ) >> 3;
             sw[4] = sw[2];
             sw[5] = 0x00ffffff;
-            sw[0] = XySubRenderFrameCreater::GetDefaultCreater()->TransColor(sw[0]);
-            sw[2] = XySubRenderFrameCreater::GetDefaultCreater()->TransColor(sw[2]);
-            sw[4] = XySubRenderFrameCreater::GetDefaultCreater()->TransColor(sw[4]);
+            sw[0] = TransColorWithHdr(sw[0], hdr_config);
+            sw[2] = TransColorWithHdr(sw[2], hdr_config);
+            sw[4] = TransColorWithHdr(sw[4], hdr_config);
             outputItem.body.reset( 
                 DrawItem::CreateDrawItem(body_pm, clipRect, clipper, bodyPos.x, bodyPos.y, sw, true, false)
                 );
@@ -1933,6 +1945,17 @@ void CRenderedTextSubtitle::SetTextRendererMode(TextRendererMode mode)
     mode = NormalizeTextRendererMode(mode);
     if (m_text_renderer_mode != mode) {
         m_text_renderer_mode = mode;
+        Deinit();
+    }
+}
+
+void CRenderedTextSubtitle::SetHdrConfig(const HdrColor::Config& config)
+{
+    if (!HdrColor::IsSameOutput(m_hdr_config, config)) {
+        m_hdr_config = config;
+        // Both the whole-frame cache and the composited-bitmap cache depend on
+        // the colour values, so drop them before the next frame is requested.
+        m_last_frame = NULL;
         Deinit();
     }
 }
@@ -3701,6 +3724,14 @@ static __forceinline void packed_pix_mix_sse2(BYTE *dst, const BYTE *alpha, int 
 
 namespace
 {
+    // Applies the HDR mapping to one text colour. The incoming value is the
+    // project's 0xAARRGGBB with an opaque-alpha convention, which is what
+    // MapArgb expects; alpha is preserved so the coverage mask is unaffected.
+    uint32_t MapTextColor(uint32_t argb, const HdrColor::Config &config)
+    {
+        return HdrColor::MapArgb(argb, config);
+    }
+
     struct LibassTile
     {
         const ASS_Image *image;
@@ -3944,13 +3975,15 @@ namespace
     void CompositeLibassComponent(XyBitmap &bitmap,
                                   const LibassComponent &component,
                                   const std::vector<LibassTile> &tiles,
-                                  XySubRenderFrameCreater &frame_creater)
+                                  XySubRenderFrameCreater &frame_creater,
+                                  const HdrColor::Config &hdr_config)
     {
         for (auto tile_index : component.tile_indices) {
             const ASS_Image &tile = *tiles[tile_index].image;
             const int xoff = tile.dst_x - bitmap.x;
             const int yoff = tile.dst_y - bitmap.y;
-            const uint32_t argb = (tile.color << 24) ^ (tile.color >> 8) ^ 0xFF000000;
+            const uint32_t argb = MapTextColor(
+                (tile.color << 24) ^ (tile.color >> 8) ^ 0xFF000000, hdr_config);
             const uint32_t color = frame_creater.TransColor(argb);
 
             for (int y = 0; y < tile.h; ++y) {
@@ -4129,13 +4162,13 @@ STDMETHODIMP CRenderedTextSubtitle::RenderEx( IXySubRenderFrame**subRenderFrame,
 
                 if (color_space == XY_CS_AYUV_PLANAR) {
                     CompositeLibassComponent<true, true>(
-                        *bitmap, component, tiles, *render_frame_creater);
+                        *bitmap, component, tiles, *render_frame_creater, m_hdr_config);
                 } else if (color_space == XY_CS_ARGB_F) {
                     CompositeLibassComponent<false, false>(
-                        *bitmap, component, tiles, *render_frame_creater);
+                        *bitmap, component, tiles, *render_frame_creater, m_hdr_config);
                 } else {
                     CompositeLibassComponent<false, true>(
-                        *bitmap, component, tiles, *render_frame_creater);
+                        *bitmap, component, tiles, *render_frame_creater, m_hdr_config);
                 }
             }
 
@@ -4166,7 +4199,8 @@ STDMETHODIMP CRenderedTextSubtitle::RenderEx( IXySubRenderFrame**subRenderFrame,
         {
         case XY_CS_ARGB_F:
             for (auto i = img; i != nullptr; i = i->next) {
-                uint32_t argb = (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000;
+                uint32_t argb = MapTextColor(
+                    (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000, m_hdr_config);
                 argb = render_frame_creater->TransColor(argb);
                 for (int y = 0; y < i->h; ++y)
                 {
@@ -4178,7 +4212,8 @@ STDMETHODIMP CRenderedTextSubtitle::RenderEx( IXySubRenderFrame**subRenderFrame,
             break;
         case XY_CS_AYUV_PLANAR:
             for (auto i = img; i != nullptr; i = i->next) {
-                uint32_t argb = (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000;
+                uint32_t argb = MapTextColor(
+                    (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000, m_hdr_config);
                 uint32_t ayuv = render_frame_creater->TransColor(argb);
                 for (int y = 0; y < i->h; ++y)
                 {
@@ -4197,7 +4232,8 @@ STDMETHODIMP CRenderedTextSubtitle::RenderEx( IXySubRenderFrame**subRenderFrame,
             break;
         case XY_CS_ARGB:
             for (auto i = img; i != nullptr; i = i->next) {
-                uint32_t argb = (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000;
+                uint32_t argb = MapTextColor(
+                    (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000, m_hdr_config);
                 argb = render_frame_creater->TransColor(argb);
                 for (int y = 0; y < i->h; ++y)
                 {
@@ -4209,7 +4245,8 @@ STDMETHODIMP CRenderedTextSubtitle::RenderEx( IXySubRenderFrame**subRenderFrame,
             break;
         case XY_CS_AYUV:
             for (auto i = img; i != nullptr; i = i->next) {
-                uint32_t argb = (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000;
+                uint32_t argb = MapTextColor(
+                    (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000, m_hdr_config);
                 uint32_t ayuv = render_frame_creater->TransColor(argb);
                 for (int y = 0; y < i->h; ++y)
                 {
@@ -4221,7 +4258,8 @@ STDMETHODIMP CRenderedTextSubtitle::RenderEx( IXySubRenderFrame**subRenderFrame,
             break;
         case XY_CS_AUYV:
             for (auto i = img; i != nullptr; i = i->next) {
-                uint32_t argb = (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000;
+                uint32_t argb = MapTextColor(
+                    (i->color << 24) ^ (i->color >> 8) ^ 0xFF000000, m_hdr_config);
                 uint32_t auyv = render_frame_creater->TransColor(argb);
                 for (int y = 0; y < i->h; ++y)
                 {
@@ -4269,7 +4307,7 @@ STDMETHODIMP CRenderedTextSubtitle::RenderEx( IXySubRenderFrame**subRenderFrame,
         m_subtitle_target_rect.right - m_video_rect.right,
         m_subtitle_target_rect.bottom - m_video_rect.bottom);
     CompositeDrawItemListList compDrawItemListList;
-    DoRender(m_video_rect.Size(), m_video_rect.TopLeft(), margin_rect, sub2List, &compDrawItemListList);
+    DoRender(m_video_rect.Size(), m_video_rect.TopLeft(), margin_rect, sub2List, &compDrawItemListList, &m_hdr_config);
     ClearUnCachedSubtitle(sub2List);
 
     TRACE_RENDERER_REQUEST("Begin Draw");
@@ -4288,7 +4326,8 @@ void CRenderedTextSubtitle::DoRender( const SIZECoor2& output_size,
     const POINTCoor2& video_org,
     const RECTCoor2& margin_rect, 
     const CSubtitle2List& sub2List, 
-    CompositeDrawItemListList *compDrawItemListList /*output*/)
+    CompositeDrawItemListList *compDrawItemListList /*output*/,
+    const HdrColor::Config* hdr_config /*= NULL*/)
 {
     //check input and log error
     POSITION pos=sub2List.GetHeadPosition();
@@ -4296,14 +4335,15 @@ void CRenderedTextSubtitle::DoRender( const SIZECoor2& output_size,
     {
         const CSubtitle2& sub2 = sub2List.GetNext(pos);
         CompositeDrawItemList& compDrawItemList = compDrawItemListList->GetAt(compDrawItemListList->AddTail());
-        RenderOneSubtitle(output_size, video_org, margin_rect, sub2, &compDrawItemList);
+        RenderOneSubtitle(output_size, video_org, margin_rect, sub2, &compDrawItemList, hdr_config);
     }
 }
 
 void CRenderedTextSubtitle::RenderOneSubtitle( const SIZECoor2& output_size, 
     const POINTCoor2& video_org, const RECTCoor2& margin_rect, 
     const CSubtitle2& sub2, 
-    CompositeDrawItemList* compDrawItemList /*output*/)
+    CompositeDrawItemList* compDrawItemList /*output*/,
+    const HdrColor::Config* hdr_config /*= NULL*/)
 {
     CSubtitle   * s        = sub2.s;
     CRect         clipRect = sub2.clipRect;
@@ -4368,10 +4408,10 @@ void CRenderedTextSubtitle::RenderOneSubtitle( const SIZECoor2& output_size,
                 tmp3.AddTail();
                 tmp4.AddTail();
             }
-            bbox2 |= l->PaintAll(&tmp1, iclipRect[0], margin, clipper, p, org2, time, alpha);
-            bbox2 |= l->PaintAll(&tmp2, iclipRect[1], margin, clipper, p, org2, time, alpha);
-            bbox2 |= l->PaintAll(&tmp3, iclipRect[2], margin, clipper, p, org2, time, alpha);
-            bbox2 |= l->PaintAll(&tmp4, iclipRect[3], margin, clipper, p, org2, time, alpha);
+            bbox2 |= l->PaintAll(&tmp1, iclipRect[0], margin, clipper, p, org2, time, alpha, hdr_config);
+            bbox2 |= l->PaintAll(&tmp2, iclipRect[1], margin, clipper, p, org2, time, alpha, hdr_config);
+            bbox2 |= l->PaintAll(&tmp3, iclipRect[2], margin, clipper, p, org2, time, alpha, hdr_config);
+            bbox2 |= l->PaintAll(&tmp4, iclipRect[3], margin, clipper, p, org2, time, alpha, hdr_config);
             tmpCompDrawItemList.AddTailList(&tmp1);
             tmpCompDrawItemList.AddTailList(&tmp2);
             tmpCompDrawItemList.AddTailList(&tmp3);
@@ -4383,7 +4423,7 @@ void CRenderedTextSubtitle::RenderOneSubtitle( const SIZECoor2& output_size,
             {
                 tmpCompDrawItemList.AddTail();
             }
-            bbox2 |= l->PaintAll(&tmpCompDrawItemList, clipRect, margin, clipper, p, org2, time, alpha);
+            bbox2 |= l->PaintAll(&tmpCompDrawItemList, clipRect, margin, clipper, p, org2, time, alpha, hdr_config);
         }
         compDrawItemList->AddTailList(&tmpCompDrawItemList);
         p.y += l->m_ascent + l->m_descent;

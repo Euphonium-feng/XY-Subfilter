@@ -26,7 +26,7 @@
       <RegisterOutput>false</RegisterOutput>
     </Link>
     <ResourceCompile>
-      <PreprocessorDefinitions>AFX_RESOURCE_DLL;AFX_TARG_ENU;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>AFX_RESOURCE_DLL;AFX_TARG_ENU;AFX_TARG_CHS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">

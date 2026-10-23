@@ -1,4 +1,4 @@
-/*
+﻿/*
  *  Copyright (C) 2003-2006 Gabest
  *  http://www.gabest.org
  *
@@ -255,7 +255,8 @@ public:
     CRectCoor2 PaintAll(CompositeDrawItemList* output, const CRectCoor2& clipRect, 
         const CPointCoor2& margin,
         const SharedPtrCClipperPaintMachine &clipper, 
-        CPoint p, const CPoint& org, const int time, const int alpha);
+        CPoint p, const CPoint& org, const int time, const int alpha,
+        const HdrColor::Config* hdr_config = NULL);
 };
 
 class CSubtitle: private CAtlList<CLine*>
@@ -470,6 +471,7 @@ public:
         const SIZE& original_video_size); // will call Deinit()
     void Deinit();
     void SetTextRendererMode(TextRendererMode mode);
+    void SetHdrConfig(const HdrColor::Config& config);
 
     DECLARE_IUNKNOWN
     STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void** ppv);
@@ -498,11 +500,13 @@ public:
     static void DoRender( const SIZECoor2& output_size, 
         const POINTCoor2& video_org, const RECTCoor2& margin_rect, 
         const CSubtitle2List& sub2List, 
-        CompositeDrawItemListList *compDrawItemListList /*output*/);
+        CompositeDrawItemListList *compDrawItemListList /*output*/,
+        const HdrColor::Config* hdr_config = NULL);
     static void RenderOneSubtitle(const SIZECoor2& output_size, 
         const POINTCoor2& video_org, const RECTCoor2& margin_rect, 
         const CSubtitle2& sub2, 
-        CompositeDrawItemList* compDrawItemList /*output*/);
+        CompositeDrawItemList* compDrawItemList /*output*/,
+        const HdrColor::Config* hdr_config = NULL);
     STDMETHODIMP_(bool) IsColorTypeSupported(int type);
     STDMETHODIMP_(bool) IsMovable();
     STDMETHODIMP_(bool) IsSimple();

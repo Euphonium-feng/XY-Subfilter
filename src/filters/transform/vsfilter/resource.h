@@ -262,6 +262,8 @@
 #define IDC_SPIN_PGS_HDR_WHITE_NITS     350
 #define IDC_STATIC_PGS_HDR_WHITE_NITS   351
 #define IDC_COMBO_UI_LANGUAGE           352
+#define IDS_RG_TEXT_HDR_MODE            1082
+#define IDC_COMBO_TEXT_HDR_MODE         353
 
 // Next default values for new objects
 // 
@@ -269,7 +271,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        339
 #define _APS_NEXT_COMMAND_VALUE         32770
-#define _APS_NEXT_CONTROL_VALUE         353
+#define _APS_NEXT_CONTROL_VALUE         354
 #define _APS_NEXT_SYMED_VALUE           210
 #endif
 #endif

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <atlsync.h>
 #include "DirectVobSub.h"
@@ -83,7 +83,6 @@ private:
     void SetYuvMatrix();
     void SetRgbOutputLevel();
     void SetHdrMode();
-    HdrColor::Config ResolveHdrConfig() const;
     bool Open();
 
     void UpdateSubtitle(bool fApplyDefStyle = true);

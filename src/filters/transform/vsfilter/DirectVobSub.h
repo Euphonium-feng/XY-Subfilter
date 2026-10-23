@@ -116,8 +116,32 @@ public:
     // AUTO falls back to the video's YCbCr matrix as reported by the consumer.
     HdrColor::Config ResolvePgsHdrConfig() const;
 
+    // Same mapping rules for ASS/SRT text, driven by INT_TEXT_HDR_MODE and the
+    // shared white point.
+    HdrColor::Config ResolveTextHdrConfig() const;
+
     // Applies INT_UI_LANGUAGE to the calling thread's resource language.
     static void ApplyUiLanguage(int ui_language);
+
+    // Shared implementation behind the PGS and text resolvers.
+    HdrColor::Config ResolveHdrMode(int mode) const;
+
+    // Resolves INT_UI_LANGUAGE into the LANGID used for Win32 resource lookup.
+    static LANGID ResolveUiLanguage(int ui_language);
+
+    // Resource language currently in effect for a thread, honouring the user
+    // choice so property pages (created on the host UI thread) can pass it to
+    // LoadString/FindResource style lookups.
+    static LANGID GetActiveResourceLanguage();
+
+    // Applies the stored UI language to the calling thread. Property pages run
+    // on the host UI thread, which does not inherit the filter thread's
+    // language, so call this before any LoadString/CreateDialogParam there.
+    static void ApplyActiveUiLanguageToCurrentThread();
+
+    // Last INT_UI_LANGUAGE value seen, shared with property pages that run on
+    // a different thread than the filter.
+    static volatile LONG s_active_ui_language;
 
     // IXyOptions
     STDMETHODIMP XyGetBin      (unsigned field, LPVOID    *value, int *size );

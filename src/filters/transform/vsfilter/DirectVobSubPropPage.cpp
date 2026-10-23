@@ -230,6 +230,10 @@ void EditStyle(HWND hWnd, IXyOptions *filter, /* in-out */STSStyle* default_styl
 STDMETHODIMP CDVSBasePPage::GetPageInfo(LPPROPPAGEINFO pPageInfo)
 {
     AFX_MANAGE_STATE(AfxGetStaticModuleState());
+    // Property pages are created on the host UI thread, which does not inherit
+    // the filter thread's language. Switch it here so LoadString and
+    // CreateDialogParam pick the matching resource block.
+    DirectVobSubImpl::ApplyActiveUiLanguageToCurrentThread();
 
     CString str;
     if(!str.LoadString(m_TitleId)) return E_FAIL;
@@ -267,6 +271,7 @@ STDMETHODIMP CDVSBasePPage::GetPageInfo(LPPROPPAGEINFO pPageInfo)
 STDMETHODIMP CDVSBasePPage::Activate(HWND hwndParent, LPCRECT pRect, BOOL fModal)
 {
     AFX_MANAGE_STATE(AfxGetStaticModuleState());
+    DirectVobSubImpl::ApplyActiveUiLanguageToCurrentThread();
 
     CheckPointer(pRect,E_POINTER);
 /*
@@ -2033,6 +2038,7 @@ CXySubFilterMorePPage::CXySubFilterMorePPage(LPUNKNOWN pUnk, HRESULT* phr)
     , m_pgs_hdr_mode(DirectVobSubXyOptions::PGS_HDR_MODE_AUTO)
     , m_pgs_hdr_white_nits(int(HdrColor::DEFAULT_WHITE_NITS))
     , m_ui_language(DirectVobSubXyOptions::UI_LANGUAGE_AUTO)
+    , m_text_hdr_mode(DirectVobSubXyOptions::PGS_HDR_MODE_AUTO)
 {
     BindControl(IDC_SPINPathCache, m_path_cache);
     BindControl(IDC_SPINScanlineCache, m_scanline_cache);
@@ -2055,6 +2061,7 @@ CXySubFilterMorePPage::CXySubFilterMorePPage(LPUNKNOWN pUnk, HRESULT* phr)
     BindControl(IDC_COMBO_RGB_LEVEL, m_combo_rgb_level);
     BindControl(IDC_COMBO_PGS_HDR_MODE, m_combo_pgs_hdr_mode);
     BindControl(IDC_COMBO_UI_LANGUAGE, m_combo_ui_language);
+    BindControl(IDC_COMBO_TEXT_HDR_MODE, m_combo_text_hdr_mode);
     BindControl(IDC_EDIT_PGS_HDR_WHITE_NITS, m_edit_pgs_hdr_white_nits);
     BindControl(IDC_SPIN_PGS_HDR_WHITE_NITS, m_spin_pgs_hdr_white_nits);
 
@@ -2204,6 +2211,8 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
         CHECK_N_LOG(hr, "Failed to set option");
         hr = m_pDirectVobSubXy->XySetInt(DirectVobSubXyOptions::INT_UI_LANGUAGE, m_ui_language);
         CHECK_N_LOG(hr, "Failed to set option");
+        hr = m_pDirectVobSubXy->XySetInt(DirectVobSubXyOptions::INT_TEXT_HDR_MODE, m_text_hdr_mode);
+        CHECK_N_LOG(hr, "Failed to set option");
 
         hr = m_pDirectVobSubXy->XySetBool(DirectVobSubXyOptions::BOOL_RENDER_TO_ORIGINAL_VIDEO_SIZE, m_render_to_original_video_size);
         CHECK_N_LOG(hr, "Failed to set option");
@@ -2249,6 +2258,8 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
         hr = m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_PGS_HDR_WHITE_NITS, &m_pgs_hdr_white_nits);
         CHECK_N_LOG(hr, "Failed to get option");
         hr = m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_UI_LANGUAGE, &m_ui_language);
+        CHECK_N_LOG(hr, "Failed to get option");
+        hr = m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_TEXT_HDR_MODE, &m_text_hdr_mode);
         CHECK_N_LOG(hr, "Failed to get option");
 
         hr = m_pDirectVobSubXy->XyGetBool(DirectVobSubXyOptions::BOOL_RENDER_TO_ORIGINAL_VIDEO_SIZE, &m_render_to_original_video_size);
@@ -2344,6 +2355,10 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         if (m_combo_ui_language.GetCurSel() != CB_ERR)
         {
             m_ui_language = m_combo_ui_language.GetCurSel();
+        }
+        if (m_combo_text_hdr_mode.GetCurSel() != CB_ERR)
+        {
+            m_text_hdr_mode = m_combo_text_hdr_mode.GetCurSel();
         }
 
         m_render_to_original_video_size = !!m_checkbox_render_to_original_video_size.GetCheck();
@@ -2500,6 +2515,22 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         m_combo_ui_language.AddString( CString(_T("中文（简体）")) );
         m_combo_ui_language.SetItemData( DirectVobSubXyOptions::UI_LANGUAGE_CHINESE_SIMPLIFIED, DirectVobSubXyOptions::UI_LANGUAGE_CHINESE_SIMPLIFIED );
         m_combo_ui_language.SetCurSel( m_ui_language );
+
+        if (m_text_hdr_mode < DirectVobSubXyOptions::PGS_HDR_MODE_AUTO ||
+            m_text_hdr_mode >= DirectVobSubXyOptions::PGS_HDR_MODE_COUNT)
+        {
+            m_text_hdr_mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
+        }
+        m_combo_text_hdr_mode.ResetContent();
+        m_combo_text_hdr_mode.AddString( CString(_T("Auto")) );
+        m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_AUTO, DirectVobSubXyOptions::PGS_HDR_MODE_AUTO );
+        m_combo_text_hdr_mode.AddString( CString(_T("Off (SDR)")) );
+        m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED, DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED );
+        m_combo_text_hdr_mode.AddString( CString(_T("PQ (absolute)")) );
+        m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_PQ, DirectVobSubXyOptions::PGS_HDR_MODE_PQ );
+        m_combo_text_hdr_mode.AddString( CString(_T("Relative white")) );
+        m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE, DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE );
+        m_combo_text_hdr_mode.SetCurSel( m_text_hdr_mode );
 
         m_spin_pgs_hdr_white_nits.SetRange32(50, 1000);
         CString hdr_white_str;

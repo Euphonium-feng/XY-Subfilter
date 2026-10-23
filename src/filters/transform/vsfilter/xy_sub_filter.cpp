@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "xy_sub_filter.h"
 #include "DirectVobSubFilter.h"
 #include "VSFilter.h"
@@ -611,6 +611,7 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     case INT_YUV_RANGE:
     case INT_PGS_HDR_MODE:
     case INT_PGS_HDR_WHITE_NITS:
+    case INT_TEXT_HDR_MODE:
         UpdateSubtitle(false);
         m_context_id++;
         break;
@@ -1867,7 +1868,13 @@ void XySubFilter::SetRgbOutputLevel()
     XySubRenderFrameCreater * sub_frame_creater = XySubRenderFrameCreater::GetDefaultCreater();
     if (dynamic_cast<CRenderedTextSubtitle*>(m_curSubStream)!=NULL)
     {
-        if (m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL]==RGB_OUTPUT_LEVEL_AUTO)
+        // Same reasoning as the bitmap path: PQ code values are absolute, so
+        // they must not be rescaled into TV levels afterwards.
+        if (m_xy_int_opt[INT_TEXT_HDR_MODE]==DirectVobSubXyOptions::PGS_HDR_MODE_PQ)
+        {
+            sub_frame_creater->SetRgbOutputTvLevel(false);
+        }
+        else if (m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL]==RGB_OUTPUT_LEVEL_AUTO)
         {
             if (m_xy_int_opt[INT_CONSUMER_SUPPORTED_LEVELS]==PREFERED_TV)
             {
@@ -1927,27 +1934,28 @@ void XySubFilter::SetRgbOutputLevel()
     }
 }
 
-HdrColor::Config XySubFilter::ResolveHdrConfig() const
-{
-    return ResolvePgsHdrConfig();
-}
-
 void XySubFilter::SetHdrMode()
 {
     // Callers hold m_csFilter; SetSubtitle reaches this from the locked path.
     CAutoLock cAutoLock(&m_csProviderFields);
 
-    const HdrColor::Config config = ResolveHdrConfig();
+    // Bitmap and text subtitles use separate modes: the historical colour
+    // conventions differ (bitmaps are native YCbCr, ASS text is BT.601 RGB).
+    const HdrColor::Config bitmap_config = ResolvePgsHdrConfig();
+    const HdrColor::Config text_config = ResolveTextHdrConfig();
 
     HdmvSubtitleProvider* hdmv = dynamic_cast<HdmvSubtitleProvider*>(m_curSubStream);
     if (hdmv) {
-        hdmv->SetHdrConfig(config);
+        hdmv->SetHdrConfig(bitmap_config);
     }
     else if (SupFileSubtitleProvider* sup = dynamic_cast<SupFileSubtitleProvider*>(m_curSubStream)) {
-        sup->SetHdrConfig(config);
+        sup->SetHdrConfig(bitmap_config);
     }
     else if (CRenderedHdmvSubtitle* rendered = dynamic_cast<CRenderedHdmvSubtitle*>(m_curSubStream)) {
-        rendered->SetHdrConfig(config);
+        rendered->SetHdrConfig(bitmap_config);
+    }
+    else if (CRenderedTextSubtitle* rts = dynamic_cast<CRenderedTextSubtitle*>(m_curSubStream)) {
+        rts->SetHdrConfig(text_config);
     }
 }
 
@@ -2023,6 +2031,7 @@ bool XySubFilter::Open()
             CAutoPtr<CRenderedTextSubtitle> pRTS(DEBUG_NEW CRenderedTextSubtitle(&m_csFilter));
             pRTS && (pRTS->m_render_backend = NormalizeBackend(m_xy_int_opt[INT_SUBTITLE_RENDER_BACKEND]));
             if (pRTS) pRTS->SetTextRendererMode(NormalizeTextRendererMode(m_xy_int_opt[INT_TEXT_RENDERER_MODE]));
+            if (pRTS) pRTS->SetHdrConfig(ResolveTextHdrConfig());
             pRTS && (pRTS->m_csri_context.m_loader = m_csri_loader);
             pRTS && (pRTS->m_warning_callback = [this](const CString& message) {
                 ShowSystrayNotification(&m_tbid, _T("Subtitle warning"), message);

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "../BaseVideoFilter/BaseVideoFilter.h"
 #include "XyOptionsImpl.h"
@@ -158,6 +158,7 @@ namespace DirectVobSubXyOptions
         INT_PGS_HDR_MODE,       //see @PgsHdrMode
         INT_PGS_HDR_WHITE_NITS, //HDR graphics reference white, default 203
         INT_UI_LANGUAGE,        //see @UiLanguage
+        INT_TEXT_HDR_MODE,      //see @PgsHdrMode, applies to ASS/SRT text
 
         OPTION_COUNT
     };
@@ -281,6 +282,7 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_MODE},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_WHITE_NITS},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_UI_LANGUAGE},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_TEXT_HDR_MODE},
 
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ORIGINAL_VIDEO},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ASS_PLAY_RESOLUTION},
@@ -380,6 +382,7 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_MODE},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_WHITE_NITS},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_UI_LANGUAGE},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_TEXT_HDR_MODE},
 
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_MAX_BITMAP_COUNT},
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_COMBINE_BITMAPS},

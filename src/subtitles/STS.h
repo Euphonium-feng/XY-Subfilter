@@ -33,6 +33,7 @@
 #include "XySubRenderIntf.h"
 #include "SubtitleRenderBackend.h"
 #include "TextRendererMode.h"
+#include "../subpic/hdr_color.h"
 
 typedef enum {TIME, FRAME} tmode; // the meaning of STSEntry::start/end
 
@@ -312,6 +313,8 @@ public:
     std::vector<CStringA> reserved_styles;
     std::vector<CStringA> styles_overrides;
     CComPtr<IXySubRenderFrame> m_last_frame;
+    // HDR mapping for text colours; MAP_OFF leaves the output untouched.
+    HdrColor::Config m_hdr_config;
 };
 
 extern BYTE   CharSetList[];

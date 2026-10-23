@@ -88,6 +88,37 @@ XySubFilter::SetSubtitle
   → SetHdrMode()        ResolvePgsHdrConfig() → Provider::SetHdrConfig
 ```
 
+## 文本字幕（ASS/SRT）HDR 映射
+
+两条文本路径都不经过 `CompositionObject`，因此 PGS 的调色板映射对它们无效。二者各有独立的插入点：
+
+### libass 后端（默认）
+
+```
+ass_render_frame
+  → 每个 ASS_Image::color（0xRRGGBBAA，alpha 反向，每图一个 DWORD）
+  → MapTextColor(): 转成 0xAARRGGBB → HdrColor::MapArgb → 保留 alpha
+  → XySubRenderFrameCreater::TransColor（转 AYUV / TV 编码等）
+  → packed_pix_mix / ayuv_planar_mix（颜色 × 覆盖度）
+```
+
+映射是**按 `ASS_Image` 逐节点**做的，一个字符/描边/阴影算一次，与分辨率无关。六处 call site（`RTS.cpp` 的 `CompositeLibassComponent` 与单图中五个 `XY_CS_*` 分支）与 `m_hdr_config` 共用同一辅助函数。
+
+整帧缓存 `m_last_frame` 在 `changed == 0` 时直接复用，因此 `SetHdrConfig` 在配置变化时会置空该缓存并 `Deinit()`（后者清空 `BitmapMruCache` 等派生缓存）。
+
+### 旧 VSFilter 渲染器
+
+```
+CLine::PaintAll
+  → 由 STSStyle 颜色 + alpha 构造 sw[6]（0xAARRGGBB）
+  → TransColorWithHdr(): HdrColor::MapArgb → TransColor
+  → DrawItem::switchpts → Rasterizer::Draw（颜色 × 覆盖度遮罩）
+```
+
+`HdrColor::MapArgb` 只改 RGB 三个分量、保留 alpha 字节；而 alpha 是 `Rasterizer::CompositeAlphaMask` 的输入，所以遮罩逻辑不受影响。
+
+缓存安全性：`DrawItemHashKey::operator==` 对完整 `switchpts[6]` 做 `memcmp`，映射后的颜色已进入键值，模式切换不会命中旧位图。此外 `SetHdrConfig` 会清空 `m_last_frame` 并 `Deinit()`。
+
 `ResolvePgsHdrConfig`（`DirectVobSubImpl`，两个滤镜共用）：
 
 | `INT_PGS_HDR_MODE` | 结果 |
