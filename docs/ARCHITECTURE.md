@@ -45,7 +45,8 @@
 
 ## HDR 下的偏差点
 
-1. **无传递函数概念**：仓库内不存在 PQ/HLG/nits/白点代码。BT.2020 只作为 YUV→RGB 矩阵存在，既无原色转换也无 EOTF，字幕白被当作 SDR 相对白直接放入 HDR 容器。
+1. **外部消费端缺少传递函数约定**：当前已在位图调色板与文本图元输出处加入 PQ /
+   相对白映射，协议仍无 EOTF 字段，madVR 等外部消费端如何解释这些码值仍需实测。
 2. **8bit 塞进 10bit 容器**：`MemSubPic.cpp` 的 `AlphaBltAnv12_P010` 与 `xy_intrinsics.h` 的 `mix_16_y_p010_*` 用 `src << 8`。TV 白 235 → 940，按 PQ 反解约 4650 nits；全幅 255 → 1020，约 9700 nits。
 3. **协议无 EOTF 字段**：`SubRenderIntf.h` 1.0.9 只规定 `outputLevels` 的 PC/TV，没有说明位图使用何种传递函数，消费端无从分辨。
 4. **范围与矩阵的次要偏差**：`supportedLevels` 为"无偏好"时输出 TV 范围 RGB，消费端若忽略 `outputLevels` 会整体偏亮约 9%；UHD 片源下按 720 阈值猜 BT.709 会让彩色字幕偏色。
@@ -66,6 +67,8 @@
 
 ## HDR 映射实现（已落地）
 
+### 位图字幕（PGS / DVB）
+
 ```
 .sup → CHdmvSub::ParseSample（8bit Y,Cr,Cb,T 调色板）
      → CHdmvSub::Render
@@ -79,20 +82,13 @@
         恰好等于写入 16bit 字高 10 位的 10bit 码（无需改混合核）
 ```
 
-判定链路：
+映射发生在**调色板级**：≤256 项各算一次，之后每帧每像素只做查表与整数混合，热路径无额外开销。
 
-```
-XySubFilter::SetSubtitle
-  → SetYuvMatrix()      选 YCbCr 矩阵与范围
-  → SetRgbOutputLevel() PQ 模式强制全幅 RGB，其余按 supportedLevels
-  → SetHdrMode()        ResolvePgsHdrConfig() → Provider::SetHdrConfig
-```
+### 文本字幕（ASS / SSA / SRT）
 
-## 文本字幕（ASS/SRT）HDR 映射
+两条文本路径都不经过 `CompositionObject`，因此位图的调色板映射对它们无效。二者各有独立插入点。
 
-两条文本路径都不经过 `CompositionObject`，因此 PGS 的调色板映射对它们无效。二者各有独立的插入点：
-
-### libass 后端（默认）
+**libass 后端（默认）**
 
 ```
 ass_render_frame
@@ -102,11 +98,11 @@ ass_render_frame
   → packed_pix_mix / ayuv_planar_mix（颜色 × 覆盖度）
 ```
 
-映射是**按 `ASS_Image` 逐节点**做的，一个字符/描边/阴影算一次，与分辨率无关。六处 call site（`RTS.cpp` 的 `CompositeLibassComponent` 与单图中五个 `XY_CS_*` 分支）与 `m_hdr_config` 共用同一辅助函数。
+映射按 `ASS_Image` 逐节点做，一个字符/描边/阴影算一次，与分辨率无关。六处 call site（`CompositeLibassComponent` 与单图中五个 `XY_CS_*` 分支）共用 `MapTextColor`。
 
-整帧缓存 `m_last_frame` 在 `changed == 0` 时直接复用，因此 `SetHdrConfig` 在配置变化时会置空该缓存并 `Deinit()`（后者清空 `BitmapMruCache` 等派生缓存）。
+整帧缓存 `m_last_frame` 在 `changed == 0` 时直接复用，因此 `SetHdrConfig` 配置变化时会置空该缓存并 `Deinit()`（后者清空 `BitmapMruCache` 等派生缓存）。
 
-### 旧 VSFilter 渲染器
+**旧 VSFilter 渲染器**
 
 ```
 CLine::PaintAll
@@ -115,17 +111,46 @@ CLine::PaintAll
   → DrawItem::switchpts → Rasterizer::Draw（颜色 × 覆盖度遮罩）
 ```
 
-`HdrColor::MapArgb` 只改 RGB 三个分量、保留 alpha 字节；而 alpha 是 `Rasterizer::CompositeAlphaMask` 的输入，所以遮罩逻辑不受影响。
+`HdrColor::MapArgb` 只改 RGB 三分量、保留 alpha 字节；alpha 是 `Rasterizer::CompositeAlphaMask` 的输入，所以遮罩逻辑不受影响。
 
-缓存安全性：`DrawItemHashKey::operator==` 对完整 `switchpts[6]` 做 `memcmp`，映射后的颜色已进入键值，模式切换不会命中旧位图。此外 `SetHdrConfig` 会清空 `m_last_frame` 并 `Deinit()`。
+缓存安全性：`DrawItemHashKey::operator==` 对完整 `switchpts[6]` 做 `memcmp`，映射后的颜色已进入键值，模式切换不会命中旧位图。
 
-`ResolvePgsHdrConfig`（`DirectVobSubImpl`，两个滤镜共用）：
+### 判定与下发
 
-| `INT_PGS_HDR_MODE` | 结果 |
+```
+XySubFilter::SetSubtitle
+  → SetYuvMatrix()        选 YCbCr 矩阵与范围
+  → SetRgbOutputLevel()   PQ 模式强制全幅 RGB（位图与文本各自判断）
+  → SetHdrMode()          位图 → Provider::SetHdrConfig
+                          文本 → CRenderedTextSubtitle::SetHdrConfig
+```
+
+除属性页下发外，`HdmvSubtitleProviderImpl::RequestFrame` 在每帧渲染前还会
+从 consumer 直接读取 `INT_PGS_HDR_MODE` / `INT_PGS_HDR_WHITE_NITS`，并重新
+解析成 `HdrColor::Config` 写入当前 `CBaseSub`。这条路径覆盖外部 `.sup`
+（`SupFileSubtitleProvider`）和嵌入式 PGS/DVB（`HdmvSubtitleProvider`），
+用于避免属性页对象、当前流对象与实际 provider 不一致时配置停留在旧值。
+读取 HDR 选项时走 `m_csProviderFields`，`SetHdrMode` 在调用 provider 前释放
+该锁，避免渲染线程与属性页线程形成锁顺序反转。
+
+`ResolveHdrMode(mode)` 是位图与文本共用的解析实现（`DirectVobSubImpl`）：
+
+| 模式 | 结果 |
 | --- | --- |
 | `PGS_HDR_MODE_DISABLED` | `MAP_OFF` |
 | `PGS_HDR_MODE_PQ` | `MAP_PQ`，白点取自 `INT_PGS_HDR_WHITE_NITS` |
 | `PGS_HDR_MODE_RELATIVE_WHITE` | `MAP_RELATIVE_WHITE` |
 | `PGS_HDR_MODE_AUTO` | consumer `yuvMatrix` 以 `2020` 结尾 → `MAP_PQ`，否则 `MAP_OFF` |
 
+入口：`ResolvePgsHdrConfig()` 读 `INT_PGS_HDR_MODE`，`ResolveTextHdrConfig()` 读 `INT_TEXT_HDR_MODE`，白点共用。
+
 色彩科学集中在 `src/subpic/hdr_color.{h,cpp}`，纯函数、无 Win32 依赖，由 `test_hdr_color.h` 单测覆盖。
+
+## 界面与本地化
+
+- 资源：单份 `VSFilter.rc` 内含英文与简体中文两个语言块，由 `AFX_TARG_ENU` / `AFX_TARG_CHS` 同时定义后一并编译进 DLL；中文块以 GBK + `#pragma code_page(936)` 存储。
+- 字体：全部 26 个对话框使用 `Microsoft YaHei UI` 9pt（矢量字体，含 CJK 字形且可参与字体链接）。
+- 语言选择：`INT_UI_LANGUAGE`（Auto / English / 简体中文）。Auto 跟随系统 UI 语言，非中文系统回落英文。
+- 生效路径：`DirectVobSubImpl::ApplyUiLanguage` 设置滤镜线程语言；属性页另在 `GetPageInfo` / `Activate` 入口调用 `ApplyActiveUiLanguageToCurrentThread()`，因为属性页运行在宿主 UI 线程上。
+- 位图字幕不使用 libass/CSRI/VSFilter 文本渲染器；属性页对非文本流显示
+  `Bitmap (internal)`，避免把 PGS/DVB 的“实际后端”误报为 VSFilter。

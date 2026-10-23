@@ -42,9 +42,11 @@
 
 新模块 `src/subpic/hdr_color.h/.cpp` 为纯函数，无 Win32 依赖，可独立单测。
 
-## D5：先做位图字幕，文字字幕只预留接口
+## D5：文本字幕分两轮实现，接口先预留
 
-需求明确指向 SUP 字幕。ASS/SRT 由 libass 输出 ARGB，管线不同（`RTS.cpp` 的 tile 合成路径），改动面和回归风险都更大。因此在 `CBaseSub` 层预留 `SetHdrConfig`，文字字幕暂不接入。
+第一轮需求明确指向 SUP 字幕，因此先在 `CBaseSub` 层预留 `SetHdrConfig`，文本字幕不接入。第二轮补齐：`CRenderedTextSubtitle` 独立持有 `m_hdr_config`，libass 与旧渲染器两条路径分别接入（见 D16）。
+
+当初延后的理由成立——文本路径确实不同（libass 走 `ASS_Image` 颜色，旧渲染器走 `switchpts`），无法复用位图那条链路。
 
 ## D6：界面中文化采用新增语言块而非直改英文
 
@@ -98,7 +100,16 @@
 
 `IDirectVobSubXy.h` 的选项 ID 是跨 DLL 的 ABI 契约：外部消费者（如 madVR）把自己编译进去的常量值传给 provider。若在枚举中间插入新项，其后所有 ID 都会位移，导致既有消费者读写错误的选项。
 
-因此 `INT_PGS_HDR_MODE`、`INT_PGS_HDR_WHITE_NITS`、`INT_UI_LANGUAGE` 三个新 ID 追加在 `OPTION_COUNT` 之前、既有最后一项 `INT_TEXT_RENDERER_MODE` 之后，既有 ID 数值全部保持不变。当前最大 ID 为 98，仍在 `MAX_OPTION_ID = 127` 之内。
+因此新 ID 一路追加在 `OPTION_COUNT` 之前、`INT_TEXT_RENDERER_MODE` 之后，既有 ID 数值全部保持不变：
+
+| 选项 | ID |
+| --- | --- |
+| `INT_PGS_HDR_MODE` | 96 |
+| `INT_PGS_HDR_WHITE_NITS` | 97 |
+| `INT_UI_LANGUAGE` | 98 |
+| `INT_TEXT_HDR_MODE` | 99 |
+
+当前 `OPTION_COUNT = 100`，最大 ID 99，仍在 `MAX_OPTION_ID = 127` 之内。
 
 ## D15：文本字幕单独一组选项
 
@@ -157,3 +168,39 @@ libass 路径有两层缓存：整帧缓存 `m_last_frame`（`changed == 0` 时�
 `SetThreadUILanguage` 只影响调用线程。属性页由宿主（播放器/属性框架）的 UI 线程创建，不会继承滤镜线程的语言设置，因此仅靠 `ApplyUiLanguage` 无法让页面按所选语言加载。
 
 现在 `GetPageInfo` 与 `Activate` 一进入就调用 `DirectVobSubImpl::ApplyActiveUiLanguageToCurrentThread()`，读取由 `INT_UI_LANGUAGE` 发布的静态语言值并设置当前线程，使随后的 `LoadString` 与 `CreateDialogParam` 命中对应语言块。
+
+## D23：缓存键不需要额外纳入 HDR 配置
+
+曾计划把 HDR 模式与白点加入 `DrawItemHashKey`，以免切换模式时复用陈旧位图。检查后确认不必要：该键的 `operator==` 对完整 `switchpts[6]` 做 `memcmp`，而映射发生在 `switchpts` 构造之后、`TransColor` 之前，映射结果已经写进这些槽位。模式一变颜色就变，键自然不同。
+
+副作用也一并消失：无需再维护"配置参与哈希"这层同步逻辑。
+
+（`UpdateHashValue` 只混入 `switchpts[0]`，但那只是哈希函数不够均匀，等价性仍由 `memcmp` 保证，不影响正确性。）
+
+## D24：文本 HDR 默认 Auto，保证 golden 测试基线不变
+
+`libass_regression_test` 对渲染结果按 SHA256 与 golden 清单逐字节比对。若文本 HDR 默认开启，所有基线会立即失效。
+
+因此 `INT_TEXT_HDR_MODE` 默认 `PGS_HDR_MODE_AUTO`。测试环境没有 consumer，`yuvMatrix` 为空，Auto 解析为 `MAP_OFF`，输出与改动前逐字节一致。这一点由 `HdrColorTest.TextColorOffModeIsIdentity` 与既有 golden 测试双重保障。
+
+## D25：位图 provider 在 RequestFrame 时重新读取 HDR 配置
+
+`SetHdrConfig` 只在选流或属性页应用时下发一次，当前流缓存和实际 provider 的
+渲染时机可能使这次下发不足以保证手动调整立即生效。
+`HdmvSubtitleProviderImpl::RequestFrame` 因此在每次渲染前从 consumer 读取
+HDR 模式、白点和 consumer 的 `yuvMatrix`，重新解析 `HdrColor::Config` 后写入
+`CBaseSub`。该路径覆盖外部 SUP 与嵌入式 PGS/DVB。
+
+为避免死锁，渲染线程读取这些选项时使用 `m_csProviderFields` 而不是
+`m_csFilter`；`XySubFilter::SetHdrMode` 只在该锁内解析配置，释放后再调用各
+provider 的 `SetHdrConfig`。
+
+被否方案：只相信属性页保存到过滤器成员的值。该方案已被真实播放反馈证明不足，
+因为调整模式或白点后画面没有任何变化。
+
+## D26：位图字幕的实际后端显示为 Bitmap (internal)
+
+PGS/DVB 走 `CompositionObject` 位图管线，不经过 libass、CSRI 或 VSFilter 文本
+渲染器。原先把非文本流的实际后端显示为 `VSFilter`，会让用户误以为 HDR 设置
+没有生效是因为后端选错。属性页现在根据 `BOOL_IS_BITMAP` 显示
+`Bitmap (internal)`；API 返回值保持兼容。

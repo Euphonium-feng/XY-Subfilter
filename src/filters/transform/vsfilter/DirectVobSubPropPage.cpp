@@ -2011,17 +2011,25 @@ void CXySubFilterMainPPage::UpdateControlData(bool fSave)
         int actual_backend = SUBTITLE_RENDER_BACKEND_VSFILTER;
         if (SUCCEEDED(m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_ACTUAL_SUBTITLE_RENDER_BACKEND, &actual_backend))) {
             CString actual_backend_label;
-            switch (NormalizeBackend(actual_backend)) {
-            case SUBTITLE_RENDER_BACKEND_LIBASS:
-                actual_backend_label = _T("libass");
-                break;
-            case SUBTITLE_RENDER_BACKEND_CSRI:
-                actual_backend_label = _T("CSRI");
-                break;
-            case SUBTITLE_RENDER_BACKEND_VSFILTER:
-            default:
-                actual_backend_label = _T("VSFilter");
-                break;
+            bool is_bitmap = false;
+            m_pDirectVobSubXy->XyGetBool(DirectVobSubXyOptions::BOOL_IS_BITMAP, &is_bitmap);
+            if (is_bitmap) {
+                // Bitmap subtitles do not use the text renderer backend.
+                actual_backend_label = _T("Bitmap (internal)");
+            }
+            else {
+                switch (NormalizeBackend(actual_backend)) {
+                case SUBTITLE_RENDER_BACKEND_LIBASS:
+                    actual_backend_label = _T("libass");
+                    break;
+                case SUBTITLE_RENDER_BACKEND_CSRI:
+                    actual_backend_label = _T("CSRI");
+                    break;
+                case SUBTITLE_RENDER_BACKEND_VSFILTER:
+                default:
+                    actual_backend_label = _T("VSFilter");
+                    break;
+                }
             }
             m_actualBackendLabel.SetWindowText(actual_backend_label);
         }

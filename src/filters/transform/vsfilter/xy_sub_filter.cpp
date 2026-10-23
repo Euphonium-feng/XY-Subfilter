@@ -723,6 +723,9 @@ HRESULT XySubFilter::DoGetField( unsigned field, void *value )
     case BOOL_IS_MOVABLE:
     case BOOL_IS_BITMAP:
     case BOOL_SUB_FRAME_USE_DST_ALPHA:
+    case INT_PGS_HDR_MODE:
+    case INT_PGS_HDR_WHITE_NITS:
+    case INT_TEXT_HDR_MODE:
         {
             CAutoLock cAutolock(&m_csProviderFields);//do NOT hold m_csSubLock so that it is faster
             hr = XyOptionsImpl::DoGetField(field, value);
@@ -1870,7 +1873,7 @@ void XySubFilter::SetRgbOutputLevel()
     {
         // Same reasoning as the bitmap path: PQ code values are absolute, so
         // they must not be rescaled into TV levels afterwards.
-        if (m_xy_int_opt[INT_TEXT_HDR_MODE]==DirectVobSubXyOptions::PGS_HDR_MODE_PQ)
+        if (ResolveTextHdrConfig().mode == HdrColor::MAP_PQ)
         {
             sub_frame_creater->SetRgbOutputTvLevel(false);
         }
@@ -1903,7 +1906,7 @@ void XySubFilter::SetRgbOutputLevel()
         // A PQ palette already carries absolute code values. Squeezing it into
         // TV levels would rescale those codes and shift the white point, so the
         // PQ mode always outputs full-range RGB.
-        if (m_xy_int_opt[INT_PGS_HDR_MODE]==DirectVobSubXyOptions::PGS_HDR_MODE_PQ)
+        if (ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ)
         {
             CompositionObject::m_output_tv_range_rgb = false;
         }
@@ -1937,25 +1940,41 @@ void XySubFilter::SetRgbOutputLevel()
 void XySubFilter::SetHdrMode()
 {
     // Callers hold m_csFilter; SetSubtitle reaches this from the locked path.
-    CAutoLock cAutoLock(&m_csProviderFields);
-
     // Bitmap and text subtitles use separate modes: the historical colour
     // conventions differ (bitmaps are native YCbCr, ASS text is BT.601 RGB).
-    const HdrColor::Config bitmap_config = ResolvePgsHdrConfig();
-    const HdrColor::Config text_config = ResolveTextHdrConfig();
+    HdrColor::Config bitmap_config;
+    HdrColor::Config text_config;
+    {
+        CAutoLock cAutoLock(&m_csProviderFields);
+        bitmap_config = ResolvePgsHdrConfig();
+        text_config = ResolveTextHdrConfig();
+    }
 
-    HdmvSubtitleProvider* hdmv = dynamic_cast<HdmvSubtitleProvider*>(m_curSubStream);
-    if (hdmv) {
-        hdmv->SetHdrConfig(bitmap_config);
+    const auto apply_config = [&](ISubStream* stream) {
+        if (HdmvSubtitleProvider* hdmv = dynamic_cast<HdmvSubtitleProvider*>(stream)) {
+            hdmv->SetHdrConfig(bitmap_config);
+        }
+        else if (SupFileSubtitleProvider* sup = dynamic_cast<SupFileSubtitleProvider*>(stream)) {
+            sup->SetHdrConfig(bitmap_config);
+        }
+        else if (CRenderedHdmvSubtitle* rendered = dynamic_cast<CRenderedHdmvSubtitle*>(stream)) {
+            rendered->SetHdrConfig(bitmap_config);
+        }
+        else if (CRenderedTextSubtitle* rts = dynamic_cast<CRenderedTextSubtitle*>(stream)) {
+            rts->SetHdrConfig(text_config);
+        }
+    };
+
+    bool current_applied = false;
+    for (POSITION pos = m_pSubStreams.GetHeadPosition(); pos;) {
+        CComPtr<ISubStream> stream = m_pSubStreams.GetNext(pos);
+        if (stream.p == m_curSubStream) {
+            current_applied = true;
+        }
+        apply_config(stream);
     }
-    else if (SupFileSubtitleProvider* sup = dynamic_cast<SupFileSubtitleProvider*>(m_curSubStream)) {
-        sup->SetHdrConfig(bitmap_config);
-    }
-    else if (CRenderedHdmvSubtitle* rendered = dynamic_cast<CRenderedHdmvSubtitle*>(m_curSubStream)) {
-        rendered->SetHdrConfig(bitmap_config);
-    }
-    else if (CRenderedTextSubtitle* rts = dynamic_cast<CRenderedTextSubtitle*>(m_curSubStream)) {
-        rts->SetHdrConfig(text_config);
+    if (!current_applied && m_curSubStream) {
+        apply_config(m_curSubStream);
     }
 }
 
