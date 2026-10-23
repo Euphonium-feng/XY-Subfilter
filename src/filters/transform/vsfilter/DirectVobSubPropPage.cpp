@@ -1,4 +1,4 @@
-/* 
+﻿/* 
  *	Copyright (C) 2003-2006 Gabest
  *	http://www.gabest.org
  *
@@ -32,6 +32,7 @@
 
 #include "../../../subtitles/SubtitleRenderBackend.h"
 #include "../../../subtitles/TextRendererMode.h"
+#include "../../../subpic/hdr_color.h"
 
 namespace
 {
@@ -2029,6 +2030,9 @@ void CXySubFilterMainPPage::UpdateControlData(bool fSave)
 CXySubFilterMorePPage::CXySubFilterMorePPage(LPUNKNOWN pUnk, HRESULT* phr) 
     :CDVSBasePPage(NAME("XySubFilter Property Page (more)"), pUnk
     , IDD_XY_SUB_FILTER_MOREPAGE, IDD_XY_SUB_FILTER_MOREPAGE)
+    , m_pgs_hdr_mode(DirectVobSubXyOptions::PGS_HDR_MODE_AUTO)
+    , m_pgs_hdr_white_nits(int(HdrColor::DEFAULT_WHITE_NITS))
+    , m_ui_language(DirectVobSubXyOptions::UI_LANGUAGE_AUTO)
 {
     BindControl(IDC_SPINPathCache, m_path_cache);
     BindControl(IDC_SPINScanlineCache, m_scanline_cache);
@@ -2049,6 +2053,10 @@ CXySubFilterMorePPage::CXySubFilterMorePPage(LPUNKNOWN pUnk, HRESULT* phr)
     BindControl(IDC_COMBO_COLOR_SPACE, m_combo_yuv_matrix);
     BindControl(IDC_COMBO_YUV_RANGE, m_combo_yuv_range);
     BindControl(IDC_COMBO_RGB_LEVEL, m_combo_rgb_level);
+    BindControl(IDC_COMBO_PGS_HDR_MODE, m_combo_pgs_hdr_mode);
+    BindControl(IDC_COMBO_UI_LANGUAGE, m_combo_ui_language);
+    BindControl(IDC_EDIT_PGS_HDR_WHITE_NITS, m_edit_pgs_hdr_white_nits);
+    BindControl(IDC_SPIN_PGS_HDR_WHITE_NITS, m_spin_pgs_hdr_white_nits);
 
     BindControl(IDC_CHECKBOX_RENDER_TO_ORIGINAL_VIDEO_SIZE, m_checkbox_render_to_original_video_size);
 
@@ -2190,6 +2198,12 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
         CHECK_N_LOG(hr, "Failed to set option");
         hr = m_pDirectVobSubXy->XySetInt(DirectVobSubXyOptions::INT_RGB_OUTPUT_TV_LEVEL, m_rgb_level);
         CHECK_N_LOG(hr, "Failed to set option");
+        hr = m_pDirectVobSubXy->XySetInt(DirectVobSubXyOptions::INT_PGS_HDR_MODE, m_pgs_hdr_mode);
+        CHECK_N_LOG(hr, "Failed to set option");
+        hr = m_pDirectVobSubXy->XySetInt(DirectVobSubXyOptions::INT_PGS_HDR_WHITE_NITS, m_pgs_hdr_white_nits);
+        CHECK_N_LOG(hr, "Failed to set option");
+        hr = m_pDirectVobSubXy->XySetInt(DirectVobSubXyOptions::INT_UI_LANGUAGE, m_ui_language);
+        CHECK_N_LOG(hr, "Failed to set option");
 
         hr = m_pDirectVobSubXy->XySetBool(DirectVobSubXyOptions::BOOL_RENDER_TO_ORIGINAL_VIDEO_SIZE, m_render_to_original_video_size);
         CHECK_N_LOG(hr, "Failed to set option");
@@ -2229,6 +2243,12 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
         hr = m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_COLOR_SPACE, &m_yuv_matrix);
         CHECK_N_LOG(hr, "Failed to get option");
         hr = m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_RGB_OUTPUT_TV_LEVEL, &m_rgb_level);
+        CHECK_N_LOG(hr, "Failed to get option");
+        hr = m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_PGS_HDR_MODE, &m_pgs_hdr_mode);
+        CHECK_N_LOG(hr, "Failed to get option");
+        hr = m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_PGS_HDR_WHITE_NITS, &m_pgs_hdr_white_nits);
+        CHECK_N_LOG(hr, "Failed to get option");
+        hr = m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_UI_LANGUAGE, &m_ui_language);
         CHECK_N_LOG(hr, "Failed to get option");
 
         hr = m_pDirectVobSubXy->XyGetBool(DirectVobSubXyOptions::BOOL_RENDER_TO_ORIGINAL_VIDEO_SIZE, &m_render_to_original_video_size);
@@ -2306,6 +2326,24 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         else
         {
             m_rgb_level = DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_AUTO;
+        }
+        if (m_combo_pgs_hdr_mode.GetCurSel() != CB_ERR)
+        {
+            m_pgs_hdr_mode = m_combo_pgs_hdr_mode.GetCurSel();
+        }
+        else
+        {
+            m_pgs_hdr_mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
+        }
+        CString hdr_white_str;
+        m_edit_pgs_hdr_white_nits.GetWindowText(hdr_white_str);
+        int hdr_white = 0;
+        if (_stscanf_s(hdr_white_str, _T("%d"), &hdr_white) == 1) {
+            m_pgs_hdr_white_nits = hdr_white;
+        }
+        if (m_combo_ui_language.GetCurSel() != CB_ERR)
+        {
+            m_ui_language = m_combo_ui_language.GetCurSel();
         }
 
         m_render_to_original_video_size = !!m_checkbox_render_to_original_video_size.GetCheck();
@@ -2432,6 +2470,41 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         m_combo_rgb_level.AddString( CString(_T("Force TV")) );
         m_combo_rgb_level.SetItemData( DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_FORCE_TV, DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_FORCE_TV );
         m_combo_rgb_level.SetCurSel( m_rgb_level );
+
+        if (m_pgs_hdr_mode < DirectVobSubXyOptions::PGS_HDR_MODE_AUTO ||
+            m_pgs_hdr_mode >= DirectVobSubXyOptions::PGS_HDR_MODE_COUNT)
+        {
+            m_pgs_hdr_mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
+        }
+        m_combo_pgs_hdr_mode.ResetContent();
+        m_combo_pgs_hdr_mode.AddString( CString(_T("Auto")) );
+        m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_AUTO, DirectVobSubXyOptions::PGS_HDR_MODE_AUTO );
+        m_combo_pgs_hdr_mode.AddString( CString(_T("Off (SDR)")) );
+        m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED, DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED );
+        m_combo_pgs_hdr_mode.AddString( CString(_T("PQ (absolute)")) );
+        m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_PQ, DirectVobSubXyOptions::PGS_HDR_MODE_PQ );
+        m_combo_pgs_hdr_mode.AddString( CString(_T("Relative white")) );
+        m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE, DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE );
+        m_combo_pgs_hdr_mode.SetCurSel( m_pgs_hdr_mode );
+
+        if (m_ui_language < DirectVobSubXyOptions::UI_LANGUAGE_AUTO ||
+            m_ui_language >= DirectVobSubXyOptions::UI_LANGUAGE_COUNT)
+        {
+            m_ui_language = DirectVobSubXyOptions::UI_LANGUAGE_AUTO;
+        }
+        m_combo_ui_language.ResetContent();
+        m_combo_ui_language.AddString( CString(_T("Auto")) );
+        m_combo_ui_language.SetItemData( DirectVobSubXyOptions::UI_LANGUAGE_AUTO, DirectVobSubXyOptions::UI_LANGUAGE_AUTO );
+        m_combo_ui_language.AddString( CString(_T("English")) );
+        m_combo_ui_language.SetItemData( DirectVobSubXyOptions::UI_LANGUAGE_ENGLISH, DirectVobSubXyOptions::UI_LANGUAGE_ENGLISH );
+        m_combo_ui_language.AddString( CString(_T("中文（简体）")) );
+        m_combo_ui_language.SetItemData( DirectVobSubXyOptions::UI_LANGUAGE_CHINESE_SIMPLIFIED, DirectVobSubXyOptions::UI_LANGUAGE_CHINESE_SIMPLIFIED );
+        m_combo_ui_language.SetCurSel( m_ui_language );
+
+        m_spin_pgs_hdr_white_nits.SetRange32(50, 1000);
+        CString hdr_white_str;
+        hdr_white_str.Format(_T("%d"), m_pgs_hdr_white_nits);
+        m_edit_pgs_hdr_white_nits.SetWindowText(hdr_white_str);
 
         m_checkbox_render_to_original_video_size.SetCheck(m_render_to_original_video_size);
         PopulateTextRendererModeCombo(m_text_renderer_mode_combo, m_text_renderer_mode);

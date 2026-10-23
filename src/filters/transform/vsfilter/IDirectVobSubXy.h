@@ -153,6 +153,12 @@ namespace DirectVobSubXyOptions
         INT_ACTUAL_SUBTITLE_RENDER_BACKEND,
         INT_TEXT_RENDERER_MODE,
 
+        // Appended at the end so existing option ids keep their values;
+        // external consumers compile these constants in.
+        INT_PGS_HDR_MODE,       //see @PgsHdrMode
+        INT_PGS_HDR_WHITE_NITS, //HDR graphics reference white, default 203
+        INT_UI_LANGUAGE,        //see @UiLanguage
+
         OPTION_COUNT
     };
     struct ColorSpaceOpt
@@ -207,6 +213,22 @@ namespace DirectVobSubXyOptions
         RGB_OUTPUT_LEVEL_FORCE_TV,
         RGB_OUTPUT_LEVEL_COUNT
     };
+    // How bitmap subtitle palettes are mapped for HDR video.
+    enum PgsHdrMode
+    {
+        PGS_HDR_MODE_AUTO = 0,      // detect from the video's transfer function
+        PGS_HDR_MODE_DISABLED,      // keep the historical SDR mapping
+        PGS_HDR_MODE_PQ,            // encode the white point as a PQ signal
+        PGS_HDR_MODE_RELATIVE_WHITE,// keep SDR codes, pre-scale linear white
+        PGS_HDR_MODE_COUNT
+    };
+    enum UiLanguage
+    {
+        UI_LANGUAGE_AUTO = 0,       // follow the system UI language
+        UI_LANGUAGE_ENGLISH,
+        UI_LANGUAGE_CHINESE_SIMPLIFIED,
+        UI_LANGUAGE_COUNT
+    };
     struct TextSettings {
         void* lf;
         int lflen;
@@ -256,6 +278,9 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_SUBTITLE_RENDER_BACKEND},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_READ, INT_ACTUAL_SUBTITLE_RENDER_BACKEND},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_TEXT_RENDERER_MODE},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_MODE},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_WHITE_NITS},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_UI_LANGUAGE},
 
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ORIGINAL_VIDEO},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ASS_PLAY_RESOLUTION},
@@ -352,6 +377,9 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_SUBTITLE_RENDER_BACKEND},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_READ, INT_ACTUAL_SUBTITLE_RENDER_BACKEND},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_TEXT_RENDERER_MODE},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_MODE},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_WHITE_NITS},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_UI_LANGUAGE},
 
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_MAX_BITMAP_COUNT},
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_COMBINE_BITMAPS},

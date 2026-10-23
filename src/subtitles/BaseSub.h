@@ -49,8 +49,10 @@ public:
     virtual void            Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox) = NULL;
     virtual HRESULT         GetTextureSize(POSITION pos, SIZE& MaxTextureSize, SIZE& VideoSize, POINT& VideoTopLeft) = NULL;
     virtual HRESULT         SetYuvType(ColorType colorType, YuvRangeType yuvRangeType) = NULL;
+    virtual HRESULT         SetHdrConfig(const HdrColor::Config& config) = NULL;
 protected:
     SUBTITLE_TYPE           m_nType;
     ColorType               m_colorTypeSetting;
     YuvRangeType            m_yuvRangeSetting;
+    HdrColor::Config        m_hdrConfig;
 };

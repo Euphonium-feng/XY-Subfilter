@@ -66,6 +66,7 @@ public:
     void EndOfStream();
 
     HRESULT SetYuvType(CBaseSub::ColorType colorType, CBaseSub::YuvRangeType yuvRangeType);
+    HRESULT SetHdrConfig(const HdrColor::Config& config);
 private :
 	CString			m_name;
 	LCID			m_lcid;

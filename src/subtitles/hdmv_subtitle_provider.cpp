@@ -377,6 +377,13 @@ HRESULT HdmvSubtitleProvider::SetYuvType( CBaseSub::ColorType colorType, CBaseSu
     return m_pSub->SetYuvType(colorType, yuvRangeType);
 }
 
+HRESULT HdmvSubtitleProvider::SetHdrConfig( const HdrColor::Config& config )
+{
+    CAutoLock cAutoLock(&m_csCritSec);
+    Invalidate(-1);
+    return m_pSub->SetHdrConfig(config);
+}
+
 //
 // SupFileSubtitleProvider
 //
@@ -595,5 +602,12 @@ HRESULT SupFileSubtitleProvider::SetYuvType( CBaseSub::ColorType colorType, CBas
     CAutoLock cAutoLock(&m_csCritSec);
     Invalidate(-1);
     return m_pSub->SetYuvType(colorType, yuvRangeType);
+}
+
+HRESULT SupFileSubtitleProvider::SetHdrConfig( const HdrColor::Config& config )
+{
+    CAutoLock cAutoLock(&m_csCritSec);
+    Invalidate(-1);
+    return m_pSub->SetHdrConfig(config);
 }
 

@@ -1,4 +1,4 @@
-/* 
+﻿/* 
  *	Copyright (C) 2003-2006 Gabest
  *	http://www.gabest.org
  *
@@ -23,6 +23,7 @@
 #include "DirectVobSub.h"
 #include "VSFilter.h"
 #include "../../../subtitles/TextRendererMode.h"
+#include "../../../subpic/hdr_color.h"
 
 using namespace DirectVobSubXyOptions;
 
@@ -810,6 +811,71 @@ void DirectVobSubImpl::SaveKnownSourceFilters( const CAtlArray<CStringW>& filter
 
 // XyOptionsImpl
 
+HRESULT DirectVobSubImpl::OnOptionChanged( unsigned field )
+{
+    HRESULT hr = XyOptionsImpl::OnOptionChanged(field);
+    if (FAILED(hr)) {
+        return hr;
+    }
+    if (field == INT_UI_LANGUAGE) {
+        // Property pages are recreated on the next activation, so switching the
+        // thread language here is enough for the change to take effect.
+        ApplyUiLanguage(m_xy_int_opt[INT_UI_LANGUAGE]);
+    }
+    return hr;
+}
+
+void DirectVobSubImpl::ApplyUiLanguage(int ui_language)
+{
+    LANGID lang_id;
+    switch (ui_language)
+    {
+    case UI_LANGUAGE_ENGLISH:
+        lang_id = MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US);
+        break;
+    case UI_LANGUAGE_CHINESE_SIMPLIFIED:
+        lang_id = MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED);
+        break;
+    case UI_LANGUAGE_AUTO:
+    default:
+        lang_id = GetUserDefaultUILanguage();
+        break;
+    }
+    // The resource script ships simplified Chinese and US English. Other
+    // system languages fall back to English so the UI is never blank.
+    if (PRIMARYLANGID(lang_id) != LANG_CHINESE) {
+        lang_id = MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US);
+    } else {
+        lang_id = MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED);
+    }
+    SetThreadUILanguage(lang_id);
+}
+
+HdrColor::Config DirectVobSubImpl::ResolvePgsHdrConfig() const
+{
+    const HdrColor::Config normalized = HdrColor::NormalizeConfig(
+        m_xy_int_opt[INT_PGS_HDR_MODE], double(m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]));
+
+    switch (m_xy_int_opt[INT_PGS_HDR_MODE])
+    {
+    case PGS_HDR_MODE_DISABLED:
+        return HdrColor::NormalizeConfig(HdrColor::MAP_OFF, normalized.white_nits);
+    case PGS_HDR_MODE_PQ:
+        return HdrColor::NormalizeConfig(HdrColor::MAP_PQ, normalized.white_nits);
+    case PGS_HDR_MODE_RELATIVE_WHITE:
+        return HdrColor::NormalizeConfig(HdrColor::MAP_RELATIVE_WHITE, normalized.white_nits);
+    default:
+        break;
+    }
+
+    // AUTO: without a transfer-function field in the render interface, a
+    // BT.2020 matrix is the only available HDR hint. SDR-wide-gamut content
+    // will read as HDR; the explicit modes override this.
+    const bool likely_hdr = m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].Right(4).CompareNoCase(L"2020") == 0;
+    return HdrColor::NormalizeConfig(
+        likely_hdr ? HdrColor::MAP_PQ : HdrColor::MAP_OFF, normalized.white_nits);
+}
+
 HRESULT DirectVobSubImpl::DoGetField( unsigned field, void *value )
 {
     CAutoLock cAutoLock(m_propsLock);
@@ -1272,6 +1338,22 @@ CDirectVobSub::CDirectVobSub( const Option *options, CCritSec * pLock )
         m_xy_str_opt[STRING_PGS_YUV_MATRIX] = _T("GUESS");
     }
 
+    m_xy_int_opt[INT_PGS_HDR_MODE] = theApp.GetProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_PGS_HDR_MODE), DirectVobSubXyOptions::PGS_HDR_MODE_AUTO);
+    if (m_xy_int_opt[INT_PGS_HDR_MODE] < 0
+        || m_xy_int_opt[INT_PGS_HDR_MODE] >= DirectVobSubXyOptions::PGS_HDR_MODE_COUNT) {
+        m_xy_int_opt[INT_PGS_HDR_MODE] = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
+    }
+    m_xy_int_opt[INT_PGS_HDR_WHITE_NITS] = theApp.GetProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_PGS_HDR_WHITE_NITS), int(HdrColor::DEFAULT_WHITE_NITS));
+    m_xy_int_opt[INT_UI_LANGUAGE] = theApp.GetProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_UI_LANGUAGE), DirectVobSubXyOptions::UI_LANGUAGE_AUTO);
+    if (m_xy_int_opt[INT_UI_LANGUAGE] < 0
+        || m_xy_int_opt[INT_UI_LANGUAGE] >= DirectVobSubXyOptions::UI_LANGUAGE_COUNT) {
+        m_xy_int_opt[INT_UI_LANGUAGE] = DirectVobSubXyOptions::UI_LANGUAGE_AUTO;
+    }
+    ApplyUiLanguage(m_xy_int_opt[INT_UI_LANGUAGE]);
+
     CStringA version = XY_ABOUT_VERSION_STR;
     m_xy_str_opt[STRING_VERSION] = "";
     for (int i=0;i<version.GetLength();i++)
@@ -1398,6 +1480,10 @@ STDMETHODIMP CDirectVobSub::UpdateRegistry()
 
     CString str_pgs_yuv_type = m_xy_str_opt[STRING_PGS_YUV_RANGE] + _T(".") + m_xy_str_opt[STRING_PGS_YUV_MATRIX];
     theApp.WriteProfileString(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_PGS_COLOR_TYPE), str_pgs_yuv_type);
+
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_PGS_HDR_MODE), m_xy_int_opt[INT_PGS_HDR_MODE]);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_PGS_HDR_WHITE_NITS), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_UI_LANGUAGE), m_xy_int_opt[INT_UI_LANGUAGE]);
 
     //save output color config
     {
@@ -1641,6 +1727,22 @@ CDVS4XySubFilter::CDVS4XySubFilter( const Option *options, CCritSec * pLock )
         m_xy_str_opt[STRING_PGS_YUV_MATRIX] = _T("GUESS");
     }
 
+    m_xy_int_opt[INT_PGS_HDR_MODE] = theApp.GetProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_PGS_HDR_MODE), DirectVobSubXyOptions::PGS_HDR_MODE_AUTO);
+    if (m_xy_int_opt[INT_PGS_HDR_MODE] < 0
+        || m_xy_int_opt[INT_PGS_HDR_MODE] >= DirectVobSubXyOptions::PGS_HDR_MODE_COUNT) {
+        m_xy_int_opt[INT_PGS_HDR_MODE] = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
+    }
+    m_xy_int_opt[INT_PGS_HDR_WHITE_NITS] = theApp.GetProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_PGS_HDR_WHITE_NITS), int(HdrColor::DEFAULT_WHITE_NITS));
+    m_xy_int_opt[INT_UI_LANGUAGE] = theApp.GetProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_UI_LANGUAGE), DirectVobSubXyOptions::UI_LANGUAGE_AUTO);
+    if (m_xy_int_opt[INT_UI_LANGUAGE] < 0
+        || m_xy_int_opt[INT_UI_LANGUAGE] >= DirectVobSubXyOptions::UI_LANGUAGE_COUNT) {
+        m_xy_int_opt[INT_UI_LANGUAGE] = DirectVobSubXyOptions::UI_LANGUAGE_AUTO;
+    }
+    ApplyUiLanguage(m_xy_int_opt[INT_UI_LANGUAGE]);
+
     CStringA version = XY_ABOUT_VERSION_STR;
     m_xy_str_opt[STRING_VERSION] = "";
     for (int i=0;i<version.GetLength();i++)
@@ -1807,6 +1909,10 @@ STDMETHODIMP CDVS4XySubFilter::UpdateRegistry()
 
     CString str_pgs_yuv_type = m_xy_str_opt[STRING_PGS_YUV_RANGE] + _T(".") + m_xy_str_opt[STRING_PGS_YUV_MATRIX];
     theApp.WriteProfileString(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_PGS_COLOR_TYPE), str_pgs_yuv_type);
+
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_PGS_HDR_MODE), m_xy_int_opt[INT_PGS_HDR_MODE]);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_PGS_HDR_WHITE_NITS), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_UI_LANGUAGE), m_xy_int_opt[INT_UI_LANGUAGE]);
 
     CString str_load_level;
     switch(m_xy_int_opt[INT_LOAD_SETTINGS_LEVEL])

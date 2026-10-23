@@ -1794,6 +1794,7 @@ void CDirectVobSubFilter::SetSubtitle(ISubStream* pSubStream, bool fApplyDefStyl
             m_video_yuv_matrix_decided_by_sub = (m_w > m_bt601Width || m_h > m_bt601Height) ? ColorConvTable::BT709 : 
                 ColorConvTable::BT601;
             sub->SetYuvType(color_type, range_type);
+            sub->SetHdrConfig(ResolvePgsHdrConfig());
         }
     }
 
@@ -2295,6 +2296,22 @@ HRESULT CDirectVobSubFilter::OnOptionChanged( unsigned field )
             auto rts = dynamic_cast<CRenderedTextSubtitle*>(pSubStream.p);
             if (rts) {
                 rts->SetTextRendererMode(mode);
+            }
+        }
+        InvalidateSubtitle();
+        break;
+    }
+    case INT_PGS_HDR_MODE:
+    case INT_PGS_HDR_WHITE_NITS:
+    {
+        // Re-apply the palette mapping to every bitmap subtitle stream.
+        POSITION pos = m_pSubStreams.GetHeadPosition();
+        while(pos)
+        {
+            CComPtr<ISubStream> pSubStream = m_pSubStreams.GetNext(pos);
+            auto rendered = dynamic_cast<CRenderedHdmvSubtitle*>(pSubStream.p);
+            if (rendered) {
+                rendered->SetHdrConfig(ResolvePgsHdrConfig());
             }
         }
         InvalidateSubtitle();

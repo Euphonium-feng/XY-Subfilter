@@ -197,3 +197,9 @@ HRESULT CRenderedHdmvSubtitle::SetYuvType( CBaseSub::ColorType colorType, CBaseS
     CAutoLock cAutoLock(&m_csCritSec);
     return m_pSub->SetYuvType(colorType, yuvRangeType);
 }
+
+HRESULT CRenderedHdmvSubtitle::SetHdrConfig( const HdrColor::Config& config )
+{
+    CAutoLock cAutoLock(&m_csCritSec);
+    return m_pSub->SetHdrConfig(config);
+}

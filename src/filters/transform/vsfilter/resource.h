@@ -254,6 +254,14 @@
 #define IDC_ACTUAL_RENDER_BACKEND       1077
 #define IDS_RT_TEXT_RENDERER_MODE       1078
 #define IDC_COMBO_TEXT_RENDERER_MODE    347
+#define IDS_RG_PGS_HDR_MODE             1079
+#define IDS_RG_PGS_HDR_WHITE_NITS       1080
+#define IDS_RG_UI_LANGUAGE              1081
+#define IDC_COMBO_PGS_HDR_MODE          348
+#define IDC_EDIT_PGS_HDR_WHITE_NITS     349
+#define IDC_SPIN_PGS_HDR_WHITE_NITS     350
+#define IDC_STATIC_PGS_HDR_WHITE_NITS   351
+#define IDC_COMBO_UI_LANGUAGE           352
 
 // Next default values for new objects
 // 
@@ -261,7 +269,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        339
 #define _APS_NEXT_COMMAND_VALUE         32770
-#define _APS_NEXT_CONTROL_VALUE         348
+#define _APS_NEXT_CONTROL_VALUE         353
 #define _APS_NEXT_SYMED_VALUE           210
 #endif
 #endif

@@ -21,6 +21,7 @@
 #pragma once
 
 #include "Rasterizer.h"
+#include "../subpic/hdr_color.h"
 
 
 struct HDMV_PALETTE {
@@ -79,7 +80,8 @@ public:
     void  RenderDvb(SubPicDesc& spd, short nX, short nY, RECT *dirtyRect = NULL /* in-out */);
     void  WriteSeg(SubPicDesc& spd, short nX, short nY, short nCount, short nPaletteIndex);
     void  InitColor(const SubPicDesc& spd);
-    void  SetPalette(int nNbEntry, HDMV_PALETTE* pPalette, ColorType color_type, YuvRangeType yuv_range);
+    void  SetPalette(int nNbEntry, HDMV_PALETTE* pPalette, ColorType color_type, YuvRangeType yuv_range,
+                     const HdrColor::Config& hdr_config = HdrColor::Config());
     void  SetPalette(int nNbEntry, DWORD* dwColors);
     bool  HavePalette() {
         return !m_Palette.IsEmpty();
@@ -95,6 +97,8 @@ public:
         }
         pCompositionObject->m_OriginalColorType = m_OriginalColorType;
         pCompositionObject->m_OriginalYuvRangeType = m_OriginalYuvRangeType;
+        pCompositionObject->m_RequestedHdr = m_RequestedHdr;
+        pCompositionObject->m_AppliedHdr = m_AppliedHdr;
 
         memcpy(pCompositionObject->m_Colors, m_Colors, sizeof(m_Colors));
         pCompositionObject->m_colorType = m_colorType;
@@ -114,6 +118,8 @@ private:
     CAtlArray<HDMV_PALETTE> m_Palette;
     ColorType   m_OriginalColorType;
     YuvRangeType m_OriginalYuvRangeType;
+    HdrColor::Config m_RequestedHdr;
+    HdrColor::Config m_AppliedHdr;
 
     DWORD       m_Colors[256];
     int         m_colorType;

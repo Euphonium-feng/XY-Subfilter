@@ -4,6 +4,7 @@
 #include "DirectVobSub.h"
 #include "SubRenderIntf.h"
 #include "SubRenderOptionsImpl.h"
+#include "../../../subpic/hdr_color.h"
 
 class CDirectVobSubFilter;
 
@@ -81,6 +82,8 @@ public:
 private:
     void SetYuvMatrix();
     void SetRgbOutputLevel();
+    void SetHdrMode();
+    HdrColor::Config ResolveHdrConfig() const;
     bool Open();
 
     void UpdateSubtitle(bool fApplyDefStyle = true);

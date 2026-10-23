@@ -388,7 +388,8 @@ void CHdmvSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
                         CompositionObject::YUV_Rec709 : CompositionObject::YUV_Rec601;
                 }
                 pObject->SetPalette(pPresentationSegment->CLUT.size, pPresentationSegment->CLUT.palette, color_type, 
-                    m_yuvRangeSetting==CompositionObject::RANGE_NONE ? CompositionObject::RANGE_TV : m_yuvRangeSetting);
+                    m_yuvRangeSetting==CompositionObject::RANGE_NONE ? CompositionObject::RANGE_TV : m_yuvRangeSetting,
+                    m_hdrConfig);
 
                 bbox.left   = min(pObject->m_horizontal_position, bbox.left);
                 bbox.top    = min(pObject->m_vertical_position, bbox.top);
@@ -443,6 +444,12 @@ HRESULT CHdmvSub::SetYuvType( ColorType colorType, YuvRangeType yuvRangeType )
 {
     m_colorTypeSetting = colorType;
     m_yuvRangeSetting = yuvRangeType;
+    return S_OK;
+}
+
+HRESULT CHdmvSub::SetHdrConfig( const HdrColor::Config& config )
+{
+    m_hdrConfig = config;
     return S_OK;
 }
 

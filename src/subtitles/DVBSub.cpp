@@ -357,7 +357,8 @@ void CDVBSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
                             color_type = m_Display.width >= 720 ? CompositionObject::YUV_Rec709 : CompositionObject::YUV_Rec601;
                         }
                         pObject->SetPalette(pCLUT->size, pCLUT->palette, color_type, 
-                            m_yuvRangeSetting==CompositionObject::RANGE_NONE ? CompositionObject::RANGE_TV : m_yuvRangeSetting);
+                            m_yuvRangeSetting==CompositionObject::RANGE_NONE ? CompositionObject::RANGE_TV : m_yuvRangeSetting,
+                            m_hdrConfig);
                         pObject->InitColor(spd);
                         pObject->RenderDvb(spd, nX, nY, &bbox);
                         TRACE_DVB((_T(" --> %d/%d - %d/%d\n"), i + 1, pPage->regionCount, j + 1, pRegion->objectCount));
@@ -451,6 +452,12 @@ HRESULT CDVBSub::SetYuvType( ColorType colorType, YuvRangeType yuvRangeType )
 {
     m_colorTypeSetting = colorType;
     m_yuvRangeSetting = yuvRangeType;
+    return S_OK;
+}
+
+HRESULT CDVBSub::SetHdrConfig( const HdrColor::Config& config )
+{
+    m_hdrConfig = config;
     return S_OK;
 }
 

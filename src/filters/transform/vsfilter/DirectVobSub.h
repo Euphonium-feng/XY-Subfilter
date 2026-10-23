@@ -26,6 +26,7 @@
 #include "..\..\..\..\include\IFilterVersion.h"
 #include "version.h"
 #include "XyOptionsImpl.h"
+#include "../../../subpic/hdr_color.h"
 
 class DirectVobSubImpl : public IDirectVobSub2, public XyOptionsImpl, public IFilterVersion
 {
@@ -109,6 +110,14 @@ public:
     // XyOptionsImpl
     HRESULT DoGetField(unsigned field, void *value);
     HRESULT DoSetField(unsigned field, void const *value);
+    virtual HRESULT OnOptionChanged(unsigned field);
+
+    // Resolves INT_PGS_HDR_MODE / INT_PGS_HDR_WHITE_NITS into a mapping config.
+    // AUTO falls back to the video's YCbCr matrix as reported by the consumer.
+    HdrColor::Config ResolvePgsHdrConfig() const;
+
+    // Applies INT_UI_LANGUAGE to the calling thread's resource language.
+    static void ApplyUiLanguage(int ui_language);
 
     // IXyOptions
     STDMETHODIMP XyGetBin      (unsigned field, LPVOID    *value, int *size );

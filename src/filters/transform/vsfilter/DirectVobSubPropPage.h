@@ -300,6 +300,8 @@ class CXySubFilterMorePPage : public CDVSBasePPage
         m_scan_line_data_cache_max_item_num, m_subpixel_pos_level;
     int m_layout_size_opt;
     int m_yuv_matrix, m_yuv_range, m_rgb_level;
+    int m_pgs_hdr_mode, m_pgs_hdr_white_nits;
+    int m_ui_language;
     SIZE m_layout_size;
 
     bool m_fHideSubtitles, m_fAllowMoving, m_fReloaderDisabled;
@@ -318,6 +320,10 @@ class CXySubFilterMorePPage : public CDVSBasePPage
     CButton m_checkbox_render_to_original_video_size;
 
     CComboBox m_combo_yuv_matrix, m_combo_yuv_range, m_combo_rgb_level;
+    CComboBox m_combo_pgs_hdr_mode;
+    CComboBox m_combo_ui_language;
+    CEdit m_edit_pgs_hdr_white_nits;
+    CSpinButtonCtrl m_spin_pgs_hdr_white_nits;
     CComboBox m_text_renderer_mode_combo;
     CEdit m_edit_cache_size;
 protected:

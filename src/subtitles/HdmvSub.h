@@ -120,6 +120,7 @@ public:
     HRESULT   GetTextureSize(POSITION pos, SIZE& MaxTextureSize, SIZE& VideoSize, POINT& VideoTopLeft);
     void      Reset();
     virtual HRESULT         SetYuvType(ColorType colorType, YuvRangeType yuvRangeType);
+    virtual HRESULT         SetHdrConfig(const HdrColor::Config& config);
 private:
 
     HDMV_SEGMENT_TYPE            m_nCurSegment;

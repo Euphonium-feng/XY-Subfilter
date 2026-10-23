@@ -609,6 +609,8 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     case INT_RGB_OUTPUT_TV_LEVEL:
     case INT_COLOR_SPACE:
     case INT_YUV_RANGE:
+    case INT_PGS_HDR_MODE:
+    case INT_PGS_HDR_WHITE_NITS:
         UpdateSubtitle(false);
         m_context_id++;
         break;
@@ -1891,7 +1893,14 @@ void XySubFilter::SetRgbOutputLevel()
     else if (dynamic_cast<HdmvSubtitleProvider*>(m_curSubStream)!=NULL
         || dynamic_cast<SupFileSubtitleProvider*>(m_curSubStream)!=NULL)
     {
-        if (m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL]==RGB_OUTPUT_LEVEL_AUTO)
+        // A PQ palette already carries absolute code values. Squeezing it into
+        // TV levels would rescale those codes and shift the white point, so the
+        // PQ mode always outputs full-range RGB.
+        if (m_xy_int_opt[INT_PGS_HDR_MODE]==DirectVobSubXyOptions::PGS_HDR_MODE_PQ)
+        {
+            CompositionObject::m_output_tv_range_rgb = false;
+        }
+        else if (m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL]==RGB_OUTPUT_LEVEL_AUTO)
         {
             if (m_xy_int_opt[INT_CONSUMER_SUPPORTED_LEVELS]==PREFERED_TV || 
                 m_xy_int_opt[INT_CONSUMER_SUPPORTED_LEVELS]==NO_PREFERENCE)
@@ -1915,6 +1924,30 @@ void XySubFilter::SetRgbOutputLevel()
     else
     {
         m_xy_str_opt[STRING_OUTPUT_LEVELS] = L"PC";
+    }
+}
+
+HdrColor::Config XySubFilter::ResolveHdrConfig() const
+{
+    return ResolvePgsHdrConfig();
+}
+
+void XySubFilter::SetHdrMode()
+{
+    // Callers hold m_csFilter; SetSubtitle reaches this from the locked path.
+    CAutoLock cAutoLock(&m_csProviderFields);
+
+    const HdrColor::Config config = ResolveHdrConfig();
+
+    HdmvSubtitleProvider* hdmv = dynamic_cast<HdmvSubtitleProvider*>(m_curSubStream);
+    if (hdmv) {
+        hdmv->SetHdrConfig(config);
+    }
+    else if (SupFileSubtitleProvider* sup = dynamic_cast<SupFileSubtitleProvider*>(m_curSubStream)) {
+        sup->SetHdrConfig(config);
+    }
+    else if (CRenderedHdmvSubtitle* rendered = dynamic_cast<CRenderedHdmvSubtitle*>(m_curSubStream)) {
+        rendered->SetHdrConfig(config);
     }
 }
 
@@ -2278,6 +2311,7 @@ void XySubFilter::SetSubtitle( ISubStream* pSubStream, bool fApplyDefStyle /*= t
 
     SetYuvMatrix();
     SetRgbOutputLevel();
+    SetHdrMode();
 
     m_xy_size_opt[SIZE_ASS_PLAY_RESOLUTION] = playres;
 

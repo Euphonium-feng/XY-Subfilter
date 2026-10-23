@@ -39,10 +39,12 @@ CompositionObject::~CompositionObject()
     delete [] m_pRLEData;
 }
 
-void CompositionObject::SetPalette(int nNbEntry, HDMV_PALETTE* pPalette, ColorType color_type, YuvRangeType yuv_range)
+void CompositionObject::SetPalette(int nNbEntry, HDMV_PALETTE* pPalette, ColorType color_type, YuvRangeType yuv_range,
+                                    const HdrColor::Config& hdr_config)
 {
     m_OriginalColorType = color_type;
     m_OriginalYuvRangeType = yuv_range;
+    m_RequestedHdr = hdr_config;
 
     m_colorType = -1;
 
@@ -60,7 +62,7 @@ void CompositionObject::InitColor(const SubPicDesc& spd)
 #define FULL_TYPE(x,y) (((x)<<8)|y)
 
     int paletteNumber = m_Palette.GetCount();
-    if (m_colorType!=spd.type)
+    if (m_colorType!=spd.type || !HdrColor::IsSameOutput(m_AppliedHdr, m_RequestedHdr))
     {
         m_colorType = -1;
         ColorConvTable::YuvMatrixType cur_type = ColorConvTable::BT709;
@@ -99,26 +101,50 @@ void CompositionObject::InitColor(const SubPicDesc& spd)
         }
 
         m_colorType = spd.type;
+        // Relative-white pre-compensation only makes sense for the ARGB path,
+        // where the consumer places the bitmap itself. YUV targets carry the
+        // video's own transfer function, so they use PQ encoding or nothing.
+        const HdrColor::Config hdr = (spd.type != MSP_RGBA && m_RequestedHdr.mode == HdrColor::MAP_RELATIVE_WHITE)
+            ? HdrColor::Config()
+            : m_RequestedHdr;
+        const bool map_hdr = hdr.mode != HdrColor::MAP_OFF;
         switch(spd.type)
         {
         case MSP_AYUV_PLANAR:
         case MSP_AYUV:
             for (int i=0;i<paletteNumber;i++)
             {
-                m_Colors[m_Palette[i].entry_id] = ColorConvTable::A8Y8U8V8_TO_CUR_AYUV(
+                DWORD color = ColorConvTable::A8Y8U8V8_TO_CUR_AYUV(
                     m_Palette[i].T, 
                     m_Palette[i].Y, m_Palette[i].Cb, m_Palette[i].Cr,
                     cur_range, cur_type);
+                if (map_hdr) {
+                    // Re-encode the palette entry so its Y/U/V carry PQ code
+                    // values; the video's own matrix and range then apply.
+                    const DWORD argb = HdrColor::MapArgb(
+                        ColorConvTable::A8Y8U8V8_TO_ARGB(m_Palette[i].T,
+                            m_Palette[i].Y, m_Palette[i].Cb, m_Palette[i].Cr,
+                            cur_range, cur_type, false), hdr);
+                    color = ColorConvTable::Argb2Ayuv(argb);
+                }
+                m_Colors[m_Palette[i].entry_id] = color;
             }
             break;
         case MSP_XY_AUYV:
             for (int i=0;i<paletteNumber;i++)
             {
-                m_Colors[m_Palette[i].entry_id] = AYUV_2_AUYV(
-                    ColorConvTable::A8Y8U8V8_TO_CUR_AYUV(
-                        m_Palette[i].T, 
-                        m_Palette[i].Y, m_Palette[i].Cb, m_Palette[i].Cr,
-                        cur_range, cur_type));
+                DWORD color = ColorConvTable::A8Y8U8V8_TO_CUR_AYUV(
+                    m_Palette[i].T, 
+                    m_Palette[i].Y, m_Palette[i].Cb, m_Palette[i].Cr,
+                    cur_range, cur_type);
+                if (map_hdr) {
+                    const DWORD argb = HdrColor::MapArgb(
+                        ColorConvTable::A8Y8U8V8_TO_ARGB(m_Palette[i].T,
+                            m_Palette[i].Y, m_Palette[i].Cb, m_Palette[i].Cr,
+                            cur_range, cur_type, false), hdr);
+                    color = ColorConvTable::Argb2Ayuv(argb);
+                }
+                m_Colors[m_Palette[i].entry_id] = AYUV_2_AUYV(color);
             }
             break;
         case MSP_RGBA:
@@ -128,7 +154,7 @@ void CompositionObject::InitColor(const SubPicDesc& spd)
                     m_Palette[i].T, 
                     m_Palette[i].Y, m_Palette[i].Cb, m_Palette[i].Cr,
                     cur_range, cur_type, m_output_tv_range_rgb);
-                m_Colors[m_Palette[i].entry_id] = argb;
+                m_Colors[m_Palette[i].entry_id] = HdrColor::MapArgb(argb, hdr);
             }
             break;
         default:
@@ -136,6 +162,7 @@ void CompositionObject::InitColor(const SubPicDesc& spd)
             ASSERT(0);
             return;
         }
+        m_AppliedHdr = hdr;
     }
 }
 

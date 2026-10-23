@@ -61,6 +61,7 @@ public:
     HRESULT EndOfStream(void);
 
     HRESULT SetYuvType(CBaseSub::ColorType colorType, CBaseSub::YuvRangeType yuvRangeType);
+    HRESULT SetHdrConfig(const HdrColor::Config& config);
 private :
     CString         m_name;
     LCID            m_lcid;
@@ -100,6 +101,7 @@ public:
     STDMETHODIMP Reload();
 
     HRESULT SetYuvType(CBaseSub::ColorType colorType, CBaseSub::YuvRangeType yuvRangeType);
+    HRESULT SetHdrConfig(const HdrColor::Config& config);
 protected:
     DWORD ThreadProc();
 private:
