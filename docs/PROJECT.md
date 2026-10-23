@@ -61,3 +61,9 @@ release-x64 / debug-x64 均 success）。真实播放器存在**疑似稳定性�
 side data 事件提示、按完整配置判断 SubPic 失效，并重排属性页 HDR 区域。
 Relative white 已从界面移除。CI run `40007950976` 的 release-win32 /
 release-x64 / debug-x64 三矩阵全绿；真实播放效果与稳定性仍待复测。
+
+该版实测仍为 `PQ < Auto = SDR`。进一步确认 HDR 测试文件本身是
+BT.2020/PQ，而当前播放的 SDR 文件虽是 10bit，但颜色元数据为 BT.709；
+因此不能按位深猜测 HDR。检测现改为扫描整张 DirectShow 图，优先寻找解码器
+输出引脚上的 PQ/HLG，并允许未设置 colour-info 标志但传递函数码明确为
+PQ/HLG 的情况。代码尚待 CI 与实机复测。

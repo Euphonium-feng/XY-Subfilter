@@ -36,6 +36,7 @@ DirectVobSubImpl::DirectVobSubImpl(const Option *options, CCritSec * pLock)
     , m_consumer_hdr_signal(HdrColor::HDR_SIGNAL_UNKNOWN)
     , m_video_side_data_hdr(false)
     , m_consumer_transfer_function(-1)
+    , m_consumer_control_flags(0)
 {
 }
 

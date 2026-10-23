@@ -19,6 +19,11 @@ consumer 从输入 `VIDEOINFOHEADER2` 上报范围/矩阵，HDR media side data 
 通知 provider；HDMV SubPic 按完整 HDR 配置而非仅 generation 失效。属性页已重排，
 Relative white 不再显示。CI run `40007950976` 三矩阵全绿，尚待实机复测。
 
+随后实机仍为 `PQ < Auto = SDR`。已确认不能按 10bit 位深猜测：SDR 测试文件
+同样是 10bit，但元数据为 BT.709。当前修复改为扫描整张 DirectShow 图，避免只读
+consumer 转换后的引脚；同时接受未设 colour-info 标志但明确为 PQ/HLG 的传递函数
+码。待新 CI 绿后复测。
+
 ### 稳定性诊断（2026-10-23）
 
 - 实际链路为 PotPlayer 26.07.01 + LAV 0.82 + madVR 0.92.17 +
@@ -129,6 +134,10 @@ white` 的输出。
 4. **HDR 片源下的实际观感**：字幕是否仍偏亮或偏暗，四种模式的表现差异。
 5. **属性页语言切换在真实播放器中的行为**：`AFX_TARG_CHS` + `SetThreadUILanguage` + 宿主线程的组合需实测。
 6. **文本字幕 HDR 映射的主观效果**：ASS 字幕多为高饱和彩色，BT.601 约定下映射后的色偏是否可接受。
+
+文本字幕与图形字幕共用同一 Auto 解析结果和同一个白点设置。之前的 Auto 缺口会
+同时影响两者；HDMV 独有的旧 SubPic 复用问题不适用于文本路径，因为
+`CRenderedTextSubtitle::SetHdrConfig` 已按完整配置失效整帧与 bitmap 缓存。
 
 ## 下一步
 

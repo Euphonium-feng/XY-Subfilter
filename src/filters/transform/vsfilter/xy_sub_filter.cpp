@@ -49,6 +49,45 @@ const SubRenderOptionsImpl::OptionMap options[] =
     {0}
 };
 
+namespace
+{
+struct VideoColorMetadata
+{
+    HdrColor::HdrSignal signal;
+    int transfer_function;
+    DWORD control_flags;
+
+    VideoColorMetadata()
+        : signal(HdrColor::HDR_SIGNAL_UNKNOWN)
+        , transfer_function(-1)
+        , control_flags(0)
+    {
+    }
+};
+
+VideoColorMetadata ReadVideoColorMetadata(const CMediaType& media_type)
+{
+    VideoColorMetadata metadata;
+    if (media_type.majortype != MEDIATYPE_Video
+        || media_type.formattype != FORMAT_VideoInfo2
+        || !media_type.Format()
+        || media_type.FormatLength() < sizeof(VIDEOINFOHEADER2)) {
+        return metadata;
+    }
+
+    const DWORD flags =
+        reinterpret_cast<const VIDEOINFOHEADER2*>(media_type.Format())->dwControlFlags;
+    const bool color_info_present =
+        (flags & AMCONTROL_USED) != 0
+        && (flags & AMCONTROL_COLORINFO_PRESENT) != 0;
+    metadata.control_flags = flags;
+    metadata.transfer_function = int((flags & 0xF8000000) >> 27);
+    metadata.signal = HdrColor::ClassifyTransferFunction(
+        metadata.transfer_function, color_info_present);
+    return metadata;
+}
+}
+
 ////////////////////////////////////////////////////////////////////////////
 //
 // Constructor
@@ -2091,8 +2130,8 @@ CStringW XySubFilter::GetHdrStatusText()
     }
 
     CStringW signal;
-    signal.Format(L"tf%d/sd%d/%ls", m_consumer_transfer_function,
-        m_video_side_data_hdr ? 1 : 0,
+    signal.Format(L"tf%d/f%08x/sd%d/%ls", m_consumer_transfer_function,
+        m_consumer_control_flags, m_video_side_data_hdr ? 1 : 0,
         m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].IsEmpty()
             ? L"?" : m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
     CStringW value;
@@ -3179,6 +3218,10 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
                 m_consumer = NULL;
                 return hr;
             }
+            if (UpdateConsumerHdrSignal(consumer_filter)) {
+                ++m_context_id;
+                UpdateSubtitle(false);
+            }
             XY_LOG_INFO("Connected with "<<XY_LOG_VAR_2_STR(consumer)<<" "
                 <<DumpConsumerInfo().GetString()<<" as "<<DumpProviderInfo().GetString());
 
@@ -3223,57 +3266,75 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
 
 bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
 {
-    HdrColor::HdrSignal signal = HdrColor::HDR_SIGNAL_UNKNOWN;
-    int transfer_function = -1;
-
-    if (consumer_filter) {
+    VideoColorMetadata selected;
+    auto inspect_filter = [&selected](IBaseFilter* filter) -> bool {
         CComPtr<IEnumPins> pins;
-        if (SUCCEEDED(consumer_filter->EnumPins(&pins)) && pins) {
-            CComPtr<IPin> pin;
-            ULONG fetched = 0;
-            while (pins->Next(1, &pin, &fetched) == S_OK) {
-                PIN_DIRECTION direction = PINDIR_INPUT;
-                if (SUCCEEDED(pin->QueryDirection(&direction))
-                    && direction == PINDIR_INPUT)
-                {
-                    CMediaType media_type;
-                    if (SUCCEEDED(pin->ConnectionMediaType(&media_type))
-                        && media_type.majortype == MEDIATYPE_Video
-                        && media_type.formattype == FORMAT_VideoInfo2
-                        && media_type.Format()
-                        && media_type.FormatLength() >= sizeof(VIDEOINFOHEADER2))
-                    {
-                        const DWORD flags =
-                            reinterpret_cast<const VIDEOINFOHEADER2*>(
-                                media_type.Format())->dwControlFlags;
-                        const bool color_info_present =
-                            (flags & AMCONTROL_USED) != 0
-                            && (flags & AMCONTROL_COLORINFO_PRESENT) != 0;
-                        transfer_function = int((flags & 0xF8000000) >> 27);
-                        signal = HdrColor::ClassifyTransferFunction(
-                            transfer_function, color_info_present);
-                        break;
-                    }
+        if (!filter || FAILED(filter->EnumPins(&pins)) || !pins) {
+            return false;
+        }
+
+        CComPtr<IPin> pin;
+        ULONG fetched = 0;
+        while (pins->Next(1, &pin, &fetched) == S_OK) {
+            CMediaType media_type;
+            if (SUCCEEDED(pin->ConnectionMediaType(&media_type))) {
+                const VideoColorMetadata metadata =
+                    ReadVideoColorMetadata(media_type);
+                if (metadata.signal == HdrColor::HDR_SIGNAL_HDR) {
+                    selected = metadata;
+                    return true;
                 }
-                pin.Release();
+                if ((metadata.signal == HdrColor::HDR_SIGNAL_SDR
+                        && selected.signal != HdrColor::HDR_SIGNAL_SDR)
+                    || (metadata.signal == HdrColor::HDR_SIGNAL_UNKNOWN
+                        && selected.signal == HdrColor::HDR_SIGNAL_UNKNOWN
+                        && metadata.transfer_function >= 0)) {
+                    selected = metadata;
+                }
+            }
+            pin.Release();
+            fetched = 0;
+        }
+        return false;
+    };
+
+    if (consumer_filter && !inspect_filter(consumer_filter) && m_pGraph) {
+        // The selected consumer may sit behind a converter whose media type
+        // no longer carries the decoder's colour metadata. Scan the graph once
+        // so the original LAV/decoder output can still identify PQ/HLG.
+        CComPtr<IEnumFilters> filters;
+        if (SUCCEEDED(m_pGraph->EnumFilters(&filters)) && filters) {
+            CComPtr<IBaseFilter> filter;
+            ULONG fetched = 0;
+            while (filters->Next(1, &filter, &fetched) == S_OK) {
+                if (inspect_filter(filter)) {
+                    break;
+                }
+                filter.Release();
                 fetched = 0;
             }
         }
     }
 
+    const HdrColor::HdrSignal signal = selected.signal;
+    const int transfer_function = selected.transfer_function;
+
     bool changed = false;
     {
         CAutoLock cAutoLock(&m_csProviderFields);
         changed = m_consumer_hdr_signal != signal
-            || m_consumer_transfer_function != transfer_function;
+            || m_consumer_transfer_function != transfer_function
+            || m_consumer_control_flags != selected.control_flags;
         m_consumer_hdr_signal = signal;
         m_consumer_transfer_function = transfer_function;
+        m_consumer_control_flags = selected.control_flags;
     }
     if (changed) {
         InterlockedIncrement(&m_hdr_generation);
     }
     XY_LOG_INFO("Consumer HDR signal:" << signal
-        << " transfer function:" << transfer_function);
+        << " transfer function:" << transfer_function
+        << " control flags:" << selected.control_flags);
     return changed;
 }
 

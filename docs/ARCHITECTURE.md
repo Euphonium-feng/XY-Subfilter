@@ -145,6 +145,10 @@ HDR 配置还携带递增 generation；`HdmvSubtitleProviderImpl`、`Composition
 
 入口：`ResolvePgsHdrConfig()` 读 `INT_PGS_HDR_MODE`，`ResolveTextHdrConfig()` 读 `INT_TEXT_HDR_MODE`，白点共用。`XySubFilter::UpdateConsumerHdrSignal()` 从 consumer 已连接视频引脚的 `VIDEOINFOHEADER2.dwControlFlags` 提取传递函数；PQ/HLG 为 HDR，明确 SDR 曲线优先于 BT.2020 矩阵回退。
 
+若 consumer 引脚已被转换且不再携带原始颜色元数据，则在同一检测阶段枚举整张
+DirectShow 图，优先采用任何解码器/中间引脚上的 PQ/HLG 信息。该扫描只在 consumer
+连接阶段执行，不进入逐帧热路径。
+
 内置 `XySubFilterConsumer` 在输入媒体类型变化时把同一组颜色信息转换成
 `yuvMatrix`（如 `TV.2020`）供 provider 读取；HDR10/HDR10+/DoVi side data
 通过只写选项 `isHdrVideo` 发出一次性事件。provider 只记录该事件和递增
@@ -152,6 +156,9 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 配置。
 
 色彩科学集中在 `src/subpic/hdr_color.{h,cpp}`，纯函数、无 Win32 依赖，由 `test_hdr_color.h` 单测覆盖。
+
+文本与位图共用 `DirectVobSubImpl::ResolveHdrMode()`、同一个 consumer HDR 信号和
+`INT_PGS_HDR_WHITE_NITS`；因此 Auto 检测与白点调整会同时作用于两类字幕。
 
 ## 界面与本地化
 

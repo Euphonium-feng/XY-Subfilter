@@ -180,8 +180,14 @@ TEST(HdrColorTest, ClassifiesConsumerTransferFunction)
         HdrColor::ClassifyTransferFunction(1, true)); // BT.709
     EXPECT_EQ(HdrColor::HDR_SIGNAL_SDR,
         HdrColor::ClassifyTransferFunction(7, true)); // BT.2020 SDR
-    EXPECT_EQ(HdrColor::HDR_SIGNAL_UNKNOWN,
+    // PQ/HLG codes are unambiguous even if a decoder omits the colour-info
+    // flag; SDR curves still require the flag before overriding AUTO.
+    EXPECT_EQ(HdrColor::HDR_SIGNAL_HDR,
         HdrColor::ClassifyTransferFunction(8, false));
+    EXPECT_EQ(HdrColor::HDR_SIGNAL_HDR,
+        HdrColor::ClassifyTransferFunction(10, false));
+    EXPECT_EQ(HdrColor::HDR_SIGNAL_UNKNOWN,
+        HdrColor::ClassifyTransferFunction(1, false));
 }
 
 TEST(HdrColorTest, ClassifiesConsumerVideoMatrix)

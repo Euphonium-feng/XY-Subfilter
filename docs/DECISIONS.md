@@ -226,6 +226,12 @@ SUP/PGS 调色板仍是 SDR 8bit YCbCr。修复目标是把目标 HDR 亮度按 
 `VIDEOINFOHEADER2` 生成 `TV/PC.601/709/2020`；HDR10/HDR10+/DoVi side data
 再通过 `isHdrVideo` 事件补充确认。
 
+第二次实机仍失败后，检测进一步改为扫描整张 DirectShow 图，而不是只看 consumer
+自己的输入引脚。原因是 consumer 可能是转换器或 madVR，其连接媒体类型已经丢失
+解码器输出上的颜色元数据。明确的传递函数码 8/10（PQ/HLG）即使缺少
+`AMCONTROL_COLORINFO_PRESENT` 也接受；普通 SDR 曲线仍必须带 colour-info 标志。
+不按 10bit 位深猜测 HDR，因为实测 SDR 片源也可以是 10bit。
+
 ## D29：HDR generation 与属性页批量刷新
 
 只比较 mode/white 不足以覆盖“配置被重新应用但数值相同”和 consumer HDR 提示变化。

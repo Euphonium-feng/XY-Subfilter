@@ -68,7 +68,11 @@ Config NormalizeConfig(int mode, double white_nits, unsigned long long generatio
 
 HdrSignal ClassifyTransferFunction(int transfer_function, bool color_info_present)
 {
-    if (!color_info_present) {
+    // Some decoders expose a valid PQ/HLG transfer code without setting the
+    // AMCONTROL_COLORINFO_PRESENT bit. Accept those unambiguous HDR codes, but
+    // still require the colour-info flag before treating an SDR curve as an
+    // explicit SDR override.
+    if (!color_info_present && transfer_function != 8 && transfer_function != 10) {
         return HDR_SIGNAL_UNKNOWN;
     }
 

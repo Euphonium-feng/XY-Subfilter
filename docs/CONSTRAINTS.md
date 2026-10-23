@@ -59,6 +59,8 @@
   consumer 缓存帧，而不是把配置读取放到渲染热路径。
 - Auto 判定必须优先采用 consumer 视频引脚 `VIDEOINFOHEADER2` 中的传递函数；
   BT.2020 矩阵只是在没有传递函数信息时的回退，不能覆盖明确的 SDR 曲线。
+- 不能按 10bit/P010 位深自动判定 HDR；10bit SDR 同样常见。consumer 引脚不含
+  元数据时必须扫描上游 DirectShow 图，但不得把图扫描放进逐帧热路径。
 - 内置 consumer 必须在媒体类型变化时填充 `yuvMatrix`，否则 provider 的 BT.2020
   回退没有输入；HDR side data 只能作为事件提示，不得恢复每帧读取 consumer 配置。
 - 每次 HDR 配置变化必须递增 generation，并让 SubPic、调色板和对外 bitmap ID
@@ -71,3 +73,5 @@
   madVR 做 HDR 处理；SDR 直通只用于对照，不是默认方案。
 - `Relative white` 已证明会让 madVR 路径过曝，不再暴露给用户；保留枚举值只为避免
   改变既有外部 ABI。
+- 位图与文本字幕共用同一 HDR Auto 解析和白点；任何 consumer 信号修复必须同时
+  验证两条管线，不能只修 PGS。

@@ -84,6 +84,7 @@ protected:
     HdrColor::HdrSignal m_consumer_hdr_signal;
     bool m_video_side_data_hdr;
     int m_consumer_transfer_function;
+    DWORD m_consumer_control_flags;
 
     int m_bt601Width, m_bt601Height;//for AUTO_GUESS
 
