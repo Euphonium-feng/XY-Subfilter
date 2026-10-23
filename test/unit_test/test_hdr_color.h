@@ -185,13 +185,18 @@ TEST(HdrColorTest, TextColorOffModeIsIdentity)
 TEST(HdrColorTest, TextColorPqKeepsAlphaAndLowersWhite)
 {
     const HdrColor::Config pq = HdrColor::NormalizeConfig(HdrColor::MAP_PQ, 203.0);
-    const DWORD white = 0xFF808080;   // opaque mid-grey text
-    const DWORD mapped = HdrColor::MapArgb(white, pq);
 
-    EXPECT_EQ(0xFFu, mapped >> 24);            // alpha untouched
-    EXPECT_EQ(148, int((mapped >> 16) & 0xFF)); // Q = 148 for 203 nits
-    EXPECT_EQ(148, int((mapped >> 8) & 0xFF));
-    EXPECT_EQ(148, int(mapped & 0xFF));
+    // Full white lands on the BT.2408 reference white code.
+    const DWORD mapped_white = HdrColor::MapArgb(0xFFFFFFFF, pq);
+    EXPECT_EQ(0xFFu, mapped_white >> 24);
+    EXPECT_EQ(148, int((mapped_white >> 16) & 0xFF));
+
+    // Mid grey becomes 106: 128 -> 0.19 linear -> 38.8 nits -> PQ code 106.
+    const DWORD mapped_grey = HdrColor::MapArgb(0xFF808080, pq);
+    EXPECT_EQ(0xFFu, mapped_grey >> 24);         // alpha untouched
+    EXPECT_EQ(106, int((mapped_grey >> 16) & 0xFF));
+    EXPECT_EQ(106, int((mapped_grey >> 8) & 0xFF));
+    EXPECT_EQ(106, int(mapped_grey & 0xFF));
 }
 
 TEST(HdrColorTest, TextColorRelativeWhiteKeepsCodeSpace)
