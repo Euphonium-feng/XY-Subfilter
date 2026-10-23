@@ -43,19 +43,40 @@ namespace HdrColor
     {
         int mode;
         double white_nits;
+        unsigned long long generation;
 
-        Config() : mode(MAP_OFF), white_nits(DEFAULT_WHITE_NITS) {}
-        Config(int m, double nits) : mode(m), white_nits(nits) {}
+        Config() : mode(MAP_OFF), white_nits(DEFAULT_WHITE_NITS), generation(0) {}
+        Config(int m, double nits, unsigned long long gen = 0)
+            : mode(m), white_nits(nits), generation(gen) {}
+    };
+
+    // HDR hint derived from VIDEOINFOHEADER2 colour metadata.
+    enum HdrSignal
+    {
+        HDR_SIGNAL_UNKNOWN = 0,
+        HDR_SIGNAL_SDR,
+        HDR_SIGNAL_HDR
     };
 
     // Clamps untrusted option values into a usable configuration.
-    Config NormalizeConfig(int mode, double white_nits);
+    Config NormalizeConfig(int mode, double white_nits, unsigned long long generation = 0);
+
+    // Classifies a DXVA2 transfer-function code carried by
+    // VIDEOINFOHEADER2::dwControlFlags.
+    HdrSignal ClassifyTransferFunction(int transfer_function, bool color_info_present);
+
+    // Auto mode prefers an explicit consumer transfer-function hint. The
+    // BT.2020 matrix is only a fallback when no transfer function is known.
+    bool ShouldUsePqForAuto(HdrSignal signal, bool bt2020_matrix);
 
     // True when the configuration alters pixel output for the PQ mode.
     bool IsPqMapping(const Config& config);
 
     // True when two configurations produce identical output.
     bool IsSameOutput(const Config& a, const Config& b);
+
+    // True when both the mapping values and the configuration revision match.
+    bool IsSameRevision(const Config& a, const Config& b);
 
     // SMPTE ST 2084 (PQ) constants as defined by the standard.
     double PqOetfFromLinear(double linear);

@@ -44,6 +44,12 @@
     <ClInclude Include="test_font_fallback.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="test_hdr_color.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="test_composition_hdr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="test_media_side_data.h">
       <Filter>Header Files</Filter>
     </ClInclude>

@@ -9,8 +9,8 @@ PotPlayer + madVR 在 seek 时至少崩溃两次；当前自动化压力回路�
 2026-10-24 又收到一个更明确的渲染问题：SUP/PGS 在 HDR 下无论切换 HDR 模式还是
 白点，画面都没有变化。随后尝试的“provider 每帧重新读取 consumer 选项”版本
 （run `39984554888`）虽然云端构建全绿，但真实播放出现稳定性问题和花屏，已撤回。
-当前改为在 HDR 选项变化后清空 consumer 的缓存帧，让下一帧重新请求；真实播放器
-验证尚未完成。
+当前实现已增加 consumer 传递函数检测、HDR generation、合并刷新和带结果的
+`Clear()`；代码与自动化测试已完成，真实播放器验证由用户暂缓。
 
 ### 稳定性诊断（2026-10-23）
 
@@ -72,6 +72,19 @@ white` 的输出。
 8bit SDR 容器码值，再由 madVR 的 HDR 处理恢复绝对亮度。SDR 直通只能作为对照，
 不是修复方案。
 
+### 第五轮：HDR 配置可靠性（实机验证暂缓）
+
+| 阶段 | 内容 |
+| --- | --- |
+| A | Auto 优先读取 consumer 视频引脚的 `VIDEOINFOHEADER2` 传递函数；PQ/HLG 为 HDR，明确 SDR 曲线覆盖 BT.2020 矩阵回退 |
+| B | HDR 配置带递增 generation，贯穿 `CompositionObject`、Hdmv SubPic、文本缓存和外层 bitmap ID |
+| C | `SetRgbOutputLevel()` 改为按解析后的配置判断 PQ，Auto 解析成 PQ 时也强制 PC 全幅 |
+| D | 属性页 Apply 合并 RGB/HDR 刷新；`ISubRenderConsumer2::Clear()` 只调用一次并记录结果 |
+| E | 属性页显示实际 provider、解析后的 HDR 模式、白点、缓存清理状态和构建短哈希 |
+| F | 增加调色板像素集成测试、generation 测试和传递函数分类测试 |
+
+当前状态：代码修改和测试用例已完成；云端 CI 与真实播放器复测尚待执行。
+
 ## CI 记录
 
 | Run | 内容 | 结果 |
@@ -99,11 +112,12 @@ white` 的输出。
 
 ## 下一步
 
-1. **唯一优先项**：把鼠标点击/拖动 seek bar 的路径加入压力回路，在 2160p HDR
-   素材上循环到变红，并抓取崩溃模块与调用栈。若仍未复现，再启用 WER LocalDumps。
+1. 云端 CI 三矩阵完成后，在用户恢复测试时核对 PotPlayer 实际加载 DLL 的 SHA256。
 
 2. 用 `J-焦虑` 或 `B-巴里·林登` 的 SUP 在 HDR 下复测：保持同一字幕帧，切换
-   `Off`、`PQ 203`、`PQ 50`、`Relative white 203`，确认画面至少随模式或白点变化；
-   若仍完全不变，再抓取 XySubFilter 实际加载的 provider 类型和属性页对象实例。
+   `Off`、`PQ 203`、`PQ 50`、`Relative white 203`，确认画面随模式或白点变化。
+
+3. 若原始字幕像素已是 `148` 但屏幕不变，继续排查 madVR 对缓存或传递函数的解释；
+   若原始像素仍为 `255`，继续排查 provider 实例和配置下发。
 
 其余待验证项保留在上方清单，疑似稳定性问题查清前不推进默认值调整或排版收尾。

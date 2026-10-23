@@ -208,3 +208,24 @@ SUP/PGS 调色板仍是 SDR 8bit YCbCr。修复目标是把目标 HDR 亮度按 
 编码回 8bit SDR 容器码值（例如 203 nits → 148），再由 madVR 的 HDR 处理
 恢复绝对亮度。直接关闭映射让原始 SDR 码值进入 HDR 管线，正是需要解决的过曝
 路径，不作为默认或目标方案。
+
+## D28：Auto 优先使用 consumer 视频引脚的传递函数
+
+`yuvMatrix=2020` 只能说明色域，不能证明传递函数是 PQ/HLG；SDR BT.2020 内容
+会被旧规则误判。`XySubFilter` 连接 consumer 时枚举其已连接视频输入引脚，读取
+`VIDEOINFOHEADER2.dwControlFlags`：
+
+- PQ（SMPTE ST 2084）或 HLG → 自动启用 PQ 预编码。
+- 明确的 BT.709/SMPTE 170M/240M/线性/对数/BT.2020 SDR → 不启用。
+- 没有颜色信息或未知传递函数 → 回退到 `yuvMatrix=2020`。
+
+显式 `Off/PQ/Relative white` 始终覆盖自动判定。
+
+## D29：HDR generation 与属性页批量刷新
+
+只比较 mode/white 不足以覆盖“配置被重新应用但数值相同”和 consumer HDR 提示变化。
+因此 HDR 配置携带递增 generation，并进入 SubPic 缓存判据、调色板重算判据和外层
+bitmap ID。属性页一次 Apply 同时写入 RGB 输出范围、位图 HDR 模式、白点与文本 HDR
+模式时，通过 batch 合并为一次 `UpdateSubtitle()` 和一次 consumer `Clear()`。
+`Clear()` 的 QI 与 HRESULT 会显示在属性页状态中；不得把 consumer 配置读取放回
+`RequestFrame` 每帧热路径。

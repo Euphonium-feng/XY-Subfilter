@@ -32,6 +32,9 @@ using namespace DirectVobSubXyOptions;
 DirectVobSubImpl::DirectVobSubImpl(const Option *options, CCritSec * pLock)
     : XyOptionsImpl(options)
     , m_propsLock(pLock)
+    , m_hdr_generation(0)
+    , m_consumer_hdr_signal(HdrColor::HDR_SIGNAL_UNKNOWN)
+    , m_consumer_transfer_function(-1)
 {
 }
 
@@ -819,6 +822,13 @@ HRESULT DirectVobSubImpl::OnOptionChanged( unsigned field )
     if (FAILED(hr)) {
         return hr;
     }
+
+    if (field == INT_PGS_HDR_MODE
+        || field == INT_PGS_HDR_WHITE_NITS
+        || field == INT_TEXT_HDR_MODE) {
+        InterlockedIncrement(&m_hdr_generation);
+    }
+
     if (field == INT_UI_LANGUAGE) {
         // Property pages are recreated on the next activation, so switching the
         // thread language here is enough for the change to take effect.
@@ -882,26 +892,40 @@ HdrColor::Config DirectVobSubImpl::ResolveTextHdrConfig() const
 HdrColor::Config DirectVobSubImpl::ResolveHdrMode(int mode) const
 {
     const HdrColor::Config normalized = HdrColor::NormalizeConfig(
-        mode, double(m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]));
+        mode, double(m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]), GetHdrGeneration());
 
     switch (mode)
     {
     case PGS_HDR_MODE_DISABLED:
-        return HdrColor::NormalizeConfig(HdrColor::MAP_OFF, normalized.white_nits);
+        return HdrColor::NormalizeConfig(
+            HdrColor::MAP_OFF, normalized.white_nits, normalized.generation);
     case PGS_HDR_MODE_PQ:
-        return HdrColor::NormalizeConfig(HdrColor::MAP_PQ, normalized.white_nits);
+        return HdrColor::NormalizeConfig(
+            HdrColor::MAP_PQ, normalized.white_nits, normalized.generation);
     case PGS_HDR_MODE_RELATIVE_WHITE:
-        return HdrColor::NormalizeConfig(HdrColor::MAP_RELATIVE_WHITE, normalized.white_nits);
+        return HdrColor::NormalizeConfig(
+            HdrColor::MAP_RELATIVE_WHITE, normalized.white_nits, normalized.generation);
     default:
         break;
     }
 
-    // AUTO: without a transfer-function field in the render interface, a
-    // BT.2020 matrix is the only available HDR hint. SDR-wide-gamut content
-    // will read as HDR; the explicit modes override this.
-    const bool likely_hdr = m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].Right(4).CompareNoCase(L"2020") == 0;
+    // AUTO: prefer the transfer function read from the consumer's connected
+    // video pin. A BT.2020 matrix is only the fallback when that metadata is
+    // unavailable; explicit modes always override both.
+    const bool bt2020_matrix =
+        m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].Right(4).CompareNoCase(L"2020") == 0;
+    const bool likely_hdr =
+        HdrColor::ShouldUsePqForAuto(m_consumer_hdr_signal, bt2020_matrix);
     return HdrColor::NormalizeConfig(
-        likely_hdr ? HdrColor::MAP_PQ : HdrColor::MAP_OFF, normalized.white_nits);
+        likely_hdr ? HdrColor::MAP_PQ : HdrColor::MAP_OFF,
+        normalized.white_nits, normalized.generation);
+}
+
+unsigned long long DirectVobSubImpl::GetHdrGeneration() const
+{
+    return static_cast<unsigned long long>(
+        InterlockedCompareExchange(
+            const_cast<volatile LONG*>(&m_hdr_generation), 0, 0));
 }
 
 HRESULT DirectVobSubImpl::DoGetField( unsigned field, void *value )

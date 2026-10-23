@@ -46,8 +46,9 @@ release-x64 / debug-x64 均 success）。真实播放器存在**疑似稳定性�
 用户报告 PotPlayer + madVR 的 seek 路径至少崩溃两次，当前尚未稳定复现，也尚未确认
 与本次改动存在因果关系。真实显示环境下的稳定性、观感与排版见 `TODO.md`。
 
-2026-10-24 真实播放反馈：SUP/PGS 在 HDR 下切换 HDR 模式或白点没有可见变化，
-说明属性页配置没有可靠到达实际位图 provider。随后尝试的 provider 每帧读取
-consumer 版本（run `39984554888`）造成真实播放稳定性退化和花屏，已撤回。
-当前安全修复是在 HDR 选项变化后清除 consumer 缓存帧，并将位图后端标签改为
-`Bitmap (internal)`；云端构建和真实播放器复测尚待完成。
+2026-10-24 真实播放反馈：SUP/PGS 在 HDR 下切换 HDR 模式或白点没有可见变化。
+随后尝试的 provider 每帧读取 consumer 版本（run `39984554888`）造成真实播放
+稳定性退化和花屏，已撤回。当前实现改为：consumer 视频引脚提供 PQ/HLG 提示时
+优先采用，HDR 配置带递增 generation 并贯穿 provider、SubPic、调色板和帧 ID；
+属性页 Apply 会把 RGB/HDR 相关选项合并成一次刷新，再调用 consumer 的
+`Clear()`。代码与自动化测试已完成，真实播放器复测由用户暂缓。

@@ -54,7 +54,7 @@ inline int LinearToCode(double linear)
 
 namespace HdrColor
 {
-Config NormalizeConfig(int mode, double white_nits)
+Config NormalizeConfig(int mode, double white_nits, unsigned long long generation)
 {
     Config config;
     if (mode != MAP_PQ && mode != MAP_RELATIVE_WHITE) {
@@ -62,7 +62,45 @@ Config NormalizeConfig(int mode, double white_nits)
     }
     config.mode = mode;
     config.white_nits = Clamp(white_nits, MIN_WHITE_NITS, MAX_WHITE_NITS);
+    config.generation = generation;
     return config;
+}
+
+HdrSignal ClassifyTransferFunction(int transfer_function, bool color_info_present)
+{
+    if (!color_info_present) {
+        return HDR_SIGNAL_UNKNOWN;
+    }
+
+    // DXVA2 transfer-function values: SMPTE 2084 (PQ) and HLG are HDR.
+    // BT.709, SMPTE 170M/240M, linear, logarithmic SDR, and BT.2020 SDR
+    // all represent non-HDR transfer curves.
+    switch (transfer_function) {
+    case 1:  // BT.709
+    case 2:  // SMPTE 170M
+    case 3:  // SMPTE 240M
+    case 4:  // Linear
+    case 5:  // Log 100
+    case 6:  // Log 316
+    case 7:  // BT.2020 SDR
+        return HDR_SIGNAL_SDR;
+    case 8:  // SMPTE ST 2084 (PQ)
+    case 10: // HLG
+        return HDR_SIGNAL_HDR;
+    default:
+        return HDR_SIGNAL_UNKNOWN;
+    }
+}
+
+bool ShouldUsePqForAuto(HdrSignal signal, bool bt2020_matrix)
+{
+    if (signal == HDR_SIGNAL_HDR) {
+        return true;
+    }
+    if (signal == HDR_SIGNAL_SDR) {
+        return false;
+    }
+    return bt2020_matrix;
 }
 
 bool IsPqMapping(const Config& config)
@@ -80,6 +118,11 @@ bool IsSameOutput(const Config& a, const Config& b)
     }
     // Only the white point matters beyond the mode itself.
     return fabs(a.white_nits - b.white_nits) < 0.5;
+}
+
+bool IsSameRevision(const Config& a, const Config& b)
+{
+    return a.generation == b.generation && IsSameOutput(a, b);
 }
 
 double PqOetfFromLinear(double linear)

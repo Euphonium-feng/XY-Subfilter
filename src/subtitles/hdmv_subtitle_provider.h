@@ -14,6 +14,7 @@ public:
     STDMETHODIMP Connect     (IXyOptions *consumer);
     STDMETHODIMP RequestFrame(IXySubRenderFrame**subRenderFrame, REFERENCE_TIME now);
     STDMETHODIMP Invalidate  (REFERENCE_TIME rtInvalidate = -1);
+    HRESULT SetHdrConfig(const HdrColor::Config& config);
 private:
     HRESULT ResetAllocator();
     HRESULT Render(REFERENCE_TIME now, POSITION pos);
@@ -24,6 +25,7 @@ private :
     IXyOptions                 *m_consumer;
     CSize                       m_cur_output_size;
     bool m_use_dst_alpha;
+    unsigned long long m_applied_hdr_generation;
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;
     CComPtr<IXySubRenderFrame>  m_xy_sub_render_frame;

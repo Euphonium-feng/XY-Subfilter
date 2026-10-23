@@ -80,6 +80,10 @@ protected:
 protected:
     CCritSec *m_propsLock;
 
+    volatile LONG m_hdr_generation;
+    HdrColor::HdrSignal m_consumer_hdr_signal;
+    int m_consumer_transfer_function;
+
     int m_bt601Width, m_bt601Height;//for AUTO_GUESS
 
     static int const MAX_COLOR_SPACE = 256;
@@ -125,6 +129,10 @@ public:
 
     // Shared implementation behind the PGS and text resolvers.
     HdrColor::Config ResolveHdrMode(int mode) const;
+
+    // Monotonic revision changed whenever an HDR option or consumer HDR hint
+    // changes. It is carried into every renderer cache and bitmap id.
+    unsigned long long GetHdrGeneration() const;
 
     // Resolves INT_UI_LANGUAGE into the LANGID used for Win32 resource lookup.
     static LANGID ResolveUiLanguage(int ui_language);

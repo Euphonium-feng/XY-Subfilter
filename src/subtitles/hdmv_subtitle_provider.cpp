@@ -19,6 +19,7 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_cleanOld(cleanOld)
     , m_consumer(NULL)
     , m_use_dst_alpha(false)
+    , m_applied_hdr_generation(0)
 {
 
 }
@@ -129,6 +130,20 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Invalidate( REFERENCE_TIME rtInvalidate /
         {
             m_pSubPic->SetStop(rtInvalidate);
         }
+    }
+    return S_OK;
+}
+
+HRESULT HdmvSubtitleProviderImpl::SetHdrConfig(const HdrColor::Config& config)
+{
+    HRESULT hr = m_pSub->SetHdrConfig(config);
+    if (FAILED(hr)) {
+        return hr;
+    }
+
+    if (m_applied_hdr_generation != config.generation) {
+        Invalidate(-1);
+        m_applied_hdr_generation = config.generation;
     }
     return S_OK;
 }
@@ -380,8 +395,7 @@ HRESULT HdmvSubtitleProvider::SetYuvType( CBaseSub::ColorType colorType, CBaseSu
 HRESULT HdmvSubtitleProvider::SetHdrConfig( const HdrColor::Config& config )
 {
     CAutoLock cAutoLock(&m_csCritSec);
-    Invalidate(-1);
-    return m_pSub->SetHdrConfig(config);
+    return m_helper->SetHdrConfig(config);
 }
 
 //
@@ -607,7 +621,6 @@ HRESULT SupFileSubtitleProvider::SetYuvType( CBaseSub::ColorType colorType, CBas
 HRESULT SupFileSubtitleProvider::SetHdrConfig( const HdrColor::Config& config )
 {
     CAutoLock cAutoLock(&m_csCritSec);
-    Invalidate(-1);
-    return m_pSub->SetHdrConfig(config);
+    return m_helper->SetHdrConfig(config);
 }
 

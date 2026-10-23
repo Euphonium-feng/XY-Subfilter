@@ -156,6 +156,39 @@ TEST(HdrColorTest, IsSameOutputComparesModeAndWhitePoint)
     EXPECT_FALSE(HdrColor::IsSameOutput(a, off1));
 }
 
+TEST(HdrColorTest, IsSameRevisionIncludesConfigurationGeneration)
+{
+    const HdrColor::Config first(HdrColor::MAP_PQ, 203.0, 1);
+    const HdrColor::Config same(HdrColor::MAP_PQ, 203.0, 1);
+    const HdrColor::Config next(HdrColor::MAP_PQ, 203.0, 2);
+
+    EXPECT_TRUE(HdrColor::IsSameOutput(first, next));
+    EXPECT_TRUE(HdrColor::IsSameRevision(first, same));
+    EXPECT_FALSE(HdrColor::IsSameRevision(first, next));
+}
+
+TEST(HdrColorTest, ClassifiesConsumerTransferFunction)
+{
+    EXPECT_EQ(HdrColor::HDR_SIGNAL_HDR,
+        HdrColor::ClassifyTransferFunction(8, true)); // SMPTE ST 2084
+    EXPECT_EQ(HdrColor::HDR_SIGNAL_HDR,
+        HdrColor::ClassifyTransferFunction(10, true)); // HLG
+    EXPECT_EQ(HdrColor::HDR_SIGNAL_SDR,
+        HdrColor::ClassifyTransferFunction(1, true)); // BT.709
+    EXPECT_EQ(HdrColor::HDR_SIGNAL_SDR,
+        HdrColor::ClassifyTransferFunction(7, true)); // BT.2020 SDR
+    EXPECT_EQ(HdrColor::HDR_SIGNAL_UNKNOWN,
+        HdrColor::ClassifyTransferFunction(8, false));
+}
+
+TEST(HdrColorTest, ExplicitSdrHintOverridesBt2020MatrixFallback)
+{
+    EXPECT_TRUE(HdrColor::ShouldUsePqForAuto(HdrColor::HDR_SIGNAL_HDR, false));
+    EXPECT_FALSE(HdrColor::ShouldUsePqForAuto(HdrColor::HDR_SIGNAL_SDR, true));
+    EXPECT_TRUE(HdrColor::ShouldUsePqForAuto(HdrColor::HDR_SIGNAL_UNKNOWN, true));
+    EXPECT_FALSE(HdrColor::ShouldUsePqForAuto(HdrColor::HDR_SIGNAL_UNKNOWN, false));
+}
+
 TEST(HdrColorTest, SixteenBitWordUsesTenBitPqSample)
 {
     const HdrColor::Config pq = HdrColor::NormalizeConfig(HdrColor::MAP_PQ, 203.0);

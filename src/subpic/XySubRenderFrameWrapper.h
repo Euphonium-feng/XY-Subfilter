@@ -31,7 +31,9 @@ private:
 class XySubRenderFrameWrapper2 : public CUnknown, public IXySubRenderFrame
 {
 public:
-    XySubRenderFrameWrapper2(IXySubRenderFrame *inner_obj, ULONGLONG context_id);
+    XySubRenderFrameWrapper2(
+        IXySubRenderFrame *inner_obj, ULONGLONG context_id,
+        ULONGLONG hdr_generation = 0);
     virtual ~XySubRenderFrameWrapper2(){}
 
     DECLARE_IUNKNOWN;

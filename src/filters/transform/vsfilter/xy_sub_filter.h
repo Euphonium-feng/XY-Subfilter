@@ -79,10 +79,18 @@ public:
     //ISubRenderProvider
     STDMETHODIMP RequestFrame(REFERENCE_TIME start, REFERENCE_TIME stop, LPVOID context);
     STDMETHODIMP Disconnect(void);
+
+    // Internal property-page helpers. These are not part of the COM ABI.
+    void BeginHdrOptionBatch();
+    void EndHdrOptionBatch();
+    CStringW GetHdrStatusText();
 private:
     void SetYuvMatrix();
     void SetRgbOutputLevel();
     void SetHdrMode();
+    void ApplyHdrRefresh();
+    HRESULT RefreshConsumerCache();
+    bool UpdateConsumerHdrSignal(IBaseFilter* consumer_filter);
     bool Open();
 
     void UpdateSubtitle(bool fApplyDefStyle = true);
@@ -160,6 +168,12 @@ private:
 
     CComPtr<ISubRenderConsumer> m_consumer;
     ULONGLONG m_context_id;
+
+    CCritSec m_csHdrRefresh;
+    int m_hdr_batch_depth;
+    bool m_hdr_refresh_pending;
+    bool m_consumer_clear_attempted;
+    HRESULT m_last_consumer_clear_hr;
 
     REFERENCE_TIME m_last_requested;
 

@@ -125,8 +125,11 @@ XySubFilter::SetSubtitle
                           文本 → CRenderedTextSubtitle::SetHdrConfig
 ```
 
-HDR 模式或白点变化后，`XySubFilter` 会先重新下发配置并递增 `m_context_id`，
-再通过 `ISubRenderConsumer2::Clear()` 要求 consumer 丢弃已缓存的字幕帧。
+HDR 模式、白点或 RGB 输出范围变化后，`XySubFilter` 会先重新下发配置并递增
+`m_context_id`，再通过 `ISubRenderConsumer2::Clear()` 要求 consumer 丢弃已缓存
+的字幕帧。属性页一次 Apply 使用 HDR option batch，把多个字段变化合并成一次刷新。
+HDR 配置还携带递增 generation；`HdmvSubtitleProviderImpl`、`CompositionObject`
+和 `XySubRenderFrameWrapper2` 的 bitmap ID 都纳入该代次。
 否则 madVR 可能继续显示同一字幕区间内由旧调色板生成的帧，导致属性页改变但
 画面不变。不要在 `RequestFrame` 内每帧回调 consumer 读取配置；该实现已在
 真实播放中造成稳定性退化和花屏。
@@ -138,9 +141,9 @@ HDR 模式或白点变化后，`XySubFilter` 会先重新下发配置并递增 `
 | `PGS_HDR_MODE_DISABLED` | `MAP_OFF` |
 | `PGS_HDR_MODE_PQ` | `MAP_PQ`，白点取自 `INT_PGS_HDR_WHITE_NITS` |
 | `PGS_HDR_MODE_RELATIVE_WHITE` | `MAP_RELATIVE_WHITE` |
-| `PGS_HDR_MODE_AUTO` | consumer `yuvMatrix` 以 `2020` 结尾 → `MAP_PQ`，否则 `MAP_OFF` |
+| `PGS_HDR_MODE_AUTO` | consumer 视频引脚为 PQ/HLG → `MAP_PQ`；无传递函数信息时再看 `yuvMatrix` 是否以 `2020` 结尾 |
 
-入口：`ResolvePgsHdrConfig()` 读 `INT_PGS_HDR_MODE`，`ResolveTextHdrConfig()` 读 `INT_TEXT_HDR_MODE`，白点共用。
+入口：`ResolvePgsHdrConfig()` 读 `INT_PGS_HDR_MODE`，`ResolveTextHdrConfig()` 读 `INT_TEXT_HDR_MODE`，白点共用。`XySubFilter::UpdateConsumerHdrSignal()` 从 consumer 已连接视频引脚的 `VIDEOINFOHEADER2.dwControlFlags` 提取传递函数；PQ/HLG 为 HDR，明确 SDR 曲线优先于 BT.2020 矩阵回退。
 
 色彩科学集中在 `src/subpic/hdr_color.{h,cpp}`，纯函数、无 Win32 依赖，由 `test_hdr_color.h` 单测覆盖。
 

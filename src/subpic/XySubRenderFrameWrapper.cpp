@@ -133,14 +133,22 @@ STDMETHODIMP XySubRenderFrameWrapper::GetBitmapExtra( int index, LPVOID extra_in
 class ContextedBitmapId
 {
 public:
-    ContextedBitmapId(ULONGLONG context_id, ULONGLONG bitmap_id):m_context_id(context_id),m_bitmap_id(bitmap_id){}
+    ContextedBitmapId(
+        ULONGLONG context_id, ULONGLONG hdr_generation, ULONGLONG bitmap_id)
+        : m_context_id(context_id)
+        , m_hdr_generation(hdr_generation)
+        , m_bitmap_id(bitmap_id)
+    {
+    }
     bool operator==(const ContextedBitmapId& key) const
     {
-        return key.m_context_id == m_context_id && key.m_bitmap_id == m_bitmap_id;
+        return key.m_context_id == m_context_id
+            && key.m_hdr_generation == m_hdr_generation
+            && key.m_bitmap_id == m_bitmap_id;
     }
 
 public:
-    ULONGLONG m_context_id, m_bitmap_id;
+    ULONGLONG m_context_id, m_hdr_generation, m_bitmap_id;
 };
 
 class ContextedBitmapIdTraits:public CElementTraits<ContextedBitmapId>
@@ -148,7 +156,10 @@ class ContextedBitmapIdTraits:public CElementTraits<ContextedBitmapId>
 public:
     static inline ULONG Hash(const ContextedBitmapId& key)
     {
-        return (key.m_context_id<<32) | key.m_bitmap_id;
+        ULONGLONG value = key.m_bitmap_id;
+        value ^= key.m_context_id + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+        value ^= key.m_hdr_generation + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+        return static_cast<ULONG>(value ^ (value >> 32));
     }
 };
 
@@ -158,7 +169,8 @@ typedef XyFlyWeight<ContextedBitmapId, 1024, ContextedBitmapIdTraits> XyFwContex
 // XySubRenderFrameWrapper2
 //
 
-XySubRenderFrameWrapper2::XySubRenderFrameWrapper2( IXySubRenderFrame *inner_obj, ULONGLONG context_id)
+XySubRenderFrameWrapper2::XySubRenderFrameWrapper2(
+    IXySubRenderFrame *inner_obj, ULONGLONG context_id, ULONGLONG hdr_generation)
     : CUnknown(NAME("XySubRenderFrameWrapper"), NULL)
     , m_inner_obj(inner_obj)
 {
@@ -174,7 +186,8 @@ XySubRenderFrameWrapper2::XySubRenderFrameWrapper2( IXySubRenderFrame *inner_obj
             ULONGLONG id;
             hr = inner_obj->GetBitmap(i, &id, NULL, NULL, NULL, NULL);
             ASSERT(SUCCEEDED(hr));
-            m_ids[i] = XyFwContextedBitmapId(DEBUG_NEW ContextedBitmapId(context_id, id)).GetId();
+            m_ids[i] = XyFwContextedBitmapId(
+                DEBUG_NEW ContextedBitmapId(context_id, hdr_generation, id)).GetId();
         }
     }
 }

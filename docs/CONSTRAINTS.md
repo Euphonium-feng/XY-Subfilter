@@ -57,5 +57,11 @@
 - 不得在 `HdmvSubtitleProviderImpl::RequestFrame` 内每帧回调 consumer 读取
   HDR 选项；该路径已在真实播放中导致稳定性退化和花屏。选项变化后清空
   consumer 缓存帧，而不是把配置读取放到渲染热路径。
+- Auto 判定必须优先采用 consumer 视频引脚 `VIDEOINFOHEADER2` 中的传递函数；
+  BT.2020 矩阵只是在没有传递函数信息时的回退，不能覆盖明确的 SDR 曲线。
+- 每次 HDR 配置变化必须递增 generation，并让 SubPic、调色板和对外 bitmap ID
+  一起失效；仅比较 mode/white 数值不足以证明缓存已刷新。
+- 属性页一次 Apply 引发的 RGB/HDR 选项变化必须合并，只执行一次重新渲染和一次
+  `ISubRenderConsumer2::Clear()`。
 - SUP/PGS 的目标是先把 HDR 绝对亮度按 PQ 曲线编码到 8bit SDR 容器，再由
   madVR 做 HDR 处理；SDR 直通只用于对照，不是默认方案。

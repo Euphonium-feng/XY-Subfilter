@@ -62,7 +62,7 @@ void CompositionObject::InitColor(const SubPicDesc& spd)
 #define FULL_TYPE(x,y) (((x)<<8)|y)
 
     int paletteNumber = m_Palette.GetCount();
-    if (m_colorType!=spd.type || !HdrColor::IsSameOutput(m_AppliedHdr, m_RequestedHdr))
+    if (m_colorType!=spd.type || !HdrColor::IsSameRevision(m_AppliedHdr, m_RequestedHdr))
     {
         m_colorType = -1;
         ColorConvTable::YuvMatrixType cur_type = ColorConvTable::BT709;

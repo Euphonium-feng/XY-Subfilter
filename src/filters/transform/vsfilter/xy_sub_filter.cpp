@@ -191,6 +191,10 @@ XySubFilter::XySubFilter( LPUNKNOWN punk,
     , m_not_first_pause(false)
     , m_hSystrayThread(0)
     , m_context_id(0)
+    , m_hdr_batch_depth(0)
+    , m_hdr_refresh_pending(false)
+    , m_consumer_clear_attempted(false)
+    , m_last_consumer_clear_hr(S_FALSE)
     , m_last_requested(-1)
     , m_workaround_mpc_hc(false)
     , m_disconnect_entered(false)
@@ -439,8 +443,11 @@ STDMETHODIMP XySubFilter::JoinFilterGraph(IFilterGraph* pGraph, LPCWSTR pName)
                 XY_LOG_ERROR("Failed to disconnect consumer");
             }
             m_filter_info_string = m_xy_str_opt[STRING_NAME];
-            CAutoLock cAutoLock(&m_csConsumer);
-            m_consumer = NULL;
+            {
+                CAutoLock cAutoLock(&m_csConsumer);
+                m_consumer = NULL;
+            }
+            UpdateConsumerHdrSignal(NULL);
         }
         ::DeleteSystray(&m_hSystrayThread, &m_tbid);
         m_workaround_mpc_hc   = false;
@@ -612,20 +619,17 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     case INT_PGS_HDR_MODE:
     case INT_PGS_HDR_WHITE_NITS:
     case INT_TEXT_HDR_MODE:
-        m_context_id++;
-        UpdateSubtitle(false);
         {
-            // The consumer may have cached the old bitmap for the current
-            // subtitle interval. Clear only that cache; the next frame request
-            // will render the palette with the new HDR configuration.
-            CComPtr<ISubRenderConsumer> consumer;
+            bool deferred = false;
             {
-                CAutoLock cAutoLock(&m_csConsumer);
-                consumer = m_consumer;
+                CAutoLock cAutoLock(&m_csHdrRefresh);
+                deferred = m_hdr_batch_depth > 0;
+                if (deferred) {
+                    m_hdr_refresh_pending = true;
+                }
             }
-            CComQIPtr<ISubRenderConsumer2> consumer2(consumer);
-            if (consumer2) {
-                consumer2->Clear();
+            if (!deferred) {
+                ApplyHdrRefresh();
             }
         }
         break;
@@ -1587,7 +1591,8 @@ STDMETHODIMP XySubFilter::RequestFrame( REFERENCE_TIME start, REFERENCE_TIME sto
             }
             if (sub_render_frame)
             {
-                sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper2(sub_render_frame, m_context_id);
+                sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper2(
+                    sub_render_frame, m_context_id, GetHdrGeneration());
 #ifdef SUBTITLE_FRAME_DUMP_FILE
                 if (now >= m_dump_subtitle_frame_start_rt && now < m_dump_subtitle_frame_end_rt)
                 {
@@ -1646,8 +1651,11 @@ STDMETHODIMP XySubFilter::Disconnect( void )
             {
                 XY_LOG_WARN("Failed to disconnect with consumer!");
             }
-            CAutoLock cAutoLock(&m_csConsumer);
-            m_consumer = NULL;
+            {
+                CAutoLock cAutoLock(&m_csConsumer);
+                m_consumer = NULL;
+            }
+            UpdateConsumerHdrSignal(NULL);
         }
         else
         {
@@ -1884,7 +1892,7 @@ void XySubFilter::SetRgbOutputLevel()
     {
         // Same reasoning as the bitmap path: PQ code values are absolute, so
         // they must not be rescaled into TV levels afterwards.
-        if (m_xy_int_opt[INT_TEXT_HDR_MODE]==DirectVobSubXyOptions::PGS_HDR_MODE_PQ)
+        if (ResolveTextHdrConfig().mode == HdrColor::MAP_PQ)
         {
             sub_frame_creater->SetRgbOutputTvLevel(false);
         }
@@ -1917,7 +1925,7 @@ void XySubFilter::SetRgbOutputLevel()
         // A PQ palette already carries absolute code values. Squeezing it into
         // TV levels would rescale those codes and shift the white point, so the
         // PQ mode always outputs full-range RGB.
-        if (m_xy_int_opt[INT_PGS_HDR_MODE]==DirectVobSubXyOptions::PGS_HDR_MODE_PQ)
+        if (ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ)
         {
             CompositionObject::m_output_tv_range_rgb = false;
         }
@@ -1946,6 +1954,142 @@ void XySubFilter::SetRgbOutputLevel()
     {
         m_xy_str_opt[STRING_OUTPUT_LEVELS] = L"PC";
     }
+}
+
+void XySubFilter::BeginHdrOptionBatch()
+{
+    CAutoLock cAutoLock(&m_csHdrRefresh);
+    ++m_hdr_batch_depth;
+}
+
+void XySubFilter::EndHdrOptionBatch()
+{
+    bool apply = false;
+    {
+        CAutoLock cAutoLock(&m_csHdrRefresh);
+        if (m_hdr_batch_depth > 0) {
+            --m_hdr_batch_depth;
+        }
+        if (m_hdr_batch_depth == 0 && m_hdr_refresh_pending) {
+            m_hdr_refresh_pending = false;
+            apply = true;
+        }
+    }
+    if (apply) {
+        ApplyHdrRefresh();
+    }
+}
+
+void XySubFilter::ApplyHdrRefresh()
+{
+    ++m_context_id;
+    UpdateSubtitle(false);
+    RefreshConsumerCache();
+}
+
+HRESULT XySubFilter::RefreshConsumerCache()
+{
+    CComPtr<ISubRenderConsumer> consumer;
+    {
+        CAutoLock cAutoLock(&m_csConsumer);
+        consumer = m_consumer;
+    }
+
+    CComQIPtr<ISubRenderConsumer2> consumer2(consumer);
+    if (!consumer2) {
+        {
+            CAutoLock cAutoLock(&m_csHdrRefresh);
+            m_consumer_clear_attempted = true;
+            m_last_consumer_clear_hr = E_NOINTERFACE;
+        }
+        XY_LOG_WARN("Subtitle consumer does not support cache clearing");
+        return E_NOINTERFACE;
+    }
+
+    const HRESULT clear_hr = consumer2->Clear();
+    {
+        CAutoLock cAutoLock(&m_csHdrRefresh);
+        m_consumer_clear_attempted = true;
+        m_last_consumer_clear_hr = clear_hr;
+    }
+    if (FAILED(clear_hr)) {
+        XY_LOG_WARN("Failed to clear subtitle consumer cache. "
+            << XY_LOG_VAR_2_STR(clear_hr));
+    }
+    return clear_hr;
+}
+
+CStringW XySubFilter::GetHdrStatusText()
+{
+    CAutoLock cFilterLock(&m_csFilter);
+    CAutoLock cProviderLock(&m_csProviderFields);
+
+    const bool is_bitmap = m_xy_bool_opt[BOOL_IS_BITMAP];
+    const int mode_option = is_bitmap ? INT_PGS_HDR_MODE : INT_TEXT_HDR_MODE;
+    const HdrColor::Config config =
+        is_bitmap ? ResolvePgsHdrConfig() : ResolveTextHdrConfig();
+    CStringW resolved;
+    switch (config.mode) {
+    case HdrColor::MAP_PQ:
+        resolved = L"PQ";
+        break;
+    case HdrColor::MAP_RELATIVE_WHITE:
+        resolved = L"Relative";
+        break;
+    default:
+        resolved = L"Off";
+        break;
+    }
+
+    CStringW mode;
+    switch (m_xy_int_opt[mode_option]) {
+    case PGS_HDR_MODE_PQ:
+        mode = L"PQ";
+        break;
+    case PGS_HDR_MODE_RELATIVE_WHITE:
+        mode = L"Relative";
+        break;
+    case PGS_HDR_MODE_DISABLED:
+        mode = L"Off";
+        break;
+    default:
+        mode.Format(L"Auto>%ls", resolved.GetString());
+        break;
+    }
+
+    const wchar_t* clear_state = L"--";
+    bool clear_attempted = false;
+    HRESULT clear_hr = S_FALSE;
+    {
+        CAutoLock cAutoLock(&m_csHdrRefresh);
+        clear_attempted = m_consumer_clear_attempted;
+        clear_hr = m_last_consumer_clear_hr;
+    }
+    if (clear_attempted) {
+        if (SUCCEEDED(clear_hr)) {
+            clear_state = L"OK";
+        }
+        else if (clear_hr == E_NOINTERFACE) {
+            clear_state = L"n/a";
+        }
+        else {
+            clear_state = L"ERR";
+        }
+    }
+
+    CStringA sha1 = XY_VSFILTER_VERSION_COMMIT_SHA1;
+    CStringW hash;
+    if (sha1.IsEmpty()) {
+        hash = L"unknown";
+    }
+    else {
+        hash = CStringW(sha1.Left(7));
+    }
+    CStringW value;
+    value.Format(L"%ls %d | clr %ls | %ls",
+        mode.GetString(), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS],
+        clear_state, hash.GetString());
+    return value;
 }
 
 void XySubFilter::SetHdrMode()
@@ -2930,6 +3074,7 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
     XY_LOG_INFO(pGraph);
     HRESULT hr = NOERROR;
     CComPtr<ISubRenderConsumer> consumer;
+    CComPtr<IBaseFilter> consumer_filter;
     ULONG meric = 0;
 
 
@@ -2970,6 +3115,7 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
                         if (meric < new_meric)
                         {
                             consumer = new_consumer;
+                            consumer_filter = pBF;
                             meric = new_meric;
                         }
                     }
@@ -2980,6 +3126,7 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
                         {
                             XY_LOG_WARN("No consumer found yet.");
                             consumer = new_consumer;
+                            consumer_filter = pBF;
                         }
                     }
 					m_consumer = consumer;
@@ -2991,10 +3138,15 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
         if (consumer)
         {
             m_consumer = consumer;
+            const bool hdr_hint_changed = UpdateConsumerHdrSignal(consumer_filter);
             hr = UpdateParamFromConsumer(true);
             if (FAILED(hr))
             {
                 XY_LOG_WARN("Failed to read consumer field.");
+            }
+            if (hdr_hint_changed) {
+                ++m_context_id;
+                UpdateSubtitle(false);
             }
             hr = consumer->Connect(this);
             if (FAILED(hr))
@@ -3032,6 +3184,7 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
         }
         else
         {
+            UpdateConsumerHdrSignal(NULL);
             XY_LOG_INFO("No consumer found.");
             hr = S_FALSE;
         }
@@ -3042,6 +3195,62 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
         hr = E_INVALIDARG;
     }
     return hr;
+}
+
+bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
+{
+    HdrColor::HdrSignal signal = HdrColor::HDR_SIGNAL_UNKNOWN;
+    int transfer_function = -1;
+
+    if (consumer_filter) {
+        CComPtr<IEnumPins> pins;
+        if (SUCCEEDED(consumer_filter->EnumPins(&pins)) && pins) {
+            CComPtr<IPin> pin;
+            ULONG fetched = 0;
+            while (pins->Next(1, &pin, &fetched) == S_OK) {
+                PIN_DIRECTION direction = PINDIR_INPUT;
+                if (SUCCEEDED(pin->QueryDirection(&direction))
+                    && direction == PINDIR_INPUT)
+                {
+                    CMediaType media_type;
+                    if (SUCCEEDED(pin->ConnectionMediaType(&media_type))
+                        && media_type.majortype == MEDIATYPE_Video
+                        && media_type.formattype == FORMAT_VideoInfo2
+                        && media_type.Format()
+                        && media_type.FormatLength() >= sizeof(VIDEOINFOHEADER2))
+                    {
+                        const DWORD flags =
+                            reinterpret_cast<const VIDEOINFOHEADER2*>(
+                                media_type.Format())->dwControlFlags;
+                        const bool color_info_present =
+                            (flags & AMCONTROL_USED) != 0
+                            && (flags & AMCONTROL_COLORINFO_PRESENT) != 0;
+                        transfer_function = int((flags & 0xF8000000) >> 27);
+                        signal = HdrColor::ClassifyTransferFunction(
+                            transfer_function, color_info_present);
+                        break;
+                    }
+                }
+                pin.Release();
+                fetched = 0;
+            }
+        }
+    }
+
+    bool changed = false;
+    {
+        CAutoLock cAutoLock(&m_csProviderFields);
+        changed = m_consumer_hdr_signal != signal
+            || m_consumer_transfer_function != transfer_function;
+        m_consumer_hdr_signal = signal;
+        m_consumer_transfer_function = transfer_function;
+    }
+    if (changed) {
+        InterlockedIncrement(&m_hdr_generation);
+    }
+    XY_LOG_INFO("Consumer HDR signal:" << signal
+        << " transfer function:" << transfer_function);
+    return changed;
 }
 
 void XySubFilter::UpdateLanguageCount()

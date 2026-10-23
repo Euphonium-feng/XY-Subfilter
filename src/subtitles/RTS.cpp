@@ -1951,7 +1951,7 @@ void CRenderedTextSubtitle::SetTextRendererMode(TextRendererMode mode)
 
 void CRenderedTextSubtitle::SetHdrConfig(const HdrColor::Config& config)
 {
-    if (!HdrColor::IsSameOutput(m_hdr_config, config)) {
+    if (!HdrColor::IsSameRevision(m_hdr_config, config)) {
         m_hdr_config = config;
         // Both the whole-frame cache and the composited-bitmap cache depend on
         // the colour values, so drop them before the next frame is requested.
