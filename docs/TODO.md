@@ -16,7 +16,7 @@
 | 4 | `INT_PGS_HDR_MODE` / `INT_PGS_HDR_WHITE_NITS` / `INT_UI_LANGUAGE` 选项、注册表持久化、属性页控件 | CI 通过 |
 | 5 | `VSFilter.rc` 简体中文语言块（code_page 936）+ 界面语言切换 | CI 通过 |
 | 6 | `test_hdr_color.h`：PQ 端点/往返/单调性、Off 模式逐字节不变、alpha 保留、白点变化、16bit 字对齐 | CI 三矩阵全绿（run 39949013750） |
-| 7 | `README.zh-CN.md` 与 docs 同步 | — |
+| 7 | README 中英双版（中文为默认、英文为 `README.en.md`）与 docs 同步 | — |
 
 ## CI 记录
 
