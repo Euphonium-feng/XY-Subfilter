@@ -51,4 +51,5 @@ release-x64 / debug-x64 均 success）。真实播放器存在**疑似稳定性�
 稳定性退化和花屏，已撤回。当前实现改为：consumer 视频引脚提供 PQ/HLG 提示时
 优先采用，HDR 配置带递增 generation 并贯穿 provider、SubPic、调色板和帧 ID；
 属性页 Apply 会把 RGB/HDR 相关选项合并成一次刷新，再调用 consumer 的
-`Clear()`。代码与自动化测试已完成，真实播放器复测由用户暂缓。
+`Clear()`。代码与自动化测试已完成，CI run `39997437527` 三矩阵全绿；
+真实播放器复测由用户暂缓。
