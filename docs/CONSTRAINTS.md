@@ -34,3 +34,11 @@
 - 不在 `color_conv_table.cpp` 中直接加 PQ 运算（污染定点热路径、破坏既有测试基线）。
 - 不把字幕面升级为 16bit（混合核、分配器、所有消费端都要改，回归风险过大）。
 - 不默认对所有片源开启 HDR 映射（会让 SDR 内容变淡）。
+- 不在枚举中间插入新选项 ID（会位移既有 ID，破坏外部消费者的 ABI）。
+
+## 已验证的实现约束
+
+- 新增选项 ID 必须追加在 `DirectVobSubXyOptions` 枚举末尾、`OPTION_COUNT` 之前。当前最大 ID 为 98。
+- PQ 模式下 ARGB 必须输出全幅范围（`CompositionObject::m_output_tv_range_rgb = false`），否则 PQ 码会被 TV 范围二次压缩。
+- `.rc` 中文块以 GBK 存储并配 `#pragma code_page(936)`；英文块保持 ASCII。
+- 中文资源块必须与英文块包含完全相同的控件与字符串 ID，否则切换语言后控件缺失。

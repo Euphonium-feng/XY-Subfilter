@@ -57,3 +57,45 @@
 按全局规范，本地构建不算验证。仓库建立后每轮改动都走"提交 → push → `gh run watch --exit-status`"，红色则读 `gh run view --log-failed` 修因重推，直至绿。
 
 当前仓库目录原本没有 `.git`，账号下也无对应远程仓库，因此首次提交包含全量源码，并用 `git update-index --cacheinfo` 直接登记 9 个 SMP 子模块的 gitlink（避免本地克隆数百 MB），由 CI 的 `submodules: recursive` 拉取源码。
+
+## D8：P010/P016 路径不修改混合核
+
+`MemSubPic` 的 P010 混合核用 `src << 8` 把 8bit 值写入 16bit 容器的低位对齐位置。实测结论：`8bit << 8` 恰好等于「同一码值 ×4」，而 10bit 容器的 10bit 样本就存放在 16bit 字的高 10 位（即码值 ×64）。
+
+因此在调色板阶段输出的 8bit PQ 码（203 nits → 148）经混合核后得到 10bit 码 592，反解约 199 nits，与目标 203 nits 相差约 2%，这正好是 8bit 量化精度本身的下限。
+
+结论：只要 HDR 映射在调色板阶段完成，10bit 烧录路径无需任何改动。这也印证了 D1 选择调色板级映射的正确性。
+
+## D9：PQ 模式下强制全幅 RGB 输出
+
+`SetRgbOutputLevel` 原本会在 `supportedLevels` 为「无偏好」时输出 TV 范围 RGB。但 PQ 码值本身是绝对量，若再用 TV 范围压缩一次，白点会被整体拉低约 9%。
+
+因此在 `INT_PGS_HDR_MODE == PGS_HDR_MODE_PQ` 时强制 `m_output_tv_range_rgb = false`，其余模式维持原有逻辑。
+
+## D10：界面语言用资源语言块而非运行时替换
+
+`.rc` 中原有匈牙利语空块与英文块，`CString(MAKEINTRESOURCE)` 依赖线程 UI 语言选择资源。方案是新增 `LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED` 全量块（`#pragma code_page(936)`，文件以 GBK 存储），并通过 `SetThreadUILanguage` 切换。
+
+`INT_UI_LANGUAGE` 提供 Auto / English / 简体中文 三档，Auto 跟随 `GetUserDefaultUILanguage()`；非中文系统一律回落到英文，避免出现空白界面。
+
+被否方案：直接改写英文块为中文（英文用户失去英文界面）、只在中文系统显示（无法手动切换）。
+
+## D11：中文资源块以 GBK 编码存储
+
+`.rc` 说明符用 `#pragma code_page(936)`，源码本身以 GBK 存储，这是 MSVC 资源编译器的标准配套方式。文件中英文块仍为 ASCII，两种语言块共存于同一文件，由 `#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_xxx)` 分隔。
+
+## D12：HDR 映射插入位置选在 InitColor 而非混合阶段
+
+调色板项在 `InitColor` 中一次算好、缓存进 `m_Colors[256]`，之后 RLE 填充每像素只做查表与整数混合。把映射放在这里，热路径完全没有额外开销，且对 ARGB 与 AYUV 两种目标格式都能覆盖。
+
+混合阶段插入需要为每种目标格式（ARGB、AYUV、AYUV_PLANAR、P010/P016）各写一套路径，且 P010 的 SSE2 核要改内联汇编级代码，收益为零、风险更高。
+
+## D13：`IsSameOutput` 用作缓存失效判据
+
+`InitColor` 原本只比较 `spd.type`。加入 HDR 配置后，若用户改动白点或模式，必须重建调色板。`HdrColor::IsSameOutput` 在 `MAP_OFF` 时忽略白点（因为输出与白点无关），避免无意义的重算。
+
+## D14：新增选项 ID 追加在枚举末尾
+
+`IDirectVobSubXy.h` 的选项 ID 是跨 DLL 的 ABI 契约：外部消费者（如 madVR）把自己编译进去的常量值传给 provider。若在枚举中间插入新项，其后所有 ID 都会位移，导致既有消费者读写错误的选项。
+
+因此 `INT_PGS_HDR_MODE`、`INT_PGS_HDR_WHITE_NITS`、`INT_UI_LANGUAGE` 三个新 ID 追加在 `OPTION_COUNT` 之前、既有最后一项 `INT_TEXT_RENDERER_MODE` 之后，既有 ID 数值全部保持不变。当前最大 ID 为 98，仍在 `MAX_OPTION_ID = 127` 之内。

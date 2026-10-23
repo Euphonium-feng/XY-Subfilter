@@ -64,8 +64,37 @@
 - 跨协议映射：`xy_sub_filter.cpp:39`（provider 侧）、`xy_sub_filter_consumer.cpp:56`（consumer 侧）。
 - 持久化：`DirectVobSub.cpp` 的 `LoadSettings` / `UpdateRegistry`，键名在 `VSFilter.rc` 与 `resource.h`。
 
-## 新增 HDR 映射的插入点
+## HDR 映射实现（已落地）
 
-- 调色板级：`CompositionObject::InitColor` 的 `MSP_RGBA` 分支（每项调色板算一次，≤256 次）。
-- 10bit 烧录：`MemSubPic` 的 P010/P016 混合核入口（256 项 LUT）。
-- 判定与下发：`XySubFilter::SetHdrMode()`，与 `SetYuvMatrix()` / `SetRgbOutputLevel()` 并列。
+```
+.sup → CHdmvSub::ParseSample（8bit Y,Cr,Cb,T 调色板）
+     → CHdmvSub::Render
+          SetPalette(..., m_hdrConfig)        HdrColor::Config 由 XySubFilter 下发
+     → CompositionObject::InitColor
+          MSP_RGBA 分支：A8Y8U8V8_TO_ARGB → HdrColor::MapArgb(argb, hdr)
+          AYUV* 分支：先映射成 ARGB，再 Argb2Ayuv 预编码 PQ 码
+          m_AppliedHdr 与 m_RequestedHdr 不同则重建缓存
+     → RenderHdmv（RLE 填充，只查表，无额外色算）
+     → P010/P016 目标时，MemSubPic 的 src<<8 把 8bit 码放大 4 倍，
+        恰好等于写入 16bit 字高 10 位的 10bit 码（无需改混合核）
+```
+
+判定链路：
+
+```
+XySubFilter::SetSubtitle
+  → SetYuvMatrix()      选 YCbCr 矩阵与范围
+  → SetRgbOutputLevel() PQ 模式强制全幅 RGB，其余按 supportedLevels
+  → SetHdrMode()        ResolvePgsHdrConfig() → Provider::SetHdrConfig
+```
+
+`ResolvePgsHdrConfig`（`DirectVobSubImpl`，两个滤镜共用）：
+
+| `INT_PGS_HDR_MODE` | 结果 |
+| --- | --- |
+| `PGS_HDR_MODE_DISABLED` | `MAP_OFF` |
+| `PGS_HDR_MODE_PQ` | `MAP_PQ`，白点取自 `INT_PGS_HDR_WHITE_NITS` |
+| `PGS_HDR_MODE_RELATIVE_WHITE` | `MAP_RELATIVE_WHITE` |
+| `PGS_HDR_MODE_AUTO` | consumer `yuvMatrix` 以 `2020` 结尾 → `MAP_PQ`，否则 `MAP_OFF` |
+
+色彩科学集中在 `src/subpic/hdr_color.{h,cpp}`，纯函数、无 Win32 依赖，由 `test_hdr_color.h` 单测覆盖。
