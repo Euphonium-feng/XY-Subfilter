@@ -22,7 +22,7 @@ Relative white 不再显示。CI run `40007950976` 三矩阵全绿，尚待实�
 随后实机仍为 `PQ < Auto = SDR`。已确认不能按 10bit 位深猜测：SDR 测试文件
 同样是 10bit，但元数据为 BT.709。当前修复改为扫描整张 DirectShow 图，避免只读
 consumer 转换后的引脚；同时接受未设 colour-info 标志但明确为 PQ/HLG 的传递函数
-码。待新 CI 绿后复测。
+码。CI run `40011453627` 三矩阵全绿，待实机复测。
 
 ### 稳定性诊断（2026-10-23）
 
@@ -120,6 +120,7 @@ white` 的输出。
 | `39965292609` | docs 记录 | success |
 | `39997437527` | HDR 信号检测、generation、合并刷新与调色板集成测试 | success |
 | `40007950976` | consumer 矩阵上报、HDR side data 事件、SubPic 失效修复与属性页重排 | success |
+| `40011453627` | 全图 HDR 信号扫描、无 colour-info 的 PQ/HLG 码检测 | success |
 
 `39962614076` 的两项失败：
 
@@ -142,8 +143,8 @@ white` 的输出。
 ## 下一步
 
 1. 云端 CI 三矩阵完成后，在用户恢复测试时核对 PotPlayer 实际加载 DLL 的 SHA256。
-   本轮 x64 artifact 的 SHA256 为
-   `a0ac4c51f02fcc62332c2737c19ecbb366da02ad6025a7c7b7637ece883e2a1a`。
+   最新 x64 artifact 的 SHA256 为
+   `e631f2467b8c05f165fa5fc966364113f2e26444a5c87e7728a094502f629365`。
 
 2. 属性页状态行应显示 `Auto>PQ 203` 且带 `sd1` 或 BT.2020；若仍显示 Auto>Off，
    记录 `tf/sd/matrix` 三项后继续修检测来源。
