@@ -1,0 +1,109 @@
+name: Regression CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: regression-${{ matrix.name }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: release-win32
+            configuration: Release
+            platform: Win32
+            publish: true
+          - name: release-x64
+            configuration: Release
+            platform: x64
+            publish: true
+          - name: debug-x64
+            configuration: Debug
+            platform: x64
+            publish: false
+
+    steps:
+      - name: Check out pinned sources and submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Install VSNASM
+        shell: cmd
+        run: |
+          git clone https://github.com/ShiftMediaProject/VSNASM.git
+          .\VSNASM\install_script.bat
+
+      - name: Install VS2010 Redistributable for VSYASM
+        shell: pwsh
+        run: choco install vcredist2010 -y
+
+      - name: Install VSYASM
+        shell: cmd
+        run: |
+          git clone https://github.com/ShiftMediaProject/VSYASM.git
+          .\VSYASM\install_script.bat
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build and run regression tests
+        shell: pwsh
+        run: |
+          ./scripts/Run-RegressionTests.ps1 `
+            -Configuration '${{ matrix.configuration }}' `
+            -Platform '${{ matrix.platform }}' `
+            -ResultsDirectory '.ci-results\${{ matrix.name }}'
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-diagnostics-${{ matrix.name }}
+          path: .ci-results/${{ matrix.name }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stage release artifact
+        if: matrix.publish
+        shell: pwsh
+        run: |
+          cmake -E make_directory 'dist\${{ matrix.platform }}'
+          cmake -E copy `
+            'bin\lib_17.0\${{ matrix.platform }}\Release\XySubFilter.dll' `
+            'dist\${{ matrix.platform }}\XySubFilter.dll'
+          cmake -E copy `
+            'bin\lib_17.0\${{ matrix.platform }}\Release\VSFilter.dll' `
+            'dist\${{ matrix.platform }}\VSFilter.dll'
+          cmake -E copy `
+            'scripts\Install_XySubFilter.bat' `
+            'dist\${{ matrix.platform }}\Install_XySubFilter.bat'
+          cmake -E copy `
+            'scripts\Uninstall_XySubFilter.bat' `
+            'dist\${{ matrix.platform }}\Uninstall_XySubFilter.bat'
+          cmake -E copy `
+            'scripts\Install_VSFilter.bat' `
+            'dist\${{ matrix.platform }}\Install_VSFilter.bat'
+          cmake -E copy `
+            'scripts\Uninstall_VSFilter.bat' `
+            'dist\${{ matrix.platform }}\Uninstall_VSFilter.bat'
+
+      - name: Upload release artifact
+        if: matrix.publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsfilter-xysubfilter-${{ matrix.platform }}
+          path: dist

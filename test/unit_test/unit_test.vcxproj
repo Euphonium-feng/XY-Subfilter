@@ -1,0 +1,94 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{61CB0A9F-6347-423B-9296-6F35DD4745F5}</ProjectGuid>
+    <RootNamespace>unit_test</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <Import Project="..\..\src\configuration.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Static</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <UseOfAtl>Static</UseOfAtl>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\src\common.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(OutDir)$(Configuration)\</OutDir>
+    <TargetName>$(ProjectName)</TargetName>
+    <LibraryPath>$(SolutionDir)msvc\lib\$(PlatformTarget);$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)src\thirdparty\gtest\include;$(SolutionDir)src\subtitles;$(SolutionDir)src\DSUtil;$(SolutionDir)src\thirdparty\boost_lib\;$(SolutionDir)src\thirdparty\log4cplus\include\;$(SolutionDir)src\subpic\;$(SolutionDir)src\filters\transform\vsfilter\;$(SolutionDir)src\filters\BaseClasses;$(SolutionDir)include\;$(SolutionDir)msvc\include\;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <Link>
+      <AdditionalLibraryDirectories>$(SolutionDir)msvc\lib\$(PlatformTarget);$(OutDir);$(OutDir)..</AdditionalLibraryDirectories>
+      <AdditionalDependencies Condition="'$(Configuration)'=='Debug'">usp10.lib;gtestDU.lib;subtitlesD.lib;subpicD.lib;basevideofilterD.lib;strmbaseD.lib;dsutilD.lib;KasumiD.lib;systemD.lib;log4cplus_staticDU.lib;libassd.lib;delayimp.lib;VSFilter.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(Configuration)'=='Release'">usp10.lib;gtestRU.lib;subtitlesR.lib;subpicR.lib;basevideofilterR.lib;strmbaseR.lib;dsutilR.lib;KasumiR.lib;systemR.lib;log4cplus_staticRU.lib;libass.lib;delayimp.lib;VSFilter.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ClCompile>
+      <PreprocessorDefinitions Condition="'$(VisualStudioVersion)'&gt;'10.0'">_VARIADIC_MAX=10;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <Link>
+      <DelayLoadDLLs>oleacc.dll</DelayLoadDLLs>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <AssemblerOutput>AssemblyAndSourceCode</AssemblerOutput>
+    </ClCompile>
+    <ClCompile Include="libass_bitmap_test.cpp" />
+    <ClCompile Include="libass_regression_test.cpp" />
+    <ClCompile Include="overall_test.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="subpic_alphablend_test_data.h" />
+    <ClInclude Include="test_alphablend.h" />
+    <ClInclude Include="test_color_conv_table.h" />
+    <ClInclude Include="test_font_fallback.h" />
+    <ClInclude Include="test_media_side_data.h" />
+    <ClInclude Include="test_video_info2_color_info.h" />
+    <ClInclude Include="test_instrinsics_macro.h" />
+    <ClInclude Include="test_overall.h" />
+    <ClInclude Include="test_subsample_and_interlace.h" />
+    <ClInclude Include="test_xy_filter.h" />
+    <ClInclude Include="xy_filter_benchmark.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
