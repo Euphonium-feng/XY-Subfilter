@@ -134,6 +134,12 @@ public:
     // changes. It is carried into every renderer cache and bitmap id.
     unsigned long long GetHdrGeneration() const;
 
+    // Property-page hooks. XySubFilter overrides these to coalesce refreshes
+    // and report consumer cache status; other filters keep the defaults.
+    virtual void BeginHdrOptionBatch() {}
+    virtual void EndHdrOptionBatch() {}
+    virtual CStringW GetHdrStatusText() const;
+
     // Resolves INT_UI_LANGUAGE into the LANGID used for Win32 resource lookup.
     static LANGID ResolveUiLanguage(int ui_language);
 

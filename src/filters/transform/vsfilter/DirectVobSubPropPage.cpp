@@ -24,7 +24,6 @@
 #include <afxdlgs.h>
 #include "DirectVobSubFilter.h"
 #include "DirectVobSubPropPage.h"
-#include "xy_sub_filter.h"
 #include "VSFilter.h"
 #include "StyleEditorDialog.h"
 
@@ -2032,10 +2031,11 @@ void CXySubFilterMainPPage::UpdateControlData(bool fSave)
                     break;
                 }
             }
-            XySubFilter* xy_filter = dynamic_cast<XySubFilter*>(m_pDirectVobSub.p);
-            if (xy_filter) {
+            DirectVobSubImpl* dvs_impl =
+                dynamic_cast<DirectVobSubImpl*>(m_pDirectVobSub.p);
+            if (dvs_impl) {
                 actual_backend_label += _T(" | ");
-                actual_backend_label += xy_filter->GetHdrStatusText();
+                actual_backend_label += dvs_impl->GetHdrStatusText();
             }
             m_actualBackendLabel.SetWindowText(actual_backend_label);
         }
@@ -2191,9 +2191,10 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
     HRESULT hr = NOERROR;
     if(fSave)
     {
-        XySubFilter* xy_filter = dynamic_cast<XySubFilter*>(m_pDirectVobSub.p);
-        if (xy_filter) {
-            xy_filter->BeginHdrOptionBatch();
+        DirectVobSubImpl* dvs_impl =
+            dynamic_cast<DirectVobSubImpl*>(m_pDirectVobSub.p);
+        if (dvs_impl) {
+            dvs_impl->BeginHdrOptionBatch();
         }
         hr = m_pDirectVobSubXy->XySetInt(DirectVobSubXyOptions::INT_OVERLAY_CACHE_MAX_ITEM_NUM, m_overlay_cache_max_item_num);
         CHECK_N_LOG(hr, "Failed to set option");
@@ -2232,8 +2233,8 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
         hr = m_pDirectVobSubXy->XySetInt(DirectVobSubXyOptions::INT_TEXT_HDR_MODE, m_text_hdr_mode);
         CHECK_N_LOG(hr, "Failed to set option");
 
-        if (xy_filter) {
-            xy_filter->EndHdrOptionBatch();
+        if (dvs_impl) {
+            dvs_impl->EndHdrOptionBatch();
         }
 
         hr = m_pDirectVobSubXy->XySetBool(DirectVobSubXyOptions::BOOL_RENDER_TO_ORIGINAL_VIDEO_SIZE, m_render_to_original_video_size);

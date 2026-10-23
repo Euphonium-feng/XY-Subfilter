@@ -928,6 +928,52 @@ unsigned long long DirectVobSubImpl::GetHdrGeneration() const
             const_cast<volatile LONG*>(&m_hdr_generation), 0, 0));
 }
 
+CStringW DirectVobSubImpl::GetHdrStatusText() const
+{
+    CAutoLock cAutoLock(m_propsLock);
+    const bool is_bitmap = m_xy_bool_opt[BOOL_IS_BITMAP];
+    const int mode_option = is_bitmap ? INT_PGS_HDR_MODE : INT_TEXT_HDR_MODE;
+    const HdrColor::Config config =
+        is_bitmap ? ResolvePgsHdrConfig() : ResolveTextHdrConfig();
+
+    const wchar_t* resolved = L"Off";
+    if (config.mode == HdrColor::MAP_PQ) {
+        resolved = L"PQ";
+    }
+    else if (config.mode == HdrColor::MAP_RELATIVE_WHITE) {
+        resolved = L"Relative";
+    }
+
+    CStringW mode;
+    switch (m_xy_int_opt[mode_option]) {
+    case PGS_HDR_MODE_PQ:
+        mode = L"PQ";
+        break;
+    case PGS_HDR_MODE_RELATIVE_WHITE:
+        mode = L"Relative";
+        break;
+    case PGS_HDR_MODE_DISABLED:
+        mode = L"Off";
+        break;
+    default:
+        mode.Format(L"Auto>%ls", resolved);
+        break;
+    }
+
+    CStringA sha1 = XY_VSFILTER_VERSION_COMMIT_SHA1;
+    CStringW hash;
+    if (sha1.IsEmpty()) {
+        hash = L"unknown";
+    }
+    else {
+        hash = CStringW(sha1.Left(7));
+    }
+    CStringW value;
+    value.Format(L"%ls %d | %ls",
+        mode.GetString(), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS], hash.GetString());
+    return value;
+}
+
 HRESULT DirectVobSubImpl::DoGetField( unsigned field, void *value )
 {
     CAutoLock cAutoLock(m_propsLock);

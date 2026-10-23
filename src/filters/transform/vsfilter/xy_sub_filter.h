@@ -81,9 +81,9 @@ public:
     STDMETHODIMP Disconnect(void);
 
     // Internal property-page helpers. These are not part of the COM ABI.
-    void BeginHdrOptionBatch();
-    void EndHdrOptionBatch();
-    CStringW GetHdrStatusText();
+    void BeginHdrOptionBatch() override;
+    void EndHdrOptionBatch() override;
+    CStringW GetHdrStatusText() const override;
 private:
     void SetYuvMatrix();
     void SetRgbOutputLevel();

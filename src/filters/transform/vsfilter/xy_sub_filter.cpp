@@ -2019,7 +2019,7 @@ HRESULT XySubFilter::RefreshConsumerCache()
     return clear_hr;
 }
 
-CStringW XySubFilter::GetHdrStatusText()
+CStringW XySubFilter::GetHdrStatusText() const
 {
     CAutoLock cFilterLock(&m_csFilter);
     CAutoLock cProviderLock(&m_csProviderFields);
