@@ -174,6 +174,7 @@ private:
     bool m_hdr_refresh_pending;
     bool m_consumer_clear_attempted;
     HRESULT m_last_consumer_clear_hr;
+    volatile LONG m_video_hdr_signal_pending;
 
     REFERENCE_TIME m_last_requested;
 

@@ -45,6 +45,7 @@ const SubRenderOptionsImpl::OptionMap options[] =
     {"outputLevels",   SubRenderOptionsImpl::OPTION_TYPE_STRING, STRING_OUTPUT_LEVELS        },
     {"isMovable",      SubRenderOptionsImpl::OPTION_TYPE_BOOL,   BOOL_IS_MOVABLE             },
     {"isBitmap",       SubRenderOptionsImpl::OPTION_TYPE_BOOL,   BOOL_IS_BITMAP              },
+    {"isHdrVideo",     SubRenderOptionsImpl::OPTION_TYPE_BOOL,   BOOL_VIDEO_IS_HDR           },
     {0}
 };
 
@@ -195,6 +196,7 @@ XySubFilter::XySubFilter( LPUNKNOWN punk,
     , m_hdr_refresh_pending(false)
     , m_consumer_clear_attempted(false)
     , m_last_consumer_clear_hr(S_FALSE)
+    , m_video_hdr_signal_pending(0)
     , m_last_requested(-1)
     , m_workaround_mpc_hc(false)
     , m_disconnect_entered(false)
@@ -515,6 +517,23 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     }
     switch(field)
     {
+    case BOOL_VIDEO_IS_HDR:
+    {
+        const bool is_hdr = m_xy_bool_opt[BOOL_VIDEO_IS_HDR];
+        bool changed = false;
+        {
+            CAutoLock cAutoLock(&m_csProviderFields);
+            changed = m_video_side_data_hdr != is_hdr;
+            m_video_side_data_hdr = is_hdr;
+        }
+        if (changed) {
+            InterlockedIncrement(&m_hdr_generation);
+            // Called on the video streaming thread. Apply the new revision at
+            // the next frame request instead of taking the render locks here.
+            InterlockedExchange(&m_video_hdr_signal_pending, 1);
+        }
+        break;
+    }
     case SIZE_ASS_PLAY_RESOLUTION:
     case SIZE_USER_SPECIFIED_LAYOUT_SIZE:
     case DOUBLE_FPS:
@@ -1574,6 +1593,10 @@ STDMETHODIMP XySubFilter::RequestFrame( REFERENCE_TIME start, REFERENCE_TIME sto
             XY_LOG_ERROR("Failed to get parameters from consumer.");
             return hr;
         }
+        if (InterlockedExchange(&m_video_hdr_signal_pending, 0)) {
+            ++m_context_id;
+            UpdateSubtitle(false);
+        }
 
         //
         REFERENCE_TIME subtitleStart = (start - 10000i64*m_SubtitleDelay) * m_SubtitleSpeedMul / m_SubtitleSpeedDiv; // no, it won't overflow if we use normal parameters (__int64 is enough for about 2000 hours if we multiply it by the max: 65536 as m_SubtitleSpeedMul)
@@ -2028,19 +2051,6 @@ CStringW XySubFilter::GetHdrStatusText()
     const int mode_option = is_bitmap ? INT_PGS_HDR_MODE : INT_TEXT_HDR_MODE;
     const HdrColor::Config config =
         is_bitmap ? ResolvePgsHdrConfig() : ResolveTextHdrConfig();
-    CStringW resolved;
-    switch (config.mode) {
-    case HdrColor::MAP_PQ:
-        resolved = L"PQ";
-        break;
-    case HdrColor::MAP_RELATIVE_WHITE:
-        resolved = L"Relative";
-        break;
-    default:
-        resolved = L"Off";
-        break;
-    }
-
     CStringW mode;
     switch (m_xy_int_opt[mode_option]) {
     case PGS_HDR_MODE_PQ:
@@ -2053,8 +2063,11 @@ CStringW XySubFilter::GetHdrStatusText()
         mode = L"Off";
         break;
     default:
-        mode.Format(L"Auto>%ls", resolved.GetString());
+        mode.Format(L"Auto>%ls", config.mode == HdrColor::MAP_PQ ? L"PQ" : L"Off");
         break;
+    }
+    if (config.mode == HdrColor::MAP_PQ) {
+        mode.AppendFormat(L" %d", m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]);
     }
 
     const wchar_t* clear_state = L"--";
@@ -2077,18 +2090,14 @@ CStringW XySubFilter::GetHdrStatusText()
         }
     }
 
-    CStringA sha1 = XY_VSFILTER_VERSION_COMMIT_SHA1;
-    CStringW hash;
-    if (sha1.IsEmpty()) {
-        hash = L"unknown";
-    }
-    else {
-        hash = CStringW(sha1.Left(7));
-    }
+    CStringW signal;
+    signal.Format(L"tf%d/sd%d/%ls", m_consumer_transfer_function,
+        m_video_side_data_hdr ? 1 : 0,
+        m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].IsEmpty()
+            ? L"?" : m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
     CStringW value;
-    value.Format(L"%ls %d | clr %ls | %ls",
-        mode.GetString(), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS],
-        clear_state, hash.GetString());
+    value.Format(L"%ls | %ls | clr %ls",
+        mode.GetString(), signal.GetString(), clear_state);
     return value;
 }
 
@@ -2661,9 +2670,24 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
         ASSERT(SUCCEEDED(hr));
     }
     if (m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX]!=consumer_yuv_matrix) {
+        const bool old_auto_pq =
+            ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ;
+        const bool old_auto_text_pq =
+            ResolveTextHdrConfig().mode == HdrColor::MAP_PQ;
         XY_LOG_INFO(L"Consumer yuv matrix changed from "<<m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString()
         <<L" to "<<consumer_yuv_matrix.GetString());
         m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX] = consumer_yuv_matrix;
+        const bool new_auto_pq =
+            ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ;
+        const bool new_auto_text_pq =
+            ResolveTextHdrConfig().mode == HdrColor::MAP_PQ;
+        if (old_auto_pq != new_auto_pq || old_auto_text_pq != new_auto_text_pq) {
+            // The transfer-function hint did not change, but the matrix
+            // fallback did. Bump the revision so bitmap/text caches cannot
+            // keep frames produced by the previous AUTO resolution.
+            InterlockedIncrement(&m_hdr_generation);
+            ++m_context_id;
+        }
         update_subtitle = true;
         //clear_consumer = true;
     }

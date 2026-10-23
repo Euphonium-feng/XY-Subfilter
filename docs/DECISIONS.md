@@ -221,6 +221,11 @@ SUP/PGS 调色板仍是 SDR 8bit YCbCr。修复目标是把目标 HDR 亮度按 
 
 显式 `Off/PQ/Relative white` 始终覆盖自动判定。
 
+后续实测发现内置 consumer 的 `yuvMatrix` 从未赋值，Auto 实际没有 BT.2020
+回退输入。现已由 `XySubFilterConsumer::UpdateYuvMatrixFromInputType()` 从输入
+`VIDEOINFOHEADER2` 生成 `TV/PC.601/709/2020`；HDR10/HDR10+/DoVi side data
+再通过 `isHdrVideo` 事件补充确认。
+
 ## D29：HDR generation 与属性页批量刷新
 
 只比较 mode/white 不足以覆盖“配置被重新应用但数值相同”和 consumer HDR 提示变化。
@@ -229,3 +234,22 @@ bitmap ID。属性页一次 Apply 同时写入 RGB 输出范围、位图 HDR 模
 模式时，通过 batch 合并为一次 `UpdateSubtitle()` 和一次 consumer `Clear()`。
 `Clear()` 的 QI 与 HRESULT 会显示在属性页状态中；不得把 consumer 配置读取放回
 `RequestFrame` 每帧热路径。
+
+## D30：HDMV SubPic 按完整 HDR 配置失效
+
+原先 `HdmvSubtitleProviderImpl` 只在 generation 变化时丢弃 SubPic。Auto 的
+matrix 回退从 Off 变为 PQ 时 generation 可能未变，配置语义却已变化，导致旧
+SubPic 被复用。现在保存上一次完整 `HdrColor::Config`，用 `IsSameRevision()`
+同时检查模式和 generation。
+
+## D31：Relative white 退出用户界面
+
+Relative white 是早期为“consumer 把字幕当线性 SDR”准备的备选，但 madVR 会把
+SUP 位图纳入 HDR 处理，实测继续过曝。用户界面只保留 Auto / Off / PQ；枚举值和
+映射实现暂时保留，避免改变既有外部消费者的 ABI。
+
+## D32：HDR 状态与 backend 分行显示
+
+把较长的 HDR 诊断拼进 Main 页的 Actual backend 会截断两边内容。Main 页只显示
+实际 backend；More 页底部单独显示 `Auto>PQ`、白点、`tf/sd/matrix` 与 `Clear()`
+状态。More 页 HDR 控件改为两列四行，避免原三列窄下拉框截断文本。

@@ -92,6 +92,26 @@ HdrSignal ClassifyTransferFunction(int transfer_function, bool color_info_presen
     }
 }
 
+VideoMatrix ClassifyVideoMatrix(int transfer_matrix, bool color_info_present)
+{
+    if (!color_info_present) {
+        return VIDEO_MATRIX_UNKNOWN;
+    }
+
+    switch (transfer_matrix) {
+    case 1: // BT.709
+    case 3: // SMPTE 240M
+        return VIDEO_MATRIX_709;
+    case 2: // BT.601
+        return VIDEO_MATRIX_601;
+    case 4: // BT.2020 non-constant luminance
+    case 5: // BT.2020 constant luminance
+        return VIDEO_MATRIX_2020;
+    default:
+        return VIDEO_MATRIX_UNKNOWN;
+    }
+}
+
 bool ShouldUsePqForAuto(HdrSignal signal, bool bt2020_matrix)
 {
     if (signal == HDR_SIGNAL_HDR) {

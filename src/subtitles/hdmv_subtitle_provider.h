@@ -25,7 +25,7 @@ private :
     IXyOptions                 *m_consumer;
     CSize                       m_cur_output_size;
     bool m_use_dst_alpha;
-    unsigned long long m_applied_hdr_generation;
+    HdrColor::Config m_applied_hdr_config;
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;
     CComPtr<IXySubRenderFrame>  m_xy_sub_render_frame;

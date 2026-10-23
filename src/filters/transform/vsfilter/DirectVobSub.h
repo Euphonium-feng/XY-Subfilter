@@ -82,6 +82,7 @@ protected:
 
     volatile LONG m_hdr_generation;
     HdrColor::HdrSignal m_consumer_hdr_signal;
+    bool m_video_side_data_hdr;
     int m_consumer_transfer_function;
 
     int m_bt601Width, m_bt601Height;//for AUTO_GUESS

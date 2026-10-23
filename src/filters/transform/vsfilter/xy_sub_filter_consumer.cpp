@@ -25,6 +25,7 @@
 #include "xy_sub_filter_consumer.h"
 #include "DirectVobSubPropPage.h"
 #include "VSFilter.h"
+#include "../BaseVideoFilter/MediaSideData.h"
 #include "../../../DSUtil/MediaTypes.h"
 #include "../../../SubPic/SimpleSubPicProviderImpl.h"
 #include "../../../SubPic/PooledSubPic.h"
@@ -83,6 +84,7 @@ XySubFilterConsumer::XySubFilterConsumer(LPUNKNOWN punk, HRESULT* phr, const GUI
     , CBaseVideoFilter(NAME("XySubFilterConsumer"), punk, phr, clsid)
     , m_fMSMpeg4Fix(false)
     , SubRenderOptionsImpl(::options, this)
+    , m_video_hdr_side_data_seen(false)
 {
     XY_LOG_INFO("Construct XySubFilterConsumer");
     m_xy_str_opt[STRING_NAME] = L"XySubFilterConsumer";
@@ -244,6 +246,7 @@ HRESULT XySubFilterConsumer::Transform(IMediaSample* pIn)
         m_sub_render_frame = NULL;
         if(m_provider)
         {
+            UpdateHdrHintFromSample(pIn);
             m_provider->RequestFrame(rtStart, rtStop, 0);//fix me: important! we've assumed provider would call DeliverFrame 
                                                          // in the same thread immediately, so that contextid is ignored.
         }
@@ -413,6 +416,13 @@ HRESULT XySubFilterConsumer::SetMediaType(PIN_DIRECTION dir, const CMediaType* p
     {
         CAutoLock cAutoLock(&m_csReceive);
 
+        if (m_video_hdr_side_data_seen) {
+            m_video_hdr_side_data_seen = false;
+            if (m_provider) {
+                m_provider->SetBool("isHdrVideo", false);
+            }
+        }
+
         REFERENCE_TIME atpf =
             pmt->formattype == FORMAT_VideoInfo ? ((VIDEOINFOHEADER*)pmt->Format())->AvgTimePerFrame :
             pmt->formattype == FORMAT_VideoInfo2 ? ((VIDEOINFOHEADER2*)pmt->Format())->AvgTimePerFrame :
@@ -423,6 +433,7 @@ HRESULT XySubFilterConsumer::SetMediaType(PIN_DIRECTION dir, const CMediaType* p
         if (pmt->formattype == FORMAT_VideoInfo2)
             m_CurrentVIH2 = *(VIDEOINFOHEADER2*)pmt->Format();
 
+        UpdateYuvMatrixFromInputType();
         InitConsumerFields();
     }
     else if(dir == PINDIR_OUTPUT)
@@ -431,6 +442,101 @@ HRESULT XySubFilterConsumer::SetMediaType(PIN_DIRECTION dir, const CMediaType* p
     }
 
     return hr;
+}
+
+void XySubFilterConsumer::UpdateYuvMatrixFromInputType()
+{
+    const CMediaType& mt = m_pInput->CurrentMediaType();
+    const bool is_yuv = mt.subtype == MEDIASUBTYPE_P010
+        || mt.subtype == MEDIASUBTYPE_P016
+        || mt.subtype == MEDIASUBTYPE_NV12
+        || mt.subtype == MEDIASUBTYPE_NV21
+        || mt.subtype == MEDIASUBTYPE_YV12
+        || mt.subtype == MEDIASUBTYPE_I420
+        || mt.subtype == MEDIASUBTYPE_IYUV
+        || mt.subtype == MEDIASUBTYPE_YUY2
+        || mt.subtype == MEDIASUBTYPE_AYUV;
+
+    if (!is_yuv || mt.formattype != FORMAT_VideoInfo2
+        || mt.FormatLength() < sizeof(VIDEOINFOHEADER2)) {
+        m_xy_str_opt[STRING_YUV_MATRIX] = L"None";
+        return;
+    }
+
+    const DWORD flags =
+        reinterpret_cast<const VIDEOINFOHEADER2*>(mt.Format())->dwControlFlags;
+    const bool color_info_present =
+        (flags & AMCONTROL_USED) != 0
+        && (flags & AMCONTROL_COLORINFO_PRESENT) != 0;
+    const int nominal_range = int((flags & 0x00007000) >> 12);
+    const int transfer_matrix = int((flags & 0x00038000) >> 15);
+    const int transfer_function = int((flags & 0xF8000000) >> 27);
+    const HdrColor::HdrSignal hdr_signal =
+        HdrColor::ClassifyTransferFunction(transfer_function, color_info_present);
+    HdrColor::VideoMatrix matrix =
+        HdrColor::ClassifyVideoMatrix(transfer_matrix, color_info_present);
+
+    // PQ and HLG video are authored in BT.2020. Keep AUTO usable when the
+    // decoder exposes the transfer function but omits the matrix bits.
+    if (hdr_signal == HdrColor::HDR_SIGNAL_HDR
+        && matrix == HdrColor::VIDEO_MATRIX_UNKNOWN) {
+        matrix = HdrColor::VIDEO_MATRIX_2020;
+    }
+
+    const wchar_t* matrix_name = NULL;
+    switch (matrix) {
+    case HdrColor::VIDEO_MATRIX_601:
+        matrix_name = L"601";
+        break;
+    case HdrColor::VIDEO_MATRIX_709:
+        matrix_name = L"709";
+        break;
+    case HdrColor::VIDEO_MATRIX_2020:
+        matrix_name = L"2020";
+        break;
+    default:
+        m_xy_str_opt[STRING_YUV_MATRIX] = L"None";
+        return;
+    }
+
+    // DXVA2 defines 0-255 as 1 and 16-235 as 2. Unknown ranges conservatively
+    // use TV levels, matching the historical VSFilter behaviour.
+    const wchar_t* range_name = nominal_range == 1 ? L"PC" : L"TV";
+    m_xy_str_opt[STRING_YUV_MATRIX].Format(L"%ls.%ls", range_name, matrix_name);
+}
+
+void XySubFilterConsumer::UpdateHdrHintFromSample(IMediaSample* pIn)
+{
+    if (m_video_hdr_side_data_seen || !m_provider || !pIn) {
+        return;
+    }
+
+    CComQIPtr<IMediaSideData> side_data(pIn);
+    if (!side_data) {
+        return;
+    }
+
+    const GUID* const hdr_types[] = {
+        &IID_MediaSideDataHDR,
+        &IID_MediaSideDataHDRContentLightLevel,
+        &IID_MediaSideDataHDR10PlusOld,
+        &IID_MediaSideDataHDR10Plus,
+        &IID_MediaSideDataDOVIRPU,
+        &IID_MediaSideDataDOVIMetadata,
+        &IID_MediaSideDataDOVIMetadataV2,
+    };
+    for (size_t i = 0; i < _countof(hdr_types); i++) {
+        const BYTE* data = NULL;
+        size_t size = 0;
+        if (SUCCEEDED(side_data->GetSideData(*hdr_types[i], &data, &size))
+            && data && size) {
+            // Event-style hint: the provider only updates state here and
+            // applies the new revision on the next RequestFrame.
+            m_video_hdr_side_data_seen =
+                SUCCEEDED(m_provider->SetBool("isHdrVideo", true));
+            return;
+        }
+    }
 }
 
 HRESULT XySubFilterConsumer::CheckConnect(PIN_DIRECTION dir, IPin* pPin)

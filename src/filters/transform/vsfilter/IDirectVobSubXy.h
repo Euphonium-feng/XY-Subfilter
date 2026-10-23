@@ -159,6 +159,7 @@ namespace DirectVobSubXyOptions
         INT_PGS_HDR_WHITE_NITS, //HDR graphics reference white, default 203
         INT_UI_LANGUAGE,        //see @UiLanguage
         INT_TEXT_HDR_MODE,      //see @PgsHdrMode, applies to ASS/SRT text
+        BOOL_VIDEO_IS_HDR,      //consumer -> provider hint from HDR media side data
 
         OPTION_COUNT
     };
@@ -283,6 +284,7 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_WHITE_NITS},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_UI_LANGUAGE},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_TEXT_HDR_MODE},
+        {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_VIDEO_IS_HDR},
 
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ORIGINAL_VIDEO},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ASS_PLAY_RESOLUTION},

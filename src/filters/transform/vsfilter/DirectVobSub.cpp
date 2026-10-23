@@ -34,6 +34,7 @@ DirectVobSubImpl::DirectVobSubImpl(const Option *options, CCritSec * pLock)
     , m_propsLock(pLock)
     , m_hdr_generation(0)
     , m_consumer_hdr_signal(HdrColor::HDR_SIGNAL_UNKNOWN)
+    , m_video_side_data_hdr(false)
     , m_consumer_transfer_function(-1)
 {
 }
@@ -914,8 +915,8 @@ HdrColor::Config DirectVobSubImpl::ResolveHdrMode(int mode) const
     // unavailable; explicit modes always override both.
     const bool bt2020_matrix =
         m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].Right(4).CompareNoCase(L"2020") == 0;
-    const bool likely_hdr =
-        HdrColor::ShouldUsePqForAuto(m_consumer_hdr_signal, bt2020_matrix);
+    const bool likely_hdr = m_video_side_data_hdr
+        || HdrColor::ShouldUsePqForAuto(m_consumer_hdr_signal, bt2020_matrix);
     return HdrColor::NormalizeConfig(
         likely_hdr ? HdrColor::MAP_PQ : HdrColor::MAP_OFF,
         normalized.white_nits, normalized.generation);

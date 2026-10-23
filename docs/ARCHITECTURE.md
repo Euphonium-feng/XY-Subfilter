@@ -145,6 +145,12 @@ HDR 配置还携带递增 generation；`HdmvSubtitleProviderImpl`、`Composition
 
 入口：`ResolvePgsHdrConfig()` 读 `INT_PGS_HDR_MODE`，`ResolveTextHdrConfig()` 读 `INT_TEXT_HDR_MODE`，白点共用。`XySubFilter::UpdateConsumerHdrSignal()` 从 consumer 已连接视频引脚的 `VIDEOINFOHEADER2.dwControlFlags` 提取传递函数；PQ/HLG 为 HDR，明确 SDR 曲线优先于 BT.2020 矩阵回退。
 
+内置 `XySubFilterConsumer` 在输入媒体类型变化时把同一组颜色信息转换成
+`yuvMatrix`（如 `TV.2020`）供 provider 读取；HDR10/HDR10+/DoVi side data
+通过只写选项 `isHdrVideo` 发出一次性事件。provider 只记录该事件和递增
+generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚或读取 consumer
+配置。
+
 色彩科学集中在 `src/subpic/hdr_color.{h,cpp}`，纯函数、无 Win32 依赖，由 `test_hdr_color.h` 单测覆盖。
 
 ## 界面与本地化
@@ -155,3 +161,5 @@ HDR 配置还携带递增 generation；`HdmvSubtitleProviderImpl`、`Composition
 - 生效路径：`DirectVobSubImpl::ApplyUiLanguage` 设置滤镜线程语言；属性页另在 `GetPageInfo` / `Activate` 入口调用 `ApplyActiveUiLanguageToCurrentThread()`，因为属性页运行在宿主 UI 线程上。
 - 位图字幕不使用 libass/CSRI/VSFilter 文本渲染器；属性页对非文本流显示
   `Bitmap (internal)`，避免把 PGS/DVB 的“实际后端”误报为 VSFilter。
+- More 页的 HDR 区域采用两列四行布局；底部状态行显示解析结果、传递函数、side data
+  和 `Clear()` 状态。Relative white 仅保留内部兼容值，不再出现在下拉菜单。

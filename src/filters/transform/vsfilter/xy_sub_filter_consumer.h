@@ -48,6 +48,8 @@ class XySubFilterConsumer
     bool AdjustFrameSize(CSize& s);
 
     HRESULT TryNotCopy( IMediaSample* pIn, const CMediaType& mt, const BITMAPINFOHEADER& bihIn );
+    void UpdateYuvMatrixFromInputType();
+    void UpdateHdrHintFromSample(IMediaSample* pIn);
 
     ColorConvTable::YuvMatrixType m_video_yuv_matrix_decided_by_sub;
     ColorConvTable::YuvRangeType m_video_yuv_range_decided_by_sub;
@@ -127,4 +129,5 @@ protected:
 
 private:
     VIDEOINFOHEADER2 m_CurrentVIH2;
+    bool m_video_hdr_side_data_seen;
 };

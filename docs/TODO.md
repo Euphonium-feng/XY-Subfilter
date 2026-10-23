@@ -13,6 +13,12 @@ PotPlayer + madVR 在 seek 时至少崩溃两次；当前自动化压力回路�
 `Clear()`；代码与自动化测试已完成，CI run `39997437527` 三矩阵全绿，
 真实播放器验证由用户暂缓。
 
+2026-10-24 后续实测：PQ 203 的亮度已正确，Auto 在 HDR 片源下仍等同 Off/SDR，
+Relative white 仍过曝。已定位到 consumer 的 `yuvMatrix` 从未赋值，并修正：
+consumer 从输入 `VIDEOINFOHEADER2` 上报范围/矩阵，HDR media side data 以事件方式
+通知 provider；HDMV SubPic 按完整 HDR 配置而非仅 generation 失效。属性页已重排，
+Relative white 不再显示。该轮代码与布局尚待云端 CI 和实机复测。
+
 ### 稳定性诊断（2026-10-23）
 
 - 实际链路为 PotPlayer 26.07.01 + LAV 0.82 + madVR 0.92.17 +
@@ -87,6 +93,16 @@ white` 的输出。
 当前状态：代码修改和测试用例已完成；云端 CI 三矩阵全绿。真实播放器复测暂缓，
 后续必须先确认 PotPlayer 实际加载的 DLL 哈希。
 
+### 第六轮：Auto 判定与属性页布局（待 CI/实机）
+
+| 阶段 | 内容 |
+| --- | --- |
+| A | `XySubFilterConsumer` 从输入 `VIDEOINFOHEADER2` 生成范围/矩阵并填充 `yuvMatrix` |
+| B | HDR10/HDR10+/DoVi media side data 通过 `isHdrVideo` 事件通知 provider，不进每帧配置读取热路径 |
+| C | HDMV provider 按完整 HDR 配置判断 SubPic 失效，矩阵回退变化会重新渲染 |
+| D | 属性页 HDR 区域改为两列四行；HDR 诊断独占底部状态行；Relative white 从界面隐藏 |
+| E | 增加视频矩阵分类测试，并把调色板测试改为复用同一 `CompositionObject` |
+
 ## CI 记录
 
 | Run | 内容 | 结果 |
@@ -117,10 +133,13 @@ white` 的输出。
 
 1. 云端 CI 三矩阵完成后，在用户恢复测试时核对 PotPlayer 实际加载 DLL 的 SHA256。
 
-2. 用 `J-焦虑` 或 `B-巴里·林登` 的 SUP 在 HDR 下复测：保持同一字幕帧，切换
-   `Off`、`PQ 203`、`PQ 50`、`Relative white 203`，确认画面随模式或白点变化。
+2. 属性页状态行应显示 `Auto>PQ 203` 且带 `sd1` 或 BT.2020；若仍显示 Auto>Off，
+   记录 `tf/sd/matrix` 三项后继续修检测来源。
 
-3. 若原始字幕像素已是 `148` 但屏幕不变，继续排查 madVR 对缓存或传递函数的解释；
+3. 用 `J-焦虑` 或 `B-巴里·林登` 的 SUP 在 HDR 下复测：保持同一字幕帧，切换
+   `Off`、`PQ 203`、`PQ 50`，确认画面随模式或白点变化。
+
+4. 若原始字幕像素已是 `148` 但屏幕不变，继续排查 madVR 对缓存或传递函数的解释；
    若原始像素仍为 `255`，继续排查 provider 实例和配置下发。
 
 其余待验证项保留在上方清单，疑似稳定性问题查清前不推进默认值调整或排版收尾。

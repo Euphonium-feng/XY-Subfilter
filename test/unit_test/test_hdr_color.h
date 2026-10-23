@@ -165,6 +165,9 @@ TEST(HdrColorTest, IsSameRevisionIncludesConfigurationGeneration)
     EXPECT_TRUE(HdrColor::IsSameOutput(first, next));
     EXPECT_TRUE(HdrColor::IsSameRevision(first, same));
     EXPECT_FALSE(HdrColor::IsSameRevision(first, next));
+
+    const HdrColor::Config off(HdrColor::MAP_OFF, 203.0, 2);
+    EXPECT_FALSE(HdrColor::IsSameRevision(first, off));
 }
 
 TEST(HdrColorTest, ClassifiesConsumerTransferFunction)
@@ -179,6 +182,20 @@ TEST(HdrColorTest, ClassifiesConsumerTransferFunction)
         HdrColor::ClassifyTransferFunction(7, true)); // BT.2020 SDR
     EXPECT_EQ(HdrColor::HDR_SIGNAL_UNKNOWN,
         HdrColor::ClassifyTransferFunction(8, false));
+}
+
+TEST(HdrColorTest, ClassifiesConsumerVideoMatrix)
+{
+    EXPECT_EQ(HdrColor::VIDEO_MATRIX_601,
+        HdrColor::ClassifyVideoMatrix(2, true));
+    EXPECT_EQ(HdrColor::VIDEO_MATRIX_709,
+        HdrColor::ClassifyVideoMatrix(1, true));
+    EXPECT_EQ(HdrColor::VIDEO_MATRIX_709,
+        HdrColor::ClassifyVideoMatrix(3, true));
+    EXPECT_EQ(HdrColor::VIDEO_MATRIX_2020,
+        HdrColor::ClassifyVideoMatrix(4, true));
+    EXPECT_EQ(HdrColor::VIDEO_MATRIX_UNKNOWN,
+        HdrColor::ClassifyVideoMatrix(4, false));
 }
 
 TEST(HdrColorTest, ExplicitSdrHintOverridesBt2020MatrixFallback)

@@ -59,9 +59,15 @@
   consumer 缓存帧，而不是把配置读取放到渲染热路径。
 - Auto 判定必须优先采用 consumer 视频引脚 `VIDEOINFOHEADER2` 中的传递函数；
   BT.2020 矩阵只是在没有传递函数信息时的回退，不能覆盖明确的 SDR 曲线。
+- 内置 consumer 必须在媒体类型变化时填充 `yuvMatrix`，否则 provider 的 BT.2020
+  回退没有输入；HDR side data 只能作为事件提示，不得恢复每帧读取 consumer 配置。
 - 每次 HDR 配置变化必须递增 generation，并让 SubPic、调色板和对外 bitmap ID
   一起失效；仅比较 mode/white 数值不足以证明缓存已刷新。
+- 即使 generation 不变，Auto 因矩阵回退从 Off 解析到 PQ 时也必须丢弃 SubPic；
+  provider 的失效判据必须比较完整 HDR 配置。
 - 属性页一次 Apply 引发的 RGB/HDR 选项变化必须合并，只执行一次重新渲染和一次
   `ISubRenderConsumer2::Clear()`。
 - SUP/PGS 的目标是先把 HDR 绝对亮度按 PQ 曲线编码到 8bit SDR 容器，再由
   madVR 做 HDR 处理；SDR 直通只用于对照，不是默认方案。
+- `Relative white` 已证明会让 madVR 路径过曝，不再暴露给用户；保留枚举值只为避免
+  改变既有外部 ABI。

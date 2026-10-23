@@ -19,7 +19,6 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_cleanOld(cleanOld)
     , m_consumer(NULL)
     , m_use_dst_alpha(false)
-    , m_applied_hdr_generation(0)
 {
 
 }
@@ -141,9 +140,9 @@ HRESULT HdmvSubtitleProviderImpl::SetHdrConfig(const HdrColor::Config& config)
         return hr;
     }
 
-    if (m_applied_hdr_generation != config.generation) {
+    if (!HdrColor::IsSameRevision(m_applied_hdr_config, config)) {
         Invalidate(-1);
-        m_applied_hdr_generation = config.generation;
+        m_applied_hdr_config = config;
     }
     return S_OK;
 }

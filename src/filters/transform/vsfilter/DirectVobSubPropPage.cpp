@@ -2031,12 +2031,8 @@ void CXySubFilterMainPPage::UpdateControlData(bool fSave)
                     break;
                 }
             }
-            DirectVobSubImpl* dvs_impl =
-                dynamic_cast<DirectVobSubImpl*>(m_pDirectVobSub.p);
-            if (dvs_impl) {
-                actual_backend_label += _T(" | ");
-                actual_backend_label += dvs_impl->GetHdrStatusText();
-            }
+            // Keep the backend column readable. HDR diagnostics live on the
+            // More page where they have a full-width status row.
             m_actualBackendLabel.SetWindowText(actual_backend_label);
         }
     }
@@ -2076,6 +2072,7 @@ CXySubFilterMorePPage::CXySubFilterMorePPage(LPUNKNOWN pUnk, HRESULT* phr)
     BindControl(IDC_COMBO_PGS_HDR_MODE, m_combo_pgs_hdr_mode);
     BindControl(IDC_COMBO_UI_LANGUAGE, m_combo_ui_language);
     BindControl(IDC_COMBO_TEXT_HDR_MODE, m_combo_text_hdr_mode);
+    BindControl(IDC_HDR_STATUS, m_hdrStatusLabel);
     BindControl(IDC_EDIT_PGS_HDR_WHITE_NITS, m_edit_pgs_hdr_white_nits);
     BindControl(IDC_SPIN_PGS_HDR_WHITE_NITS, m_spin_pgs_hdr_white_nits);
 
@@ -2514,6 +2511,12 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         {
             m_pgs_hdr_mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
         }
+        // Relative-white was an early experiment for consumers that place SDR
+        // white. madVR treats the bitmap as HDR and overexposes it, so keep the
+        // value only for external ABI compatibility and stop exposing it.
+        if (m_pgs_hdr_mode == DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE) {
+            m_pgs_hdr_mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
+        }
         m_combo_pgs_hdr_mode.ResetContent();
         m_combo_pgs_hdr_mode.AddString( CString(_T("Auto")) );
         m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_AUTO, DirectVobSubXyOptions::PGS_HDR_MODE_AUTO );
@@ -2521,8 +2524,6 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED, DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED );
         m_combo_pgs_hdr_mode.AddString( CString(_T("PQ (absolute)")) );
         m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_PQ, DirectVobSubXyOptions::PGS_HDR_MODE_PQ );
-        m_combo_pgs_hdr_mode.AddString( CString(_T("Relative white")) );
-        m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE, DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE );
         m_combo_pgs_hdr_mode.SetCurSel( m_pgs_hdr_mode );
 
         if (m_ui_language < DirectVobSubXyOptions::UI_LANGUAGE_AUTO ||
@@ -2544,6 +2545,9 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         {
             m_text_hdr_mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
         }
+        if (m_text_hdr_mode == DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE) {
+            m_text_hdr_mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
+        }
         m_combo_text_hdr_mode.ResetContent();
         m_combo_text_hdr_mode.AddString( CString(_T("Auto")) );
         m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_AUTO, DirectVobSubXyOptions::PGS_HDR_MODE_AUTO );
@@ -2551,8 +2555,6 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED, DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED );
         m_combo_text_hdr_mode.AddString( CString(_T("PQ (absolute)")) );
         m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_PQ, DirectVobSubXyOptions::PGS_HDR_MODE_PQ );
-        m_combo_text_hdr_mode.AddString( CString(_T("Relative white")) );
-        m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE, DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE );
         m_combo_text_hdr_mode.SetCurSel( m_text_hdr_mode );
 
         m_spin_pgs_hdr_white_nits.SetRange32(50, 1000);
@@ -2574,5 +2576,11 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
             cache_size_str.Format(_T("%d"), m_cache_size);
         }
         m_edit_cache_size.SetWindowText(cache_size_str);
+
+        DirectVobSubImpl* dvs_impl =
+            dynamic_cast<DirectVobSubImpl*>(m_pDirectVobSub.p);
+        if (dvs_impl) {
+            m_hdrStatusLabel.SetWindowText(dvs_impl->GetHdrStatusText());
+        }
     }
 }

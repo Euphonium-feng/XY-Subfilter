@@ -53,3 +53,10 @@ release-x64 / debug-x64 均 success）。真实播放器存在**疑似稳定性�
 属性页 Apply 会把 RGB/HDR 相关选项合并成一次刷新，再调用 consumer 的
 `Clear()`。代码与自动化测试已完成，CI run `39997437527` 三矩阵全绿；
 真实播放器复测由用户暂缓。
+
+后续真实播放确认 PQ 映射本身有效，但 Auto 在 HDR 片源下仍解析为 Off，与 SDR
+相同。根因是内置 `XySubFilterConsumer` 从未填充对 provider 报告的 `yuvMatrix`，
+使 Auto 的 BT.2020 回退失效；同时 HDMV provider 仅按 generation 判断 SubPic
+失效，矩阵回退变化时可能复用旧帧。现已补充视频引脚矩阵/传递函数上报、HDR media
+side data 事件提示、按完整配置判断 SubPic 失效，并重排属性页 HDR 区域。
+Relative white 已从界面移除；真实播放效果与稳定性仍待复测。

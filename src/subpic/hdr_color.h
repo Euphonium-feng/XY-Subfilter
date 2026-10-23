@@ -58,12 +58,25 @@ namespace HdrColor
         HDR_SIGNAL_HDR
     };
 
+    // YCbCr matrix carried by VIDEOINFOHEADER2::dwControlFlags.
+    enum VideoMatrix
+    {
+        VIDEO_MATRIX_UNKNOWN = 0,
+        VIDEO_MATRIX_601,
+        VIDEO_MATRIX_709,
+        VIDEO_MATRIX_2020
+    };
+
     // Clamps untrusted option values into a usable configuration.
     Config NormalizeConfig(int mode, double white_nits, unsigned long long generation = 0);
 
     // Classifies a DXVA2 transfer-function code carried by
     // VIDEOINFOHEADER2::dwControlFlags.
     HdrSignal ClassifyTransferFunction(int transfer_function, bool color_info_present);
+
+    // Classifies a DXVA2 transfer-matrix code carried by
+    // VIDEOINFOHEADER2::dwControlFlags.
+    VideoMatrix ClassifyVideoMatrix(int transfer_matrix, bool color_info_present);
 
     // Auto mode prefers an explicit consumer transfer-function hint. The
     // BT.2020 matrix is only a fallback when no transfer function is known.
