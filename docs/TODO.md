@@ -17,7 +17,7 @@ PotPlayer + madVR 在 seek 时至少崩溃两次；当前自动化压力回路�
 Relative white 仍过曝。已定位到 consumer 的 `yuvMatrix` 从未赋值，并修正：
 consumer 从输入 `VIDEOINFOHEADER2` 上报范围/矩阵，HDR media side data 以事件方式
 通知 provider；HDMV SubPic 按完整 HDR 配置而非仅 generation 失效。属性页已重排，
-Relative white 不再显示。该轮代码与布局尚待云端 CI 和实机复测。
+Relative white 不再显示。CI run `40007950976` 三矩阵全绿，尚待实机复测。
 
 ### 稳定性诊断（2026-10-23）
 
@@ -93,7 +93,7 @@ white` 的输出。
 当前状态：代码修改和测试用例已完成；云端 CI 三矩阵全绿。真实播放器复测暂缓，
 后续必须先确认 PotPlayer 实际加载的 DLL 哈希。
 
-### 第六轮：Auto 判定与属性页布局（待 CI/实机）
+### 第六轮：Auto 判定与属性页布局（CI 绿，实机待测）
 
 | 阶段 | 内容 |
 | --- | --- |
@@ -114,6 +114,7 @@ white` 的输出。
 | `39963898276` | 修正测试期望 | success |
 | `39965292609` | docs 记录 | success |
 | `39997437527` | HDR 信号检测、generation、合并刷新与调色板集成测试 | success |
+| `40007950976` | consumer 矩阵上报、HDR side data 事件、SubPic 失效修复与属性页重排 | success |
 
 `39962614076` 的两项失败：
 
@@ -132,6 +133,8 @@ white` 的输出。
 ## 下一步
 
 1. 云端 CI 三矩阵完成后，在用户恢复测试时核对 PotPlayer 实际加载 DLL 的 SHA256。
+   本轮 x64 artifact 的 SHA256 为
+   `a0ac4c51f02fcc62332c2737c19ecbb366da02ad6025a7c7b7637ece883e2a1a`。
 
 2. 属性页状态行应显示 `Auto>PQ 203` 且带 `sd1` 或 BT.2020；若仍显示 Auto>Off，
    记录 `tf/sd/matrix` 三项后继续修检测来源。

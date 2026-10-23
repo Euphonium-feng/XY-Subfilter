@@ -59,4 +59,5 @@ release-x64 / debug-x64 均 success）。真实播放器存在**疑似稳定性�
 使 Auto 的 BT.2020 回退失效；同时 HDMV provider 仅按 generation 判断 SubPic
 失效，矩阵回退变化时可能复用旧帧。现已补充视频引脚矩阵/传递函数上报、HDR media
 side data 事件提示、按完整配置判断 SubPic 失效，并重排属性页 HDR 区域。
-Relative white 已从界面移除；真实播放效果与稳定性仍待复测。
+Relative white 已从界面移除。CI run `40007950976` 的 release-win32 /
+release-x64 / debug-x64 三矩阵全绿；真实播放效果与稳定性仍待复测。
