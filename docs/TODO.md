@@ -2,7 +2,7 @@
 
 ## 状态
 
-本轮改动（界面修复 + 文本字幕 HDR 映射）已实现，待云端 CI 验证。
+本轮改动（界面修复 + 文本字幕 HDR 映射）已实现，云端 CI 三矩阵全绿。
 
 ## 已完成
 
@@ -29,6 +29,15 @@
 | C | libass 路径：`MapTextColor` + `SetHdrConfig` + 六处 call site + 缓存失效 |
 | D | 旧 VSFilter 渲染器：`PaintAll` 经 `TransColorWithHdr` 映射，配置随 `DoRender`/`RenderOneSubtitle` 下传 |
 | E | 文本颜色单测、docs 更新 |
+
+## CI 记录
+
+- `39949013750` 位图 HDR 映射 + 中文化：success
+- `39962614076` 界面修复 + 文本 HDR 映射：failure，两项原因已定位
+  - x64：`TextColorPqKeepsAlphaAndLowersWhite` 期望值写错（128 灰应为 106，非 148）
+  - win32：`yasm` 退出码 `-1073741515`（STATUS_DLL_NOT_FOUND），runner 环境偶发，
+    与代码无关；同一工作流上一轮通过，下一轮亦通过
+- `39963898276` 修正测试期望后：success，三矩阵全部通过
 
 ## 待验证（需真实环境，CI 无法覆盖）
 
