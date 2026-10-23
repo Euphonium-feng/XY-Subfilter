@@ -43,8 +43,10 @@ TEST(CompositionObjectHdrTest, PqPreEncodesSdrPaletteWhite)
 {
     EXPECT_EQ(148, RenderWhitePixel(
         HdrColor::NormalizeConfig(HdrColor::MAP_PQ, 203.0, 1)));
-    EXPECT_EQ(130, RenderWhitePixel(
+    EXPECT_EQ(112, RenderWhitePixel(
         HdrColor::NormalizeConfig(HdrColor::MAP_PQ, 50.0, 2)));
+    EXPECT_EQ(130, RenderWhitePixel(
+        HdrColor::NormalizeConfig(HdrColor::MAP_PQ, 100.0, 5)));
     EXPECT_EQ(255, RenderWhitePixel(
         HdrColor::NormalizeConfig(HdrColor::MAP_OFF, 203.0, 3)));
     EXPECT_EQ(255, RenderWhitePixel(
