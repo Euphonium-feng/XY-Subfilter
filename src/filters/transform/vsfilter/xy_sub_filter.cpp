@@ -612,8 +612,22 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     case INT_PGS_HDR_MODE:
     case INT_PGS_HDR_WHITE_NITS:
     case INT_TEXT_HDR_MODE:
-        UpdateSubtitle(false);
         m_context_id++;
+        UpdateSubtitle(false);
+        {
+            // The consumer may have cached the old bitmap for the current
+            // subtitle interval. Clear only that cache; the next frame request
+            // will render the palette with the new HDR configuration.
+            CComPtr<ISubRenderConsumer> consumer;
+            {
+                CAutoLock cAutoLock(&m_csConsumer);
+                consumer = m_consumer;
+            }
+            CComQIPtr<ISubRenderConsumer2> consumer2(consumer);
+            if (consumer2) {
+                consumer2->Clear();
+            }
+        }
         break;
     case INT_OVERLAY_CACHE_MAX_ITEM_NUM:
         CacheManager::GetOverlayMruCache()->SetMaxItemNum(m_xy_int_opt[field]);
@@ -723,9 +737,6 @@ HRESULT XySubFilter::DoGetField( unsigned field, void *value )
     case BOOL_IS_MOVABLE:
     case BOOL_IS_BITMAP:
     case BOOL_SUB_FRAME_USE_DST_ALPHA:
-    case INT_PGS_HDR_MODE:
-    case INT_PGS_HDR_WHITE_NITS:
-    case INT_TEXT_HDR_MODE:
         {
             CAutoLock cAutolock(&m_csProviderFields);//do NOT hold m_csSubLock so that it is faster
             hr = XyOptionsImpl::DoGetField(field, value);
@@ -1873,7 +1884,7 @@ void XySubFilter::SetRgbOutputLevel()
     {
         // Same reasoning as the bitmap path: PQ code values are absolute, so
         // they must not be rescaled into TV levels afterwards.
-        if (ResolveTextHdrConfig().mode == HdrColor::MAP_PQ)
+        if (m_xy_int_opt[INT_TEXT_HDR_MODE]==DirectVobSubXyOptions::PGS_HDR_MODE_PQ)
         {
             sub_frame_creater->SetRgbOutputTvLevel(false);
         }
@@ -1906,7 +1917,7 @@ void XySubFilter::SetRgbOutputLevel()
         // A PQ palette already carries absolute code values. Squeezing it into
         // TV levels would rescale those codes and shift the white point, so the
         // PQ mode always outputs full-range RGB.
-        if (ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ)
+        if (m_xy_int_opt[INT_PGS_HDR_MODE]==DirectVobSubXyOptions::PGS_HDR_MODE_PQ)
         {
             CompositionObject::m_output_tv_range_rgb = false;
         }
@@ -1942,39 +1953,23 @@ void XySubFilter::SetHdrMode()
     // Callers hold m_csFilter; SetSubtitle reaches this from the locked path.
     // Bitmap and text subtitles use separate modes: the historical colour
     // conventions differ (bitmaps are native YCbCr, ASS text is BT.601 RGB).
-    HdrColor::Config bitmap_config;
-    HdrColor::Config text_config;
-    {
-        CAutoLock cAutoLock(&m_csProviderFields);
-        bitmap_config = ResolvePgsHdrConfig();
-        text_config = ResolveTextHdrConfig();
-    }
+    CAutoLock cAutoLock(&m_csProviderFields);
 
-    const auto apply_config = [&](ISubStream* stream) {
-        if (HdmvSubtitleProvider* hdmv = dynamic_cast<HdmvSubtitleProvider*>(stream)) {
-            hdmv->SetHdrConfig(bitmap_config);
-        }
-        else if (SupFileSubtitleProvider* sup = dynamic_cast<SupFileSubtitleProvider*>(stream)) {
-            sup->SetHdrConfig(bitmap_config);
-        }
-        else if (CRenderedHdmvSubtitle* rendered = dynamic_cast<CRenderedHdmvSubtitle*>(stream)) {
-            rendered->SetHdrConfig(bitmap_config);
-        }
-        else if (CRenderedTextSubtitle* rts = dynamic_cast<CRenderedTextSubtitle*>(stream)) {
-            rts->SetHdrConfig(text_config);
-        }
-    };
+    const HdrColor::Config bitmap_config = ResolvePgsHdrConfig();
+    const HdrColor::Config text_config = ResolveTextHdrConfig();
 
-    bool current_applied = false;
-    for (POSITION pos = m_pSubStreams.GetHeadPosition(); pos;) {
-        CComPtr<ISubStream> stream = m_pSubStreams.GetNext(pos);
-        if (stream.p == m_curSubStream) {
-            current_applied = true;
-        }
-        apply_config(stream);
+    HdmvSubtitleProvider* hdmv = dynamic_cast<HdmvSubtitleProvider*>(m_curSubStream);
+    if (hdmv) {
+        hdmv->SetHdrConfig(bitmap_config);
     }
-    if (!current_applied && m_curSubStream) {
-        apply_config(m_curSubStream);
+    else if (SupFileSubtitleProvider* sup = dynamic_cast<SupFileSubtitleProvider*>(m_curSubStream)) {
+        sup->SetHdrConfig(bitmap_config);
+    }
+    else if (CRenderedHdmvSubtitle* rendered = dynamic_cast<CRenderedHdmvSubtitle*>(m_curSubStream)) {
+        rendered->SetHdrConfig(bitmap_config);
+    }
+    else if (CRenderedTextSubtitle* rts = dynamic_cast<CRenderedTextSubtitle*>(m_curSubStream)) {
+        rts->SetHdrConfig(text_config);
     }
 }
 

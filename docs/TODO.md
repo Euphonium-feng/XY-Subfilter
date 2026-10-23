@@ -7,8 +7,10 @@ PotPlayer + madVR 在 seek 时至少崩溃两次；当前自动化压力回路�
 问题由本轮改动引入。
 
 2026-10-24 又收到一个更明确的渲染问题：SUP/PGS 在 HDR 下无论切换 HDR 模式还是
-白点，画面都没有变化，说明属性页的选项没有可靠地进入当前位图 provider。已完成
-provider 渲染时重新读取选项的修复，真实播放器验证尚未完成。
+白点，画面都没有变化。随后尝试的“provider 每帧重新读取 consumer 选项”版本
+（run `39984554888`）虽然云端构建全绿，但真实播放出现稳定性问题和花屏，已撤回。
+当前改为在 HDR 选项变化后清空 consumer 的缓存帧，让下一帧重新请求；真实播放器
+验证尚未完成。
 
 ### 稳定性诊断（2026-10-23）
 
@@ -54,18 +56,21 @@ provider 渲染时重新读取选项的修复，真实播放器验证尚未完�
 
 `README.md` 改为简体中文（GitHub 默认展示），`README.en.md` 保留英文版，两版互链；标题插入显式锚点避免 emoji 锚点失效。
 
-### 第四轮：HDR 配置实际生效修复
+### 第四轮：HDR 配置缓存刷新修复
 
 | 阶段 | 内容 |
 | --- | --- |
-| A | `HdmvSubtitleProviderImpl::RequestFrame` 在渲染前直接读取 consumer 的 `INT_PGS_HDR_MODE` / `INT_PGS_HDR_WHITE_NITS`，不再只依赖属性页下发到当前流的一次性配置 |
-| B | `XySubFilter::SetHdrMode` 对 `m_pSubStreams` 中所有位图/文本流下发配置，避免当前流与实际渲染流不一致 |
-| C | `SetRgbOutputLevel` 使用解析后的 `HdrColor::Config` 判断 PQ，Auto 解析为 PQ 时也会强制全幅 RGB |
-| D | 位图字幕的“实际后端”显示改为 `Bitmap (internal)`，不再把 PGS 误报成 VSFilter 文本后端 |
+| A | 撤回 `RequestFrame` 内每帧回调 consumer 读取选项的实现；该路径导致真实播放稳定性退化 |
+| B | HDR 模式/白点变化后，经 `ISubRenderConsumer2::Clear()` 清除 consumer 缓存的字幕帧 |
+| C | 位图字幕的“实际后端”显示改为 `Bitmap (internal)`，不再把 PGS 误报成 VSFilter 文本后端 |
 
 根因仍需真实播放器确认：当前只证明了配置读取链路存在缺口，尚未证明 madVR 对
 SUP 位图的 HDR 解释方式。下一步应在同一帧分别记录/对比 `Off`、`PQ`、`Relative
 white` 的输出。
+
+目标语义（明确，不再把 SDR 直通当目标）：SUP 调色板先按 HDR/PQ 曲线预编码到
+8bit SDR 容器码值，再由 madVR 的 HDR 处理恢复绝对亮度。SDR 直通只能作为对照，
+不是修复方案。
 
 ## CI 记录
 

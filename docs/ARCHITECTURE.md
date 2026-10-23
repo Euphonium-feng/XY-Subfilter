@@ -125,13 +125,11 @@ XySubFilter::SetSubtitle
                           文本 → CRenderedTextSubtitle::SetHdrConfig
 ```
 
-除属性页下发外，`HdmvSubtitleProviderImpl::RequestFrame` 在每帧渲染前还会
-从 consumer 直接读取 `INT_PGS_HDR_MODE` / `INT_PGS_HDR_WHITE_NITS`，并重新
-解析成 `HdrColor::Config` 写入当前 `CBaseSub`。这条路径覆盖外部 `.sup`
-（`SupFileSubtitleProvider`）和嵌入式 PGS/DVB（`HdmvSubtitleProvider`），
-用于避免属性页对象、当前流对象与实际 provider 不一致时配置停留在旧值。
-读取 HDR 选项时走 `m_csProviderFields`，`SetHdrMode` 在调用 provider 前释放
-该锁，避免渲染线程与属性页线程形成锁顺序反转。
+HDR 模式或白点变化后，`XySubFilter` 会先重新下发配置并递增 `m_context_id`，
+再通过 `ISubRenderConsumer2::Clear()` 要求 consumer 丢弃已缓存的字幕帧。
+否则 madVR 可能继续显示同一字幕区间内由旧调色板生成的帧，导致属性页改变但
+画面不变。不要在 `RequestFrame` 内每帧回调 consumer 读取配置；该实现已在
+真实播放中造成稳定性退化和花屏。
 
 `ResolveHdrMode(mode)` 是位图与文本共用的解析实现（`DirectVobSubImpl`）：
 

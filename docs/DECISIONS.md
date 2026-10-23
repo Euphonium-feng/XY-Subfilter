@@ -183,20 +183,17 @@ libass 路径有两层缓存：整帧缓存 `m_last_frame`（`changed == 0` 时�
 
 因此 `INT_TEXT_HDR_MODE` 默认 `PGS_HDR_MODE_AUTO`。测试环境没有 consumer，`yuvMatrix` 为空，Auto 解析为 `MAP_OFF`，输出与改动前逐字节一致。这一点由 `HdrColorTest.TextColorOffModeIsIdentity` 与既有 golden 测试双重保障。
 
-## D25：位图 provider 在 RequestFrame 时重新读取 HDR 配置
+## D25：HDR 选项变化后清空 consumer 缓存帧
 
-`SetHdrConfig` 只在选流或属性页应用时下发一次，当前流缓存和实际 provider 的
-渲染时机可能使这次下发不足以保证手动调整立即生效。
-`HdmvSubtitleProviderImpl::RequestFrame` 因此在每次渲染前从 consumer 读取
-HDR 模式、白点和 consumer 的 `yuvMatrix`，重新解析 `HdrColor::Config` 后写入
-`CBaseSub`。该路径覆盖外部 SUP 与嵌入式 PGS/DVB。
+属性页改变 HDR 模式或白点后，provider 会重新生成调色板，但 consumer 可能仍
+持有当前字幕区间的旧帧。`XySubFilter` 因此在重新下发配置、递增 `m_context_id`
+之后，通过 `ISubRenderConsumer2::Clear()` 请求 consumer 丢弃旧帧并重新请求。
 
-为避免死锁，渲染线程读取这些选项时使用 `m_csProviderFields` 而不是
-`m_csFilter`；`XySubFilter::SetHdrMode` 只在该锁内解析配置，释放后再调用各
-provider 的 `SetHdrConfig`。
+先取得 consumer 的临时引用，释放 `m_csConsumer` 后再调用 `Clear()`，避免
+consumer 在清理过程中同步回调 provider 导致锁重入。
 
-被否方案：只相信属性页保存到过滤器成员的值。该方案已被真实播放反馈证明不足，
-因为调整模式或白点后画面没有任何变化。
+被否方案：在 `HdmvSubtitleProviderImpl::RequestFrame` 内每帧读取 consumer
+选项。run `39984554888` 的该实现导致真实播放稳定性退化和花屏，已撤回。
 
 ## D26：位图字幕的实际后端显示为 Bitmap (internal)
 
@@ -204,3 +201,10 @@ PGS/DVB 走 `CompositionObject` 位图管线，不经过 libass、CSRI 或 VSFil
 渲染器。原先把非文本流的实际后端显示为 `VSFilter`，会让用户误以为 HDR 设置
 没有生效是因为后端选错。属性页现在根据 `BOOL_IS_BITMAP` 显示
 `Bitmap (internal)`；API 返回值保持兼容。
+
+## D27：SUP 的目标是 PQ 预编码，不是 SDR 直通
+
+SUP/PGS 调色板仍是 SDR 8bit YCbCr。修复目标是把目标 HDR 亮度按 PQ 曲线
+编码回 8bit SDR 容器码值（例如 203 nits → 148），再由 madVR 的 HDR 处理
+恢复绝对亮度。直接关闭映射让原始 SDR 码值进入 HDR 管线，正是需要解决的过曝
+路径，不作为默认或目标方案。

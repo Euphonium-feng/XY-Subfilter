@@ -47,6 +47,7 @@ release-x64 / debug-x64 均 success）。真实播放器存在**疑似稳定性�
 与本次改动存在因果关系。真实显示环境下的稳定性、观感与排版见 `TODO.md`。
 
 2026-10-24 真实播放反馈：SUP/PGS 在 HDR 下切换 HDR 模式或白点没有可见变化，
-说明属性页配置没有可靠到达实际位图 provider。已改为在 `RequestFrame` 渲染前
-从 consumer 重新读取 HDR 模式与白点，并将位图后端标签改为 `Bitmap (internal)`；
-该修复已进入云端构建验证，真实播放器复测尚未完成。
+说明属性页配置没有可靠到达实际位图 provider。随后尝试的 provider 每帧读取
+consumer 版本（run `39984554888`）造成真实播放稳定性退化和花屏，已撤回。
+当前安全修复是在 HDR 选项变化后清除 consumer 缓存帧，并将位图后端标签改为
+`Bitmap (internal)`；云端构建和真实播放器复测尚待完成。

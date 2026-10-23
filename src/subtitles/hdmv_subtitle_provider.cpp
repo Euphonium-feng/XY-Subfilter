@@ -11,51 +11,6 @@
 #define TRACE_SUB_PROVIDER(msg)
 #endif
 
-namespace
-{
-HdrColor::Config ReadBitmapHdrConfig(IXyOptions* consumer)
-{
-    int mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
-    int white_nits = int(HdrColor::DEFAULT_WHITE_NITS);
-    if (!consumer
-        || FAILED(consumer->XyGetInt(DirectVobSubXyOptions::INT_PGS_HDR_MODE, &mode)))
-    {
-        return HdrColor::NormalizeConfig(HdrColor::MAP_OFF, white_nits);
-    }
-    if (FAILED(consumer->XyGetInt(DirectVobSubXyOptions::INT_PGS_HDR_WHITE_NITS, &white_nits))) {
-        white_nits = int(HdrColor::DEFAULT_WHITE_NITS);
-    }
-
-    switch (mode)
-    {
-    case DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED:
-        return HdrColor::NormalizeConfig(HdrColor::MAP_OFF, white_nits);
-    case DirectVobSubXyOptions::PGS_HDR_MODE_PQ:
-        return HdrColor::NormalizeConfig(HdrColor::MAP_PQ, white_nits);
-    case DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE:
-        return HdrColor::NormalizeConfig(HdrColor::MAP_RELATIVE_WHITE, white_nits);
-    case DirectVobSubXyOptions::PGS_HDR_MODE_AUTO:
-    default:
-        break;
-    }
-
-    bool likely_hdr = false;
-    LPWSTR matrix = NULL;
-    int chars = 0;
-    const HRESULT string_hr = consumer->XyGetString(
-        DirectVobSubXyOptions::STRING_CONSUMER_YUV_MATRIX, &matrix, &chars);
-    if (SUCCEEDED(string_hr) && matrix)
-    {
-        likely_hdr = CStringW(matrix, chars).Right(4).CompareNoCase(L"2020") == 0;
-    }
-    if (matrix) {
-        LocalFree(matrix);
-    }
-    return HdrColor::NormalizeConfig(
-        likely_hdr ? HdrColor::MAP_PQ : HdrColor::MAP_OFF, white_nits);
-}
-}
-
 //
 // HdmvSubtitleProviderImpl
 //
@@ -93,10 +48,6 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
     *subRenderFrame = NULL;
 
     HRESULT hr = NOERROR;
-
-    // Read the options at the point of rendering. This keeps a manual HDR
-    // change effective even if the one-time stream configuration is stale.
-    m_pSub->SetHdrConfig(ReadBitmapHdrConfig(m_consumer));
 
     POSITION pos;
     CSize MaxTextureSize, VideoSize;

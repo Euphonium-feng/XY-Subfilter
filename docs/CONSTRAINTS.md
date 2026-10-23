@@ -54,6 +54,8 @@
 - 属性页由宿主 UI 线程创建，不继承滤镜线程的 `SetThreadUILanguage`；页面入口需自行切换资源语言。
 - 缓存失效必须覆盖两层：libass 的 `m_last_frame`/`BitmapMruCache`，以及旧渲染器的 `DrawItemHashKey`（后者已对完整 `switchpts` 做 `memcmp`）。
 - 文本 HDR 默认必须解析为 `MAP_OFF`，否则 `libass_regression_test` 的 golden SHA256 基线会全部失效。
-- 位图 provider 在 `RequestFrame` 内读取 consumer 选项时，不能再次获取
-  `m_csFilter`；HDR 相关读取走 `m_csProviderFields`，且 `SetHdrMode` 在调用
-  provider 前释放该锁，防止与属性页线程形成锁顺序反转。
+- 不得在 `HdmvSubtitleProviderImpl::RequestFrame` 内每帧回调 consumer 读取
+  HDR 选项；该路径已在真实播放中导致稳定性退化和花屏。选项变化后清空
+  consumer 缓存帧，而不是把配置读取放到渲染热路径。
+- SUP/PGS 的目标是先把 HDR 绝对亮度按 PQ 曲线编码到 8bit SDR 容器，再由
+  madVR 做 HDR 处理；SDR 直通只用于对照，不是默认方案。
