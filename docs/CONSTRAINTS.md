@@ -73,6 +73,10 @@
   provider 的失效判据必须比较完整 HDR 配置。
 - 属性页一次 Apply 引发的 RGB/HDR 选项变化必须合并，只执行一次重新渲染和一次
   `ISubRenderConsumer2::Clear()`。
+- XySubFilter 的属性页必须共用 `360×280` DLU 的窗口尺寸；Main 与 More 使用
+  左右两栏，不允许再退回高窄的纵向布局。
+- 即时应用会重建控件文本。必须保留正在编辑的 `Edit` 控件选区/插入符，且在
+  归一化文本与当前文本相同时不得再次调用 `SetWindowText`。
 - SUP/PGS 的目标是先把 HDR 绝对亮度按 PQ 曲线编码到 8bit SDR 容器，再由
   madVR 做 HDR 处理；SDR 直通只用于对照，不是默认方案。
 - `Relative white` 已证明会让 madVR 路径过曝，不再暴露给用户；保留枚举值只为避免

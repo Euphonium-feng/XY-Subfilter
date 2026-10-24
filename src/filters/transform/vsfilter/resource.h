@@ -265,12 +265,15 @@
 #define IDS_RG_TEXT_HDR_MODE            1082
 #define IDC_COMBO_TEXT_HDR_MODE         353
 #define IDC_HDR_STATUS                  354
+#define IDD_XY_SUB_FILTER_ABOUTPAGE     360
+#define IDD_XY_SUB_FILTER_PATHSPAGE     361
+#define IDD_XY_SUB_FILTER_TIMINGPAGE    362
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        339
+#define _APS_NEXT_RESOURCE_VALUE        363
 #define _APS_NEXT_COMMAND_VALUE         32770
 #define _APS_NEXT_CONTROL_VALUE         355
 #define _APS_NEXT_SYMED_VALUE           210

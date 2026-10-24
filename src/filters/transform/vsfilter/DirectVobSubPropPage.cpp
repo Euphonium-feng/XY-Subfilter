@@ -36,6 +36,57 @@
 
 namespace
 {
+struct EditSelection
+{
+    HWND hwnd = NULL;
+    DWORD start = 0;
+    DWORD end = 0;
+};
+
+EditSelection CaptureEditSelection(HWND dialog)
+{
+    EditSelection selection;
+    HWND focus = ::GetFocus();
+    if (!focus || !::IsChild(dialog, focus)) {
+        return selection;
+    }
+
+    WCHAR class_name[16] = {};
+    if (!::GetClassNameW(focus, class_name, _countof(class_name))
+        || _wcsicmp(class_name, L"Edit") != 0) {
+        return selection;
+    }
+
+    selection.hwnd = focus;
+    ::SendMessageW(focus, EM_GETSEL,
+        reinterpret_cast<WPARAM>(&selection.start),
+        reinterpret_cast<LPARAM>(&selection.end));
+    return selection;
+}
+
+void RestoreEditSelection(HWND dialog, const EditSelection& selection)
+{
+    if (!selection.hwnd || !::IsWindow(selection.hwnd)
+        || !::IsChild(dialog, selection.hwnd)) {
+        return;
+    }
+
+    const int text_length = ::GetWindowTextLengthW(selection.hwnd);
+    const DWORD start = min(selection.start, static_cast<DWORD>(text_length));
+    const DWORD end = min(selection.end, static_cast<DWORD>(text_length));
+    ::SetFocus(selection.hwnd);
+    ::SendMessageW(selection.hwnd, EM_SETSEL, start, end);
+}
+
+void SetEditTextIfChanged(CEdit& edit, const CString& text)
+{
+    CString current;
+    edit.GetWindowText(current);
+    if (current != text) {
+        edit.SetWindowText(text);
+    }
+}
+
 void PopulateTextRendererModeCombo(CComboBox& combo, int selected_mode)
 {
     struct Entry
@@ -406,10 +457,14 @@ HRESULT CDVSBasePPage::OnApplyChanges()
 
     if(m_bIsInitialized)
     {
+        // Instant-apply rebuilds the controls, which would otherwise move the
+        // caret in a numeric edit box back to the start after every keystroke.
+        const EditSelection selection = CaptureEditSelection(m_Dlg);
         OnDeactivate();
         UpdateObjectData(true);
         m_pDirectVobSub->UpdateRegistry(); // *
         OnActivate();
+        RestoreEditSelection(m_Dlg, selection);
     }
 
     return NOERROR;
@@ -960,8 +1015,10 @@ void CDVSMiscPPage::UpdateControlData(bool fSave)
 /* CDVSTimingPPage */
 
 CDVSTimingPPage::CDVSTimingPPage( LPUNKNOWN lpunk, HRESULT* phr
-    , TCHAR *pName /*= NAME("DirectVobSub Timing Property Page")*/ )
-    : CDVSBasePPage(pName, lpunk, IDD_DVSTIMINGPAGE, IDD_DVSTIMINGPAGE)
+    , TCHAR *pName /*= NAME("DirectVobSub Timing Property Page")*/, int dialogId )
+    : CDVSBasePPage(pName, lpunk
+        , dialogId ? dialogId : IDD_DVSTIMINGPAGE
+        , dialogId ? dialogId : IDD_DVSTIMINGPAGE)
 {
     BindControl(IDC_SPIN5, m_subdelay);
     BindControl(IDC_SPIN6, m_subspeedmul);
@@ -1252,8 +1309,11 @@ void CDVSMorePPage::UpdateControlData(bool fSave)
 
 /* CDVSAboutPPage */
 
-CDVSAboutPPage::CDVSAboutPPage( LPUNKNOWN lpunk, HRESULT* phr, TCHAR* pName/*=NAME("About Property Page")*/ )
-    : CDVSBasePPage(pName, lpunk, IDD_DVSABOUTPAGE, IDD_DVSABOUTPAGE)
+CDVSAboutPPage::CDVSAboutPPage( LPUNKNOWN lpunk, HRESULT* phr
+    , TCHAR* pName/*=NAME("About Property Page")*/, int dialogId )
+    : CDVSBasePPage(pName, lpunk
+        , dialogId ? dialogId : IDD_DVSABOUTPAGE
+        , dialogId ? dialogId : IDD_DVSABOUTPAGE)
 {
 
 }
@@ -1551,8 +1611,10 @@ CDVSColorPPage::~CDVSColorPPage()
 /* CDVSPathsPPage */
 
 CDVSPathsPPage::CDVSPathsPPage( LPUNKNOWN lpunk, HRESULT* phr
-    , TCHAR* pName /*= NAME("DirectVobSub Paths Property Page")*/ )
-    : CDVSBasePPage(pName, lpunk, IDD_DVSPATHSPAGE, IDD_DVSPATHSPAGE)
+    , TCHAR* pName /*= NAME("DirectVobSub Paths Property Page")*/, int dialogId )
+    : CDVSBasePPage(pName, lpunk
+        , dialogId ? dialogId : IDD_DVSPATHSPAGE
+        , dialogId ? dialogId : IDD_DVSPATHSPAGE)
 {
     BindControl(IDC_PATHLIST, m_pathlist);
     BindControl(IDC_PATHEDIT, m_path);
@@ -1717,6 +1779,27 @@ void CDVSPathsPPage::UpdateControlData(bool fSave)
         m_remove.EnableWindow(FALSE);
         m_add.EnableWindow(TRUE);
     }
+}
+
+//
+// CXySubFilter pages
+//
+CXySubFilterTimingPPage::CXySubFilterTimingPPage(LPUNKNOWN pUnk, HRESULT* phr
+    , TCHAR* pName)
+    : CDVSTimingPPage(pUnk, phr, pName, IDD_XY_SUB_FILTER_TIMINGPAGE)
+{
+}
+
+CXySubFilterPathsPPage::CXySubFilterPathsPPage(LPUNKNOWN pUnk, HRESULT* phr
+    , TCHAR* pName)
+    : CDVSPathsPPage(pUnk, phr, pName, IDD_XY_SUB_FILTER_PATHSPAGE)
+{
+}
+
+CXySubFilterAboutPPage::CXySubFilterAboutPPage(LPUNKNOWN pUnk, HRESULT* phr
+    , TCHAR* pName)
+    : CDVSAboutPPage(pUnk, phr, pName, IDD_XY_SUB_FILTER_ABOUTPAGE)
+{
 }
 
 //
@@ -2560,7 +2643,7 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         m_spin_pgs_hdr_white_nits.SetRange32(50, 1000);
         CString hdr_white_str;
         hdr_white_str.Format(_T("%d"), m_pgs_hdr_white_nits);
-        m_edit_pgs_hdr_white_nits.SetWindowText(hdr_white_str);
+        SetEditTextIfChanged(m_edit_pgs_hdr_white_nits, hdr_white_str);
 
         m_checkbox_render_to_original_video_size.SetCheck(m_render_to_original_video_size);
         PopulateTextRendererModeCombo(m_text_renderer_mode_combo, m_text_renderer_mode);

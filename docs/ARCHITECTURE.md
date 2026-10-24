@@ -176,5 +176,14 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 - 生效路径：`DirectVobSubImpl::ApplyUiLanguage` 设置滤镜线程语言；属性页另在 `GetPageInfo` / `Activate` 入口调用 `ApplyActiveUiLanguageToCurrentThread()`，因为属性页运行在宿主 UI 线程上。
 - 位图字幕不使用 libass/CSRI/VSFilter 文本渲染器；属性页对非文本流显示
   `Bitmap (internal)`，避免把 PGS/DVB 的“实际后端”误报为 VSFilter。
-- More 页的 HDR 区域采用两列四行布局；底部状态行显示解析结果、传递函数、side data
-  和 `Clear()` 状态。Relative white 仅保留内部兼容值，不再出现在下拉菜单。
+- XySubFilter 的 Main / More / Timing / Paths / About 统一采用 `360×280` DLU。
+  Main 与 More 使用左右两栏：More 左栏为缓存、布局和行为选项，右栏为字幕输出、
+  文本渲染器与重定位选项；HDR 状态独占底部整行。
+- XySubFilter 的 Timing / Paths / About 使用独立资源
+  `IDD_XY_SUB_FILTER_*PAGE`；DirectVobSub 原有的
+  `IDD_DVSTIMINGPAGE` / `IDD_DVSPATHSPAGE` / `IDD_DVSABOUTPAGE` 保持原尺寸，
+  不会因 XySubFilter 的布局调整而被拉宽。
+- 即时应用（`OnApplyChanges`）会重建页面控件。基础属性页在重建前后捕获并恢复
+  当前 `Edit` 控件的选区和插入符；白点文本仅在归一化结果确实变化时才重写，
+  避免连续键入时插入符跳回行首。
+- Relative white 仅保留内部兼容值，不再出现在下拉菜单。

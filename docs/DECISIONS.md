@@ -266,4 +266,35 @@ SUP 位图纳入 HDR 处理，实测继续过曝。用户界面只保留 Auto / 
 
 把较长的 HDR 诊断拼进 Main 页的 Actual backend 会截断两边内容。Main 页只显示
 实际 backend；More 页底部单独显示 `Auto>PQ`、白点、`tf/sd/matrix` 与 `Clear()`
-状态。More 页 HDR 控件改为两列四行，避免原三列窄下拉框截断文本。
+状态。具体页面尺寸和分栏由 D33 取代。
+
+## D33：属性页统一为宽幅两栏，并保留编辑选区
+
+属性页原先有多套尺寸：Main 为 `247×262` DLU，More 为 `247×420` DLU，其余页为
+`247×188` DLU。More 页在 HDR 控件增加后变成纵向长页，切换标签时窗口尺寸也来回
+变化。
+
+现在 XySubFilter 的 Main / More / Timing / Paths / About 全部使用 `360×280` DLU。
+Main 和 More 重排为左右两栏：
+
+- Main 左栏：常规设置、文字设置、加载、系统托盘。
+- Main 右栏：VobSub 设置、SSA/ASS 设置与实际渲染后端。
+- More 左栏：缓存、渲染布局、即时应用/重新加载等行为。
+- More 右栏：字幕输出、HDR、文本渲染器、视频渲染器重定位。
+- HDR 诊断保留为底部整行，不挤压任何下拉框。
+
+Timing / Paths / About 原先与 DirectVobSub 共用对话框资源。为统一 XySubFilter
+页面尺寸而不改变 DirectVobSub 的属性页，新增
+`IDD_XY_SUB_FILTER_TIMINGPAGE` / `IDD_XY_SUB_FILTER_PATHSPAGE` /
+`IDD_XY_SUB_FILTER_ABOUTPAGE`，并给对应页面构造函数增加可选 `dialogId`；
+共享资源保持原尺寸。
+
+白点输入的原问题不是输入法，而是即时应用路径：每次 `EN_CHANGE` 都会执行
+`UpdateControlData(false)`，用 `SetWindowText` 重写编辑框，Windows 因而把插入符
+移到行首。修复分两层：
+
+1. 页面应用前后保存和恢复当前 `Edit` 的 `EM_GETSEL` 选区与焦点。
+2. 白点归一化文本和当前文本相同时不调用 `SetWindowText`。
+
+被否方案：关闭白点的即时应用。这样会改变现有交互语义，而且其他触发整页刷新的
+选项仍可能出现同类光标跳动。

@@ -150,7 +150,8 @@ protected:
 	virtual void UpdateObjectData(bool fSave);
 
 public:
-    CDVSTimingPPage(LPUNKNOWN lpunk, HRESULT* phr, TCHAR *pName = NAME("DirectVobSub Timing Property Page"));
+    CDVSTimingPPage(LPUNKNOWN lpunk, HRESULT* phr,
+        TCHAR *pName = NAME("DirectVobSub Timing Property Page"), int dialogId = 0);
 };
 
 [uuid("69CE757B-E8C0-4B0A-9EA0-CEA284096F98")]
@@ -183,7 +184,8 @@ public:
 class CDVSAboutPPage : public CDVSBasePPage
 {
 public:
-    CDVSAboutPPage(LPUNKNOWN lpunk, HRESULT* phr, TCHAR* pName=NAME("About Property Page"));
+    CDVSAboutPPage(LPUNKNOWN lpunk, HRESULT* phr,
+        TCHAR* pName = NAME("About Property Page"), int dialogId = 0);
     
     bool OnMessage(UINT uMsg, WPARAM wParam, LPARAM lParam);
 };
@@ -245,7 +247,8 @@ protected:
 	virtual void UpdateObjectData(bool fSave);
 
 public:
-    CDVSPathsPPage(LPUNKNOWN lpunk, HRESULT* phr, TCHAR* pName = NAME("DirectVobSub Paths Property Page"));
+    CDVSPathsPPage(LPUNKNOWN lpunk, HRESULT* phr,
+        TCHAR* pName = NAME("DirectVobSub Paths Property Page"), int dialogId = 0);
 };
 
 //
@@ -343,8 +346,7 @@ class CXySubFilterTimingPPage : public CDVSTimingPPage
 {
 public:
     CXySubFilterTimingPPage(LPUNKNOWN lpunk, HRESULT* phr
-        , TCHAR *pName = NAME("XySubFilter Property Page (timing)"))
-        : CDVSTimingPPage(lpunk, phr, pName) {}
+        , TCHAR *pName = NAME("XySubFilter Property Page (timing)"));
 };
 
 [uuid("26DD9A01-7F95-40DE-B53D-4B4CE4023280")]
@@ -352,16 +354,15 @@ class CXySubFilterPathsPPage : public CDVSPathsPPage
 {
 public:
     CXySubFilterPathsPPage(LPUNKNOWN lpunk, HRESULT* phr
-        , TCHAR* pName = NAME("XySubFilter Property Page (path)"))
-        : CDVSPathsPPage(lpunk, phr, pName) {}
+        , TCHAR* pName = NAME("XySubFilter Property Page (path)"));
 };
 
 [uuid("D0DE7ADC-7DC6-43EC-912D-ABD44D7453FB")]
 class CXySubFilterAboutPPage : public CDVSAboutPPage
 {
 public:
-    CXySubFilterAboutPPage(LPUNKNOWN lpunk, HRESULT* phr, TCHAR* pName=NAME("XySubFilter Property Page (about)"))
-        : CDVSAboutPPage(lpunk, phr, pName) {}
+    CXySubFilterAboutPPage(LPUNKNOWN lpunk, HRESULT* phr,
+        TCHAR* pName = NAME("XySubFilter Property Page (about)"));
 };
 
 //
