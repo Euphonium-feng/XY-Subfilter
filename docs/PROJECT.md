@@ -72,4 +72,4 @@ PQ/HLG 的情况。CI run `40011453627` 三矩阵全绿；实机复测暂缓，�
 把每个视频引脚的 filter CLSID、pin、media type、`dwControlFlags` 写入
 `%TEMP%\xy_hdr_diag.txt`。同时通过源滤镜 `IFileSourceFilter::GetCurFile()` 读取
 视频文件名，把标准化命名中的独立 `HDR` 标记作为回退；`HDRip` 这类词不会误匹配。
-代码待 CI。
+CI run `40068012174` 三矩阵全绿；实机复测待用户恢复。

@@ -28,7 +28,8 @@ consumer 转换后的引脚；同时接受未设 colour-info 标志但明确为 
 传递函数未知时的 Auto 回退；连接阶段写 `%TEMP%\xy_hdr_diag.txt`，记录每个视频
 引脚的 filter CLSID、pin、subtype、formattype 和原始 `dwControlFlags`。
 另从源滤镜读取视频文件名，文件名中独立的 `HDR`/`HDR10` 标记会覆盖错误的 SDR
-元数据；`HDRip` 被排除。待 CI 后需要用户再测一次并提供该诊断文件。
+元数据；`HDRip` 被排除。CI run `40068012174` 三矩阵全绿；待用户再测并检查
+`%TEMP%\xy_hdr_diag.txt`。
 
 ### 稳定性诊断（2026-10-23）
 
@@ -127,6 +128,7 @@ white` 的输出。
 | `39997437527` | HDR 信号检测、generation、合并刷新与调色板集成测试 | success |
 | `40007950976` | consumer 矩阵上报、HDR side data 事件、SubPic 失效修复与属性页重排 | success |
 | `40011453627` | 全图 HDR 信号扫描、无 colour-info 的 PQ/HLG 码检测 | success |
+| `40068012174` | 文件名 HDR 回退、BT.2020 回退与连接诊断文件 | success |
 
 `39962614076` 的两项失败：
 
@@ -150,7 +152,7 @@ white` 的输出。
 
 1. 云端 CI 三矩阵完成后，在用户恢复测试时核对 PotPlayer 实际加载 DLL 的 SHA256。
    最新 x64 artifact 的 SHA256 为
-   `e631f2467b8c05f165fa5fc966364113f2e26444a5c87e7728a094502f629365`。
+   `a4819b51763453a76ef9dc2bb75e4144581c02f5229cb3be57b6332a612e37f8`。
 
 2. 属性页状态行应显示 `Auto>PQ 203` 且带 `sd1` 或 BT.2020；若仍显示 Auto>Off，
    记录 `tf/sd/matrix` 三项后继续修检测来源。
