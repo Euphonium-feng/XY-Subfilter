@@ -116,15 +116,52 @@ VideoMatrix ClassifyVideoMatrix(int transfer_matrix, bool color_info_present)
     }
 }
 
-bool ShouldUsePqForAuto(HdrSignal signal, bool bt2020_matrix)
+bool ShouldUsePqForAuto(
+    HdrSignal signal, bool bt2020_matrix, bool filename_says_hdr)
 {
     if (signal == HDR_SIGNAL_HDR) {
+        return true;
+    }
+    // Standardized release names are a useful fallback when a decoder exposes
+    // BT.709/unknown metadata for content that is actually HDR.
+    if (filename_says_hdr) {
         return true;
     }
     if (signal == HDR_SIGNAL_SDR) {
         return false;
     }
     return bt2020_matrix;
+}
+
+bool FilenameIndicatesHdr(const wchar_t* path)
+{
+    if (!path) {
+        return false;
+    }
+
+    const wchar_t* filename = path;
+    for (const wchar_t* p = path; *p; ++p) {
+        if (*p == L'\\' || *p == L'/') {
+            filename = p + 1;
+        }
+    }
+
+    for (const wchar_t* p = filename; p[0] && p[1] && p[2]; ++p) {
+        const wchar_t previous = p == filename ? 0 : p[-1];
+        const bool left_boundary = !(previous >= L'0' && previous <= L'9')
+            && !(previous >= L'A' && previous <= L'Z')
+            && !(previous >= L'a' && previous <= L'z');
+        const bool right_is_letter =
+            (p[3] >= L'A' && p[3] <= L'Z')
+            || (p[3] >= L'a' && p[3] <= L'z');
+        if (left_boundary && !right_is_letter
+            && (p[0] == L'H' || p[0] == L'h')
+            && (p[1] == L'D' || p[1] == L'd')
+            && (p[2] == L'R' || p[2] == L'r')) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool IsPqMapping(const Config& config)

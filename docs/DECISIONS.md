@@ -232,6 +232,14 @@ SUP/PGS 调色板仍是 SDR 8bit YCbCr。修复目标是把目标 HDR 亮度按 
 `AMCONTROL_COLORINFO_PRESENT` 也接受；普通 SDR 曲线仍必须带 colour-info 标志。
 不按 10bit 位深猜测 HDR，因为实测 SDR 片源也可以是 10bit。
 
+第三次实机反馈仍为 Auto=Off 后，graph scan 保留并上报 BT.2020 matrix 位，
+在 transfer 未知时用其触发 PQ；同时在 `%TEMP%\xy_hdr_diag.txt` 记录所有视频
+引脚的原始媒体类型和 `dwControlFlags`，以便下一次不再依赖属性页人工抄写。
+
+用户的视频文件命名标准化，因此增加 `IFileSourceFilter` 文件名回退。独立的
+`HDR` 标记优先于 BT.709/unknown 元数据；匹配只作用于文件名且排除 `HDRip`，
+避免把普通高清录制误判为 HDR。
+
 ## D29：HDR generation 与属性页批量刷新
 
 只比较 mode/white 不足以覆盖“配置被重新应用但数值相同”和 consumer HDR 提示变化。

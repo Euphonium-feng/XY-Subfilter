@@ -210,6 +210,22 @@ TEST(HdrColorTest, ExplicitSdrHintOverridesBt2020MatrixFallback)
     EXPECT_FALSE(HdrColor::ShouldUsePqForAuto(HdrColor::HDR_SIGNAL_SDR, true));
     EXPECT_TRUE(HdrColor::ShouldUsePqForAuto(HdrColor::HDR_SIGNAL_UNKNOWN, true));
     EXPECT_FALSE(HdrColor::ShouldUsePqForAuto(HdrColor::HDR_SIGNAL_UNKNOWN, false));
+    EXPECT_TRUE(HdrColor::ShouldUsePqForAuto(
+        HdrColor::HDR_SIGNAL_SDR, false, true));
+}
+
+TEST(HdrColorTest, DetectsStandardizedHdrFilename)
+{
+    EXPECT_TRUE(HdrColor::FilenameIndicatesHdr(
+        L"E:\\Movies\\Project.A.2160p.UHD.HDR.mkv"));
+    EXPECT_TRUE(HdrColor::FilenameIndicatesHdr(
+        L"E:\\Movies\\Project.A.2160p.UHD.hdr10.mkv"));
+    EXPECT_FALSE(HdrColor::FilenameIndicatesHdr(
+        L"E:\\Movies\\Project.A.1080p.HDRip.mkv"));
+    EXPECT_FALSE(HdrColor::FilenameIndicatesHdr(
+        L"E:\\Movies\\HDR\\Project.A.2160p.SDR.mkv"));
+    EXPECT_FALSE(HdrColor::FilenameIndicatesHdr(
+        L"E:\\Movies\\Project.A.2160p.BluRay.mkv"));
 }
 
 TEST(HdrColorTest, SixteenBitWordUsesTenBitPqSample)

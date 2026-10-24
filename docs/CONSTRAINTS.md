@@ -61,6 +61,10 @@
   BT.2020 矩阵只是在没有传递函数信息时的回退，不能覆盖明确的 SDR 曲线。
 - 不能按 10bit/P010 位深自动判定 HDR；10bit SDR 同样常见。consumer 引脚不含
   元数据时必须扫描上游 DirectShow 图，但不得把图扫描放进逐帧热路径。
+- Auto 的 BT.2020 回退必须同时接受 consumer `yuvMatrix` 字符串和图内
+  `VIDEOINFOHEADER2` matrix 位；明确的 SDR transfer 仍优先。
+- 文件名回退只检查源滤镜返回的文件名本身，不检查目录；`HDR` 必须为独立标记，
+  不能把 `HDRip` 当作 HDR。
 - 内置 consumer 必须在媒体类型变化时填充 `yuvMatrix`，否则 provider 的 BT.2020
   回退没有输入；HDR side data 只能作为事件提示，不得恢复每帧读取 consumer 配置。
 - 每次 HDR 配置变化必须递增 generation，并让 SubPic、调色板和对外 bitmap ID

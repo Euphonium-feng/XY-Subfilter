@@ -24,6 +24,12 @@ Relative white 不再显示。CI run `40007950976` 三矩阵全绿，尚待实�
 consumer 转换后的引脚；同时接受未设 colour-info 标志但明确为 PQ/HLG 的传递函数
 码。CI run `40011453627` 三矩阵全绿，待实机复测。
 
+该版实机仍为 Auto=Off。继续修改为：扫描图时同时记录 BT.2020 matrix 位，作为
+传递函数未知时的 Auto 回退；连接阶段写 `%TEMP%\xy_hdr_diag.txt`，记录每个视频
+引脚的 filter CLSID、pin、subtype、formattype 和原始 `dwControlFlags`。
+另从源滤镜读取视频文件名，文件名中独立的 `HDR`/`HDR10` 标记会覆盖错误的 SDR
+元数据；`HDRip` 被排除。待 CI 后需要用户再测一次并提供该诊断文件。
+
 ### 稳定性诊断（2026-10-23）
 
 - 实际链路为 PotPlayer 26.07.01 + LAV 0.82 + madVR 0.92.17 +

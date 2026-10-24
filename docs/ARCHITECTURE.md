@@ -149,6 +149,14 @@ HDR 配置还携带递增 generation；`HdmvSubtitleProviderImpl`、`Composition
 DirectShow 图，优先采用任何解码器/中间引脚上的 PQ/HLG 信息。该扫描只在 consumer
 连接阶段执行，不进入逐帧热路径。
 
+检测同时保留 BT.2020 matrix 位；当传递函数未知时，`2020` 与 consumer 的
+`yuvMatrix` 字符串一样作为 Auto 回退。连接阶段还会把视频引脚元数据写入
+`%TEMP%\xy_hdr_diag.txt`，正常播放不受影响。
+
+图扫描同时查询各滤镜的 `IFileSourceFilter::GetCurFile()`。标准化视频文件名中的
+独立 `HDR` 标记优先于错误的 SDR 元数据；匹配限定在文件名而非目录，并要求 `HDR`
+右侧不是字母，以避免 `HDRip` 误判。
+
 内置 `XySubFilterConsumer` 在输入媒体类型变化时把同一组颜色信息转换成
 `yuvMatrix`（如 `TV.2020`）供 provider 读取；HDR10/HDR10+/DoVi side data
 通过只写选项 `isHdrVideo` 发出一次性事件。provider 只记录该事件和递增

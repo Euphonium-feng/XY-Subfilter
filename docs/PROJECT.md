@@ -67,3 +67,9 @@ BT.2020/PQ，而当前播放的 SDR 文件虽是 10bit，但颜色元数据为 B
 因此不能按位深猜测 HDR。检测现改为扫描整张 DirectShow 图，优先寻找解码器
 输出引脚上的 PQ/HLG，并允许未设置 colour-info 标志但传递函数码明确为
 PQ/HLG 的情况。CI run `40011453627` 三矩阵全绿；实机复测暂缓，等待用户恢复测试。
+
+该轮仍未改善 Auto。现增加 BT.2020 矩阵位作为独立回退信号，并在 consumer 连接时
+把每个视频引脚的 filter CLSID、pin、media type、`dwControlFlags` 写入
+`%TEMP%\xy_hdr_diag.txt`。同时通过源滤镜 `IFileSourceFilter::GetCurFile()` 读取
+视频文件名，把标准化命名中的独立 `HDR` 标记作为回退；`HDRip` 这类词不会误匹配。
+代码待 CI。

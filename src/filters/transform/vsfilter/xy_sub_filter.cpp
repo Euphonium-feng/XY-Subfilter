@@ -56,11 +56,13 @@ struct VideoColorMetadata
     HdrColor::HdrSignal signal;
     int transfer_function;
     DWORD control_flags;
+    HdrColor::VideoMatrix matrix;
 
     VideoColorMetadata()
         : signal(HdrColor::HDR_SIGNAL_UNKNOWN)
         , transfer_function(-1)
         , control_flags(0)
+        , matrix(HdrColor::VIDEO_MATRIX_UNKNOWN)
     {
     }
 };
@@ -80,11 +82,37 @@ VideoColorMetadata ReadVideoColorMetadata(const CMediaType& media_type)
     const bool color_info_present =
         (flags & AMCONTROL_USED) != 0
         && (flags & AMCONTROL_COLORINFO_PRESENT) != 0;
+    const int transfer_matrix = int((flags & 0x00038000) >> 15);
     metadata.control_flags = flags;
     metadata.transfer_function = int((flags & 0xF8000000) >> 27);
+    metadata.matrix = HdrColor::ClassifyVideoMatrix(
+        transfer_matrix, color_info_present);
     metadata.signal = HdrColor::ClassifyTransferFunction(
         metadata.transfer_function, color_info_present);
     return metadata;
+}
+
+void WriteHdrDiagnostic(const CStringW& text)
+{
+    wchar_t temp_path[MAX_PATH] = { 0 };
+    if (!GetTempPathW(_countof(temp_path), temp_path)) {
+        return;
+    }
+    CStringW path(temp_path);
+    path += L"xy_hdr_diag.txt";
+
+    FILE* file = NULL;
+    if (_wfopen_s(&file, path.GetString(), L"w, ccs=UTF-8") == 0 && file) {
+        fwprintf(file, L"%ls", text.GetString());
+        fclose(file);
+    }
+}
+
+CStringW GuidToString(const GUID& guid)
+{
+    wchar_t buffer[64] = { 0 };
+    StringFromGUID2(guid, buffer, _countof(buffer));
+    return CStringW(buffer);
 }
 }
 
@@ -2130,8 +2158,9 @@ CStringW XySubFilter::GetHdrStatusText()
     }
 
     CStringW signal;
-    signal.Format(L"tf%d/f%08x/sd%d/%ls", m_consumer_transfer_function,
-        m_consumer_control_flags, m_video_side_data_hdr ? 1 : 0,
+    signal.Format(L"tf%d/f%08x/b%d/n%d/sd%d/%ls", m_consumer_transfer_function,
+        m_consumer_control_flags, m_consumer_bt2020_matrix ? 1 : 0,
+        m_video_filename_hdr ? 1 : 0, m_video_side_data_hdr ? 1 : 0,
         m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].IsEmpty()
             ? L"?" : m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
     CStringW value;
@@ -3267,10 +3296,46 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
 bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
 {
     VideoColorMetadata selected;
-    auto inspect_filter = [&selected](IBaseFilter* filter) -> bool {
+    bool filename_hdr = false;
+    CStringW diagnostic;
+    auto inspect_filter =
+        [&selected, &filename_hdr, &diagnostic](IBaseFilter* filter) -> bool {
         CComPtr<IEnumPins> pins;
         if (!filter || FAILED(filter->EnumPins(&pins)) || !pins) {
             return false;
+        }
+
+        CStringW filter_name;
+        CLSID filter_id = GUID_NULL;
+        FILTER_INFO filter_info = { 0 };
+        filter->GetClassID(&filter_id);
+        if (SUCCEEDED(filter->QueryFilterInfo(&filter_info))) {
+            filter_name = filter_info.achName;
+            if (filter_info.pGraph) {
+                filter_info.pGraph->Release();
+            }
+        }
+
+        CComQIPtr<IFileSourceFilter> source(filter);
+        if (source) {
+            LPOLESTR source_path = NULL;
+            AM_MEDIA_TYPE source_type;
+            ZeroMemory(&source_type, sizeof(source_type));
+            if (SUCCEEDED(source->GetCurFile(&source_path, &source_type))
+                && source_path) {
+                filename_hdr = filename_hdr
+                    || HdrColor::FilenameIndicatesHdr(source_path);
+                diagnostic.AppendFormat(
+                    L"source=%ls nameHdr=%d\r\n", source_path,
+                    HdrColor::FilenameIndicatesHdr(source_path) ? 1 : 0);
+                CoTaskMemFree(source_path);
+            }
+            if (source_type.pbFormat) {
+                CoTaskMemFree(source_type.pbFormat);
+            }
+            if (source_type.pUnk) {
+                source_type.pUnk->Release();
+            }
         }
 
         CComPtr<IPin> pin;
@@ -3278,8 +3343,30 @@ bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
         while (pins->Next(1, &pin, &fetched) == S_OK) {
             CMediaType media_type;
             if (SUCCEEDED(pin->ConnectionMediaType(&media_type))) {
+                PIN_INFO pin_info = { 0 };
+                CStringW pin_name;
+                PIN_DIRECTION direction = PINDIR_INPUT;
+                pin->QueryDirection(&direction);
+                if (SUCCEEDED(pin->QueryPinInfo(&pin_info))) {
+                    pin_name = pin_info.achName;
+                    if (pin_info.pFilter) {
+                        pin_info.pFilter->Release();
+                    }
+                }
                 const VideoColorMetadata metadata =
                     ReadVideoColorMetadata(media_type);
+                if (media_type.majortype == MEDIATYPE_Video) {
+                    diagnostic.AppendFormat(
+                        L"filter=%ls clsid=%ls pin=%ls dir=%d major=%ls fmt=%ls sub=%ls "
+                        L"flags=0x%08x tf=%d matrix=%d signal=%d\r\n",
+                        filter_name.GetString(), GuidToString(filter_id).GetString(),
+                        pin_name.GetString(), int(direction),
+                        GuidToString(media_type.majortype).GetString(),
+                        GuidToString(media_type.formattype).GetString(),
+                        GuidToString(media_type.subtype).GetString(),
+                        metadata.control_flags, metadata.transfer_function,
+                        int(metadata.matrix), int(metadata.signal));
+                }
                 if (metadata.signal == HdrColor::HDR_SIGNAL_HDR) {
                     selected = metadata;
                     return true;
@@ -3318,20 +3405,31 @@ bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
 
     const HdrColor::HdrSignal signal = selected.signal;
     const int transfer_function = selected.transfer_function;
+    const bool bt2020_matrix = selected.matrix == HdrColor::VIDEO_MATRIX_2020;
 
     bool changed = false;
     {
         CAutoLock cAutoLock(&m_csProviderFields);
         changed = m_consumer_hdr_signal != signal
             || m_consumer_transfer_function != transfer_function
-            || m_consumer_control_flags != selected.control_flags;
+            || m_consumer_control_flags != selected.control_flags
+            || m_consumer_bt2020_matrix != bt2020_matrix
+            || m_video_filename_hdr != filename_hdr;
         m_consumer_hdr_signal = signal;
         m_consumer_transfer_function = transfer_function;
         m_consumer_control_flags = selected.control_flags;
+        m_consumer_bt2020_matrix = bt2020_matrix;
+        m_video_filename_hdr = filename_hdr;
     }
     if (changed) {
         InterlockedIncrement(&m_hdr_generation);
     }
+    diagnostic.AppendFormat(
+        L"RESULT signal=%d tf=%d flags=0x%08x matrix=%d bt2020=%d nameHdr=%d yuv=%ls\r\n",
+        int(signal), transfer_function, selected.control_flags, int(selected.matrix),
+        bt2020_matrix ? 1 : 0, filename_hdr ? 1 : 0,
+        m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
+    WriteHdrDiagnostic(diagnostic);
     XY_LOG_INFO("Consumer HDR signal:" << signal
         << " transfer function:" << transfer_function
         << " control flags:" << selected.control_flags);

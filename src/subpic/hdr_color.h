@@ -80,7 +80,11 @@ namespace HdrColor
 
     // Auto mode prefers an explicit consumer transfer-function hint. The
     // BT.2020 matrix is only a fallback when no transfer function is known.
-    bool ShouldUsePqForAuto(HdrSignal signal, bool bt2020_matrix);
+    bool ShouldUsePqForAuto(
+        HdrSignal signal, bool bt2020_matrix, bool filename_says_hdr = false);
+
+    // Non-Win32 helper for standardized media filenames containing "HDR".
+    bool FilenameIndicatesHdr(const wchar_t* path);
 
     // True when the configuration alters pixel output for the PQ mode.
     bool IsPqMapping(const Config& config);
