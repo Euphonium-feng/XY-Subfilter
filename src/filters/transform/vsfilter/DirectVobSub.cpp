@@ -24,6 +24,7 @@
 #include "VSFilter.h"
 #include "../../../subtitles/TextRendererMode.h"
 #include "../../../subpic/hdr_color.h"
+#include "../../../subpic/hdr_evidence.h"
 
 using namespace DirectVobSubXyOptions;
 
@@ -918,9 +919,12 @@ HdrColor::Config DirectVobSubImpl::ResolveHdrMode(int mode) const
     // unavailable; explicit modes always override both.
     const bool bt2020_matrix = m_consumer_bt2020_matrix
         || m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].Right(4).CompareNoCase(L"2020") == 0;
-    const bool likely_hdr = m_video_side_data_hdr
-        || HdrColor::ShouldUsePqForAuto(
-            m_consumer_hdr_signal, bt2020_matrix, m_video_filename_hdr);
+    HdrDetection::AutoHdrSignals auto_signals;
+    auto_signals.signal = m_consumer_hdr_signal;
+    auto_signals.bt2020_matrix = bt2020_matrix;
+    auto_signals.filename_says_hdr = m_video_filename_hdr;
+    auto_signals.side_data_says_hdr = m_video_side_data_hdr;
+    const bool likely_hdr = HdrDetection::ResolveAutoPq(auto_signals);
     return HdrColor::NormalizeConfig(
         likely_hdr ? HdrColor::MAP_PQ : HdrColor::MAP_OFF,
         normalized.white_nits, normalized.generation);

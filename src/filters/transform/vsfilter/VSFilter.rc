@@ -480,6 +480,7 @@ BEGIN
     LTEXT           "Text renderer for legacy VSFilter paths:",IDC_STATIC,193,181,152,8
     COMBOBOX        IDC_COMBO_TEXT_RENDERER_MODE,193,192,152,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "",IDC_HDR_STATUS,7,263,346,8
+    PUSHBUTTON      "Open log",IDC_HDR_DIAG_OPEN,310,245,43,14
     CONTROL         "Render To Original Video Size",IDC_CHECKBOX_RENDER_TO_ORIGINAL_VIDEO_SIZE,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,166,156,10
     EDITTEXT        IDC_EDIT_CACHE_SIZE,73,59,44,14,ES_AUTOHSCROLL,WS_EX_RIGHT
@@ -903,6 +904,55 @@ BEGIN
 #endif
 END
 
+// XySubFilter localized UI strings
+STRINGTABLE
+BEGIN
+    IDS_XY_UI_AUTO                   "Auto"
+    IDS_XY_UI_TV                     "TV"
+    IDS_XY_UI_PC                     "PC"
+    IDS_XY_UI_BT601                  "BT.601"
+    IDS_XY_UI_BT709                  "BT.709"
+    IDS_XY_UI_BT2020                 "BT.2020"
+    IDS_XY_UI_GUESS                  "Guess"
+    IDS_XY_UI_FORCE_TV               "Force TV"
+    IDS_XY_UI_HDR_OFF                "Off (SDR)"
+    IDS_XY_UI_HDR_PQ                 "PQ (absolute)"
+    IDS_XY_UI_ENGLISH                "English"
+    IDS_XY_UI_CHINESE                "Chinese (Simplified)"
+    IDS_XY_UI_SUBPIXEL_NONE          "None (fastest)"
+    IDS_XY_UI_SUBPIXEL_2X2           "2x2"
+    IDS_XY_UI_SUBPIXEL_4X4           "4x4"
+    IDS_XY_UI_SUBPIXEL_8X8_VSFILTER  "8x8 (VSFilter 2.39 default)"
+    IDS_XY_UI_SUBPIXEL_8X8_BILINEAR  "8x8 (bilinear)"
+    IDS_XY_UI_LAYOUT_ORIGINAL        "Use Original Video Size"
+    IDS_XY_UI_LAYOUT_AR_ADJUSTED     "Use AR Adjusted Video Size"
+    IDS_XY_UI_LAYOUT_CUSTOM          "Customize ..."
+    IDS_XY_UI_RENDERER_LEGACY_GDI    "Legacy GDI (TextOutW)"
+    IDS_XY_UI_RENDERER_AUTO_FALLBACK "Auto fallback"
+    IDS_XY_UI_RENDERER_UNISCRIBE     "Uniscribe"
+    IDS_XY_UI_BACKEND_LIBASS         "libass (default)"
+    IDS_XY_UI_BACKEND_VSFILTER       "VSFilter (legacy)"
+    IDS_XY_UI_BACKEND_CSRI           "CSRI (experimental)"
+    IDS_XY_UI_ACTUAL_LIBASS          "libass"
+    IDS_XY_UI_ACTUAL_VSFILTER        "VSFilter"
+    IDS_XY_UI_ACTUAL_CSRI            "CSRI"
+    IDS_XY_UI_ACTUAL_BITMAP          "Bitmap (internal)"
+    IDS_XY_UI_ALL_FILES_FILTER       "All files (*.*)|*.*||"
+    IDS_XY_UI_DLL_FILES_FILTER       "Dynamic Libraries (*.dll)|*.dll|All files (*.*)|*.*||"
+    IDS_XY_UI_CACHES_INFO_TITLE      "Caches Info"
+    IDS_XY_UI_CACHES_INFO_FORMAT     "Cache: stored/hit/query\n  Parser 1: %ld/%ld/%ld\n  Parser 2: %ld/%ld/%ld\n\n  LV4: %ld/%ld/%ld\t\tLV3: %ld/%ld/%ld\n  LV2: %ld/%ld/%ld\t\tLV1: %ld/%ld/%ld\n  LV0: %ld/%ld/%ld\n\n  Bitmap: %ld/%ld/%ld\t\tScan line: %ld/%ld/%ld\n  Relay key: %ld/%ld/%ld\t\tClipper: %ld/%ld/%ld\n\n  FW string pool: %ld/%ld/%ld\t\tFW bitmap key pool: %ld/%ld/%ld\n"
+    IDS_XY_UI_HDR_DIAG_TITLE         "HDR Diagnostic"
+    IDS_XY_UI_HDR_DIAG_MISSING       "The HDR diagnostic log has not been generated yet. Start playback through XySubFilter first."
+    IDS_XY_UI_HDR_DIAG_FAILED        "Unable to open the HDR diagnostic log."
+    IDS_XY_UI_GLOBAL_DEFAULT         "Global Default"
+    IDS_XY_UI_STYLES_TITLE           "Styles"
+    IDS_XY_UI_OUTPUT_COLUMN          "output"
+    IDS_XY_UI_INPUT_COLUMN           "input"
+    IDS_XY_UI_AUTO_CACHE_FORMAT      "(auto)%d"
+    IDS_XY_UI_STYLE_EDITOR_FAILED    "Failed to create Style editor dialog"
+    IDS_XY_UI_FATAL_TITLE            "Fatal"
+    IDS_XY_UI_CSRI_LOAD_FAILED_FORMAT "Failed to load CSRI renderer:\n%ls"
+END
 #endif    // English (United States) resources
 /////////////////////////////////////////////////////////////////////////////
 
@@ -1004,8 +1054,8 @@ FONT 9, "Microsoft YaHei UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "",IDC_STATIC,7,7,232,151
     LTEXT           "",IDC_VERSION,14,14,183,36
-    LTEXT           "Credits:\n- SAMI format support by Sanger && Wilowisp of SPKOR\n- Handling of some basic html style modifier tags in SAMI done by [maven]",IDC_STATIC,14,50,218,34
-    LTEXT           "- Advanced Text Renderer is using the 'Rasterizer' class \nof Avery Lee's subtitler plugin\n- Command line ppage launcher by @livier",IDC_STATIC,14,84,219,26
+    LTEXT           "鸣谢：\n- SAMI 格式支持：Sanger && Wilowisp（SPKOR）\n- SAMI 基础 HTML 样式标签处理：[maven]",IDC_STATIC,14,50,218,34
+    LTEXT           "高级文本渲染器使用 Avery Lee 字幕插件中的 'Rasterizer' 类\n- 命令行属性页启动器：@livier",IDC_STATIC,14,84,219,26
     LTEXT           "- 热键、繁体中文 && 简体中文本地化：Kii Ali <kiiali@cpatch.org>",IDC_STATIC,14,110,206,20
 END
 
@@ -1105,7 +1155,7 @@ IDD_DVSPATHSPAGE DIALOGEX 0, 0, 247, 188
 STYLE DS_SETFONT | WS_CHILD
 FONT 9, "Microsoft YaHei UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "The auto-loader will search these paths for matching subtitles:\n(a path may be absolute or relative)",IDC_STATIC,7,7,233,17
+    LTEXT           "自动加载器将在以下路径中查找匹配字幕：\n（路径可以是绝对路径或相对路径）",IDC_STATIC,7,7,233,17
     LISTBOX         IDC_PATHLIST,7,26,233,119,LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT | WS_VSCROLL | WS_TABSTOP
     EDITTEXT        IDC_PATHEDIT,7,148,233,14,ES_AUTOHSCROLL
     PUSHBUTTON      "浏览(&B)...",IDC_BROWSE,7,167,50,14
@@ -1351,6 +1401,7 @@ BEGIN
     LTEXT           "旧版 VSFilter 路径的文本渲染器：",IDC_STATIC,193,181,152,8
     COMBOBOX        IDC_COMBO_TEXT_RENDERER_MODE,193,192,152,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "",IDC_HDR_STATUS,7,263,346,8
+    PUSHBUTTON      "打开日志",IDC_HDR_DIAG_OPEN,310,245,43,14
     CONTROL         "渲染到原始视频尺寸",IDC_CHECKBOX_RENDER_TO_ORIGINAL_VIDEO_SIZE,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,166,156,10
     EDITTEXT        IDC_EDIT_CACHE_SIZE,73,59,44,14,ES_AUTOHSCROLL,WS_EX_RIGHT
@@ -1363,8 +1414,8 @@ FONT 9, "Microsoft YaHei UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "",IDC_STATIC,7,7,346,266
     LTEXT           "",IDC_VERSION,14,16,332,38
-    LTEXT           "Credits:\n- SAMI format support by Sanger && Wilowisp of SPKOR\n- Handling of some basic html style modifier tags in SAMI done by [maven]",IDC_STATIC,14,64,332,34
-    LTEXT           "- Advanced Text Renderer is using the 'Rasterizer' class \nof Avery Lee's subtitler plugin\n- Command line ppage launcher by @livier",IDC_STATIC,14,110,332,26
+    LTEXT           "鸣谢：\n- SAMI 格式支持：Sanger && Wilowisp（SPKOR）\n- SAMI 基础 HTML 样式标签处理：[maven]",IDC_STATIC,14,64,332,34
+    LTEXT           "高级文本渲染器使用 Avery Lee 字幕插件中的 'Rasterizer' 类\n- 命令行属性页启动器：@livier",IDC_STATIC,14,110,332,26
     LTEXT           "- 热键、繁体中文 && 简体中文本地化：Kii Ali <kiiali@cpatch.org>",IDC_STATIC,14,150,332,20
 END
 
@@ -1372,7 +1423,7 @@ IDD_XY_SUB_FILTER_PATHSPAGE DIALOGEX 0, 0, 360, 280
 STYLE DS_SETFONT | WS_CHILD
 FONT 9, "Microsoft YaHei UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "The auto-loader will search these paths for matching subtitles:\n(a path may be absolute or relative)",IDC_STATIC,7,7,346,17
+    LTEXT           "自动加载器将在以下路径中查找匹配字幕：\n（路径可以是绝对路径或相对路径）",IDC_STATIC,7,7,346,17
     LISTBOX         IDC_PATHLIST,7,28,346,190,LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT | WS_VSCROLL | WS_TABSTOP
     EDITTEXT        IDC_PATHEDIT,7,224,346,14,ES_AUTOHSCROLL
     PUSHBUTTON      "浏览(&B)...",IDC_BROWSE,7,245,72,14
@@ -1774,6 +1825,55 @@ BEGIN
 #endif
 END
 
+// XySubFilter 本地化界面字符串
+STRINGTABLE
+BEGIN
+    IDS_XY_UI_AUTO                   "自动"
+    IDS_XY_UI_TV                     "TV"
+    IDS_XY_UI_PC                     "PC"
+    IDS_XY_UI_BT601                  "BT.601"
+    IDS_XY_UI_BT709                  "BT.709"
+    IDS_XY_UI_BT2020                 "BT.2020"
+    IDS_XY_UI_GUESS                  "自动猜测"
+    IDS_XY_UI_FORCE_TV               "强制 TV"
+    IDS_XY_UI_HDR_OFF                "关闭（SDR）"
+    IDS_XY_UI_HDR_PQ                 "PQ（绝对亮度）"
+    IDS_XY_UI_ENGLISH                "English"
+    IDS_XY_UI_CHINESE                "中文（简体）"
+    IDS_XY_UI_SUBPIXEL_NONE          "无（最快）"
+    IDS_XY_UI_SUBPIXEL_2X2           "2x2"
+    IDS_XY_UI_SUBPIXEL_4X4           "4x4"
+    IDS_XY_UI_SUBPIXEL_8X8_VSFILTER  "8x8（VSFilter 2.39 默认）"
+    IDS_XY_UI_SUBPIXEL_8X8_BILINEAR  "8x8（双线性）"
+    IDS_XY_UI_LAYOUT_ORIGINAL        "使用原始视频尺寸"
+    IDS_XY_UI_LAYOUT_AR_ADJUSTED     "使用宽高比调整后的视频尺寸"
+    IDS_XY_UI_LAYOUT_CUSTOM          "自定义..."
+    IDS_XY_UI_RENDERER_LEGACY_GDI    "旧版 GDI（TextOutW）"
+    IDS_XY_UI_RENDERER_AUTO_FALLBACK "自动回退"
+    IDS_XY_UI_RENDERER_UNISCRIBE     "Uniscribe"
+    IDS_XY_UI_BACKEND_LIBASS         "libass（默认）"
+    IDS_XY_UI_BACKEND_VSFILTER       "VSFilter（旧版）"
+    IDS_XY_UI_BACKEND_CSRI           "CSRI（实验性）"
+    IDS_XY_UI_ACTUAL_LIBASS          "libass"
+    IDS_XY_UI_ACTUAL_VSFILTER        "VSFilter"
+    IDS_XY_UI_ACTUAL_CSRI            "CSRI"
+    IDS_XY_UI_ACTUAL_BITMAP          "位图（内置）"
+    IDS_XY_UI_ALL_FILES_FILTER       "所有文件 (*.*)|*.*||"
+    IDS_XY_UI_DLL_FILES_FILTER       "动态库 (*.dll)|*.dll|所有文件 (*.*)|*.*||"
+    IDS_XY_UI_CACHES_INFO_TITLE      "缓存信息"
+    IDS_XY_UI_CACHES_INFO_FORMAT     "缓存：存储/命中/查询\n  解析缓存 1：%ld/%ld/%ld\n  解析缓存 2：%ld/%ld/%ld\n\n  LV4：%ld/%ld/%ld\t\tLV3：%ld/%ld/%ld\n  LV2：%ld/%ld/%ld\t\tLV1：%ld/%ld/%ld\n  LV0：%ld/%ld/%ld\n\n  位图：%ld/%ld/%ld\t\t扫描线：%ld/%ld/%ld\n  转发键：%ld/%ld/%ld\t\t裁剪器：%ld/%ld/%ld\n\n  字符串池：%ld/%ld/%ld\t\t位图键池：%ld/%ld/%ld\n"
+    IDS_XY_UI_HDR_DIAG_TITLE         "HDR 诊断"
+    IDS_XY_UI_HDR_DIAG_MISSING       "尚未生成 HDR 诊断日志。请先通过 XySubFilter 开始播放。"
+    IDS_XY_UI_HDR_DIAG_FAILED        "无法打开 HDR 诊断日志。"
+    IDS_XY_UI_GLOBAL_DEFAULT         "全局默认"
+    IDS_XY_UI_STYLES_TITLE           "样式"
+    IDS_XY_UI_OUTPUT_COLUMN          "输出"
+    IDS_XY_UI_INPUT_COLUMN           "输入"
+    IDS_XY_UI_AUTO_CACHE_FORMAT      "自动(%d)"
+    IDS_XY_UI_STYLE_EDITOR_FAILED    "无法创建样式编辑对话框"
+    IDS_XY_UI_FATAL_TITLE            "错误"
+    IDS_XY_UI_CSRI_LOAD_FAILED_FORMAT "无法加载 CSRI 渲染器：\n%ls"
+END
 #endif    // Chinese (Simplified, PRC) resources
 
 

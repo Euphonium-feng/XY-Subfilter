@@ -83,3 +83,11 @@
   改变既有外部 ABI。
 - 位图与文本字幕共用同一 HDR Auto 解析和白点；任何 consumer 信号修复必须同时
   验证两条管线，不能只修 PGS。
+- HDR 证据合并和 Auto 判定必须使用 `HdrDetection` 纯函数；DirectShow 引脚枚举
+  只能负责采集，不得在扫描循环中重新实现优先级。
+- 属性页运行时用户可见文本必须来自 `IDS_XY_UI_*`（产品或标准缩写除外）；
+  `Test-ResourceLocalization.ps1` 失败时不得绕过，除非在对应行标注
+  `l10n-exempt:` 并说明技术理由。
+- `%TEMP%\xy_hdr_diag.txt` 只有播放/连接阶段生成；打开日志按钮不得创建空文件。
+- HLG 当前与 PQ 共用 HDR 证据分类，个人范围不做专用映射或专项验收；文档不得把
+  HLG 观感描述为已验证。

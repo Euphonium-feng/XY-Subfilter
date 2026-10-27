@@ -47,6 +47,9 @@
     <ClInclude Include="test_hdr_color.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="test_hdr_evidence.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="test_composition_hdr.h">
       <Filter>Header Files</Filter>
     </ClInclude>

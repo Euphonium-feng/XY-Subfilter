@@ -7,7 +7,7 @@
 | 过滤器 | `src/filters/transform/vsfilter/` | DirectShow 滤镜：XySubFilter（provider）、VSFilter/DirectVobSub（内嵌字幕烧录）、XySubFilterConsumer（合成端） |
 | 基类 | `src/filters/transform/basevideofilter/` | `CBaseVideoFilter`、色彩标志传播、HDR 侧数据透传 |
 | 字幕 | `src/subtitles/` | 解析器（PGS/DVB/VobSub/ASS…）、光栅化、libass/CSRI 后端、位图字幕 Provider |
-| 子图 | `src/subpic/` | 字幕面分配与混合（`MemSubPic`）、色彩转换表（`color_conv_table`）、Alpha 混合器 |
+| 子图 | `src/subpic/` | 字幕面分配与混合（`MemSubPic`）、色彩转换表（`color_conv_table`）、HDR 色彩与证据判定、Alpha 混合器 |
 | 公共头 | `include/` | `SubRenderIntf.h`（provider/consumer 协议）、DX/AviSynth/VirtualDub SDK 头 |
 
 ## SDR 渲染管线（现状基准）
@@ -45,8 +45,9 @@
 
 ## HDR 下的偏差点
 
-1. **外部消费端缺少传递函数约定**：当前已在位图调色板与文本图元输出处加入 PQ /
-   相对白映射，协议仍无 EOTF 字段，madVR 等外部消费端如何解释这些码值仍需实测。
+1. **外部消费端缺少传递函数约定**：当前已在位图调色板与文本图元输出处加入 PQ
+   映射，协议仍无 EOTF 字段；实际 madVR 语义已由多日实机使用确认，Relative white
+   仅保留内部兼容值。
 2. **8bit 塞进 10bit 容器**：`MemSubPic.cpp` 的 `AlphaBltAnv12_P010` 与 `xy_intrinsics.h` 的 `mix_16_y_p010_*` 用 `src << 8`。TV 白 235 → 940，按 PQ 反解约 4650 nits；全幅 255 → 1020，约 9700 nits。
 3. **协议无 EOTF 字段**：`SubRenderIntf.h` 1.0.9 只规定 `outputLevels` 的 PC/TV，没有说明位图使用何种传递函数，消费端无从分辨。
 4. **范围与矩阵的次要偏差**：`supportedLevels` 为"无偏好"时输出 TV 范围 RGB，消费端若忽略 `outputLevels` 会整体偏亮约 9%；UHD 片源下按 720 阈值猜 BT.709 会让彩色字幕偏色。
@@ -141,7 +142,7 @@ HDR 配置还携带递增 generation；`HdmvSubtitleProviderImpl`、`Composition
 | `PGS_HDR_MODE_DISABLED` | `MAP_OFF` |
 | `PGS_HDR_MODE_PQ` | `MAP_PQ`，白点取自 `INT_PGS_HDR_WHITE_NITS` |
 | `PGS_HDR_MODE_RELATIVE_WHITE` | `MAP_RELATIVE_WHITE` |
-| `PGS_HDR_MODE_AUTO` | consumer 视频引脚为 PQ/HLG → `MAP_PQ`；无传递函数信息时再看 `yuvMatrix` 是否以 `2020` 结尾 |
+| `PGS_HDR_MODE_AUTO` | side data 或明确 PQ/HLG → `MAP_PQ`；随后按文件名 HDR、明确 SDR、BT.2020/consumer `yuvMatrix` 回退 |
 
 入口：`ResolvePgsHdrConfig()` 读 `INT_PGS_HDR_MODE`，`ResolveTextHdrConfig()` 读 `INT_TEXT_HDR_MODE`，白点共用。`XySubFilter::UpdateConsumerHdrSignal()` 从 consumer 已连接视频引脚的 `VIDEOINFOHEADER2.dwControlFlags` 提取传递函数；PQ/HLG 为 HDR，明确 SDR 曲线优先于 BT.2020 矩阵回退。
 
@@ -163,7 +164,14 @@ DirectShow 图，优先采用任何解码器/中间引脚上的 PQ/HLG 信息。
 generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚或读取 consumer
 配置。
 
-色彩科学集中在 `src/subpic/hdr_color.{h,cpp}`，纯函数、无 Win32 依赖，由 `test_hdr_color.h` 单测覆盖。
+色彩科学集中在 `src/subpic/hdr_color.{h,cpp}`，HDR 证据合并与 AUTO 优先级集中在
+`src/subpic/hdr_evidence.{h,cpp}`；两者都是纯函数、无 Win32 依赖，分别由
+`test_hdr_color.h` 和 `test_hdr_evidence.h` 覆盖。`UpdateConsumerHdrSignal()`
+只负责读取 DirectShow 引脚并调用纯函数，避免图扫描顺序改变最终 Auto 结论。
+
+`DirectVobSubImpl::GetHdrDiagnosticPath()` 与日志写入共用
+`%TEMP%\xy_hdr_diag.txt`。属性页的 `Open log` / “打开日志”按钮只打开已存在的日志；
+文件缺失或 `ShellExecuteW` 失败时显示本地化提示，不创建空文件。
 
 文本与位图共用 `DirectVobSubImpl::ResolveHdrMode()`、同一个 consumer HDR 信号和
 `INT_PGS_HDR_WHITE_NITS`；因此 Auto 检测与白点调整会同时作用于两类字幕。
@@ -173,6 +181,9 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 - 资源：单份 `VSFilter.rc` 内含英文与简体中文两个语言块，由 `AFX_TARG_ENU` / `AFX_TARG_CHS` 同时定义后一并编译进 DLL；中文块以 GBK + `#pragma code_page(936)` 存储。
 - 字体：全部 26 个对话框使用 `Microsoft YaHei UI` 9pt（矢量字体，含 CJK 字形且可参与字体链接）。
 - 语言选择：`INT_UI_LANGUAGE`（Auto / English / 简体中文）。Auto 跟随系统 UI 语言，非中文系统回落英文。
+- 运行时下拉项（色域、范围、RGB、HDR、布局、文本渲染器、后端等）使用
+  `IDS_XY_UI_*`；`Test-ResourceLocalization.ps1` 校验中英文资源字符串 ID、
+  对话框控件 ID 和属性页硬编码文本。
 - 生效路径：`DirectVobSubImpl::ApplyUiLanguage` 设置滤镜线程语言；属性页另在 `GetPageInfo` / `Activate` 入口调用 `ApplyActiveUiLanguageToCurrentThread()`，因为属性页运行在宿主 UI 线程上。
 - 位图字幕不使用 libass/CSRI/VSFilter 文本渲染器；属性页对非文本流显示
   `Bitmap (internal)`，避免把 PGS/DVB 的“实际后端”误报为 VSFilter。

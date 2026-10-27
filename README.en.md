@@ -129,13 +129,17 @@ The **"More"** property page offers three settings:
 
 # 🖼️ HDR white-point mapping
 
-> The most significant change from upstream. Everything here applies to bitmap subtitles (PGS/SUP, DVB).
+> The most significant change from upstream. It covers bitmap subtitles
+> (PGS/SUP, DVB) and text subtitles such as ASS/SSA/SRT.
 
 ### Where to find it
 
 Property page → **More** → **Subtitle Output** group.
 
-### The four modes
+If Auto or placement looks wrong, use **Open log** to view
+`%TEMP%\xy_hdr_diag.txt`; the log is created only while the filter is connected.
+
+### Mapping modes
 
 <table>
 <tr>
@@ -146,7 +150,7 @@ Property page → **More** → **Subtitle Output** group.
 <tr>
 <td><b>Auto</b> <sub>default</sub></td>
 <td>Most cases</td>
-<td>Encodes as PQ when the consumer's <code>yuvMatrix</code> ends in <code>2020</code>; otherwise keeps SDR behaviour</td>
+<td>Prefers the video pin's transfer function, with graph scanning, BT.2020 matrix, and filename HDR fallbacks</td>
 </tr>
 <tr>
 <td><b>Off</b></td>
@@ -157,11 +161,6 @@ Property page → **More** → **Subtitle Output** group.
 <td><b>PQ</b></td>
 <td>Renderer treats subtitle bitmaps as PQ</td>
 <td>Encodes the white point as an absolute PQ signal</td>
-</tr>
-<tr>
-<td><b>Relative white</b></td>
-<td>Renderer treats subtitle bitmaps as SDR</td>
-<td>Keeps the SDR code space, only compensates luminance</td>
 </tr>
 </table>
 
@@ -345,11 +344,11 @@ git submodule update --init --recursive --remote
 <tr><th align="left">Limitation</th><th align="left">Details</th></tr>
 <tr>
 <td><b>Auto-detection is a heuristic</b></td>
-<td>The render interface has no transfer-function field, so only <code>yuvMatrix</code> is available. SDR BT.2020 content reads as HDR; switch to "Off" manually.</td>
+<td>The protocol has no transfer-function field, so Auto uses consumer hints, graph scanning, BT.2020 matrix, and filename fallback. SDR BT.2020 content can still be misdetected; switch to "Off" manually.</td>
 </tr>
 <tr>
-<td><b>Bitmap subtitles only</b></td>
-<td>ASS/SRT text subtitles are not mapped. The interface is reserved for a later extension.</td>
+<td><b>HLG is not separately validated</b></td>
+<td>PQ and HLG both currently trigger the PQ path, but personal use does not cover HLG; HLG appearance is not a verified claim.</td>
 </tr>
 <tr>
 <td><b>8-bit palette precision</b></td>
@@ -357,7 +356,7 @@ git submodule update --init --recursive --remote
 </tr>
 <tr>
 <td><b>Depends on consumer semantics</b></td>
-<td>How madVR and other consumers interpret subtitle bitmaps cannot be determined from code, hence the "Relative white" fallback.</td>
+<td>External consumer interpretation cannot be proven from the protocol alone; the actual madVR path has passed multi-day use. Relative white remains an internal ABI-only value and is hidden from the UI.</td>
 </tr>
 <tr>
 <td><b>No tone mapping</b></td>
@@ -373,7 +372,7 @@ git submodule update --init --recursive --remote
 | :--- | :--- |
 | [`docs/PROJECT.md`](docs/PROJECT.md) | Goals, scope, acceptance criteria |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | SDR/HDR pipelines and module responsibilities |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | 14 technical decisions and trade-offs |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Technical decisions and trade-offs |
 | [`docs/CONSTRAINTS.md`](docs/CONSTRAINTS.md) | Hard constraints and ruled-out approaches |
 | [`docs/TODO.md`](docs/TODO.md) | Progress, unverified items, next steps |
 

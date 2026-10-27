@@ -2,46 +2,18 @@
 
 ## 状态
 
-功能实现已推送，云端 CI 三矩阵全绿。真实播放器稳定性存在**疑似回归**：用户报告
-PotPlayer + madVR 在 seek 时至少崩溃两次；当前自动化压力回路尚未复现，也尚未证明
-问题由本轮改动引入。
+2026-10-28 用户确认：当前构建已在 PotPlayer + madVR 下连续多日实机使用，
+HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出现问题。
+原先的 seek 稳定性阻塞关闭；历史崩溃未能稳定复现，因此没有根因结论。
 
-2026-10-24 又收到一个更明确的渲染问题：SUP/PGS 在 HDR 下无论切换 HDR 模式还是
-白点，画面都没有变化。随后尝试的“provider 每帧重新读取 consumer 选项”版本
-（run `39984554888`）虽然云端构建全绿，但真实播放出现稳定性问题和花屏，已撤回。
-当前实现已增加 consumer 传递函数检测、HDR generation、合并刷新和带结果的
-`Clear()`；代码与自动化测试已完成，CI run `39997437527` 三矩阵全绿，
-真实播放器验证由用户暂缓。
+可靠性收口代码已完成，当前等待云端三矩阵 CI：
 
-2026-10-24 后续实测：PQ 203 的亮度已正确，Auto 在 HDR 片源下仍等同 Off/SDR，
-Relative white 仍过曝。已定位到 consumer 的 `yuvMatrix` 从未赋值，并修正：
-consumer 从输入 `VIDEOINFOHEADER2` 上报范围/矩阵，HDR media side data 以事件方式
-通知 provider；HDMV SubPic 按完整 HDR 配置而非仅 generation 失效。属性页已重排，
-Relative white 不再显示。CI run `40007950976` 三矩阵全绿，尚待实机复测。
-
-随后实机仍为 `PQ < Auto = SDR`。已确认不能按 10bit 位深猜测：SDR 测试文件
-同样是 10bit，但元数据为 BT.709。当前修复改为扫描整张 DirectShow 图，避免只读
-consumer 转换后的引脚；同时接受未设 colour-info 标志但明确为 PQ/HLG 的传递函数
-码。CI run `40011453627` 三矩阵全绿，待实机复测。
-
-该版实机仍为 Auto=Off。继续修改为：扫描图时同时记录 BT.2020 matrix 位，作为
-传递函数未知时的 Auto 回退；连接阶段写 `%TEMP%\xy_hdr_diag.txt`，记录每个视频
-引脚的 filter CLSID、pin、subtype、formattype 和原始 `dwControlFlags`。
-另从源滤镜读取视频文件名，文件名中独立的 `HDR`/`HDR10` 标记会覆盖错误的 SDR
-元数据；`HDRip` 被排除。CI run `40068012174` 三矩阵全绿；待用户再测并检查
-`%TEMP%\xy_hdr_diag.txt`。
-
-### 稳定性诊断（2026-10-23）
-
-- 实际链路为 PotPlayer 26.07.01 + LAV 0.82 + madVR 0.92.17 +
-  `XySubFilter` 3.0.0.0（2026-10-23 构建）。
-- `.debug/repro-seek.ps1` 已建立自动压力回路。单次 Right 键已通过画面 OSD
-  验证确实从 `00:01:00` 跳到 `00:01:05`，并非空操作。
-- 3 轮 × 1058 次键盘往返 seek 后进程均存活，未产生新的 WER、
-  `bugreport.txt` 或 crash dump。该结果只能说明当前触发方式不足以复现。
-- 旧 `D:\PotPlayer\bugreport.txt` 的日期是 2026-05-09，不能作为本轮证据；
-  其历史栈为 madVR `CRendering.TakeScreenshot` 中的 `memcpy` 写越界。
-- 当前阻塞：还没有一个能稳定变红的回路；问题只能按疑似缺陷跟踪，尚未进入根因假设或代码修复。
+- `src/subpic/hdr_evidence.{h,cpp}` 提供可单测的 HDR 证据合并和 Auto 判定。
+- 属性页运行时下拉项、缓存窗口和提示文案已接入中英文资源。
+- More 页增加“打开日志”按钮，打开 `%TEMP%\xy_hdr_diag.txt`。
+- `scripts/Test-SeekStability.ps1` 取代本地 `.debug/repro-seek.ps1`。
+- `scripts/Test-ResourceLocalization.ps1` 在 `debug-x64` 构建前校验资源。
+- HLG 保留现有处理，但不在个人使用范围内，也未做专项验收。
 
 ## 已完成
 
@@ -83,15 +55,14 @@ consumer 转换后的引脚；同时接受未设 colour-info 标志但明确为 
 | B | HDR 模式/白点变化后，经 `ISubRenderConsumer2::Clear()` 清除 consumer 缓存的字幕帧 |
 | C | 位图字幕的“实际后端”显示改为 `Bitmap (internal)`，不再把 PGS 误报成 VSFilter 文本后端 |
 
-根因仍需真实播放器确认：当前只证明了配置读取链路存在缺口，尚未证明 madVR 对
-SUP 位图的 HDR 解释方式。下一步应在同一帧分别记录/对比 `Off`、`PQ`、`Relative
-white` 的输出。
+当时只证明了配置读取链路存在缺口；后续测试确认 `Off`、`PQ 203`、`PQ 50` 有可见差异，
+该问题已闭环。`Relative white` 仍只作为兼容值保留，不回到界面。
 
 目标语义（明确，不再把 SDR 直通当目标）：SUP 调色板先按 HDR/PQ 曲线预编码到
 8bit SDR 容器码值，再由 madVR 的 HDR 处理恢复绝对亮度。SDR 直通只能作为对照，
 不是修复方案。
 
-### 第五轮：HDR 配置可靠性（实机验证暂缓）
+### 第五轮：HDR 配置可靠性
 
 | 阶段 | 内容 |
 | --- | --- |
@@ -102,17 +73,16 @@ white` 的输出。
 | E | 属性页显示实际 provider、解析后的 HDR 模式、白点、缓存清理状态和构建短哈希 |
 | F | 增加调色板像素集成测试、generation 测试和传递函数分类测试 |
 
-当前状态：代码修改和测试用例已完成；云端 CI 三矩阵全绿。真实播放器复测暂缓，
-后续必须先确认 PotPlayer 实际加载的 DLL 哈希。
+当前状态：代码修改和测试用例已完成；云端 CI 三矩阵全绿，后续多日实机使用通过。
 
-### 第六轮：Auto 判定与属性页布局（CI 绿，实机待测）
+### 第六轮：Auto 判定与属性页布局
 
 | 阶段 | 内容 |
 | --- | --- |
 | A | `XySubFilterConsumer` 从输入 `VIDEOINFOHEADER2` 生成范围/矩阵并填充 `yuvMatrix` |
 | B | HDR10/HDR10+/DoVi media side data 通过 `isHdrVideo` 事件通知 provider，不进每帧配置读取热路径 |
 | C | HDMV provider 按完整 HDR 配置判断 SubPic 失效，矩阵回退变化会重新渲染 |
-| D | 属性页 HDR 区域初步改为两列四行；HDR 诊断独占底部状态行；Relative white 从界面隐藏（尺寸与分栏由第七轮最终确定） |
+| D | 属性页 HDR 区域初步改为两列四行；HDR 诊断独占底部状态行并配“打开日志”按钮；Relative white 从界面隐藏（尺寸与分栏由第七轮最终确定） |
 | E | 增加视频矩阵分类测试，并把调色板测试改为复用同一 `CompositionObject` |
 
 ### 第七轮：属性页宽幅布局与白点输入修复
@@ -125,9 +95,19 @@ white` 的输出。
 | D | 即时应用前后捕获并恢复编辑框选区和插入符 |
 | E | 白点值文本未变化时不重复 `SetWindowText`，避免输入过程中光标回到行首 |
 
-当前状态：代码与资源修改完成，云端 CI 由本次提交执行。属性页的实际视觉和连续
-键入体验尚未人工验证；用户恢复测试后再目视检查 Main / More / Timing / Paths /
-About 五个标签页，并连续输入白点值确认插入符不跳动。
+当前状态：代码与资源修改完成；用户已确认 Main / More / Timing / Paths / About
+五个标签页和连续输入白点的体验正常。
+
+### 第八轮：可靠性与诊断收口
+
+| 阶段 | 内容 |
+| --- | --- |
+| A | 提取 `HdrDetection::HdrEvidence` / `ResolveAutoPq`，用单测覆盖优先级和引脚顺序 |
+| B | 运行时属性页文本改用 `IDS_XY_UI_*` 资源，补齐 Paths/About 的中文内容 |
+| C | 增加资源 ID、控件 ID 和硬编码文本检查脚本 |
+| D | More 页增加 HDR 诊断日志入口 |
+| E | 将 seek 压力脚本迁移到 `scripts/Test-SeekStability.ps1`，支持 `-PlanOnly` 和 JSON 输出 |
+| F | README、PROJECT、ARCHITECTURE、CONSTRAINTS、DECISIONS 同步当前实现 |
 
 ## CI 记录
 
@@ -149,36 +129,19 @@ About 五个标签页，并连续输入白点值确认插入符不跳动。
 - **x64**：`TextColorPqKeepsAlphaAndLowersWhite` 期望值写错。输入 `0xFF808080` 是中间灰，PQ 映射后为 106（128 → 0.19 线性 → 38.8 nits → 码 106），不是参考白的 148。已拆分出纯白用例验证 148 端点。
 - **win32**：`yasm` 退出码 `-1073741515`（`STATUS_DLL_NOT_FOUND`）。runner 环境偶发，同一工作流上一轮与下一轮均通过，与代码无关。
 
-## 待验证（CI 无法覆盖，需真实环境）
+## 已关闭的真实验证
 
-1. **madVR 等外部消费端如何解读字幕位图**：按 PQ 还是按 SDR。这决定「自动」模式是否该保持默认；若实际按 SDR 处理，应改为「相对白」。
-2. **自动判定的误判率**：SDR 的 BT.2020 内容会被判为 HDR，需实测该场景出现频率。
-3. **中文属性页排版**：字体从 8pt 光栅字体换成雅黑 9pt 后，原按 8pt 排布的控件可能文字截断，需逐页目视检查。
-4. **HDR 片源下的实际观感**：字幕是否仍偏亮或偏暗，四种模式的表现差异。
-5. **属性页语言切换在真实播放器中的行为**：`AFX_TARG_CHS` + `SetThreadUILanguage` + 宿主线程的组合需实测。
-6. **文本字幕 HDR 映射的主观效果**：ASS 字幕多为高饱和彩色，BT.601 约定下映射后的色偏是否可接受。
-
-文本字幕与图形字幕共用同一 Auto 解析结果和同一个白点设置。之前的 Auto 缺口会
-同时影响两者；HDMV 独有的旧 SubPic 复用问题不适用于文本路径，因为
-`CRenderedTextSubtitle::SetHdrConfig` 已按完整配置失效整帧与 bitmap 缓存。
+- PotPlayer + madVR 多日使用通过，HDR 亮度、Auto/Off/PQ、seek 和文本/位图字幕均正常。
+- Main / More / Timing / Paths / About 五个标签页和连续输入白点已由用户确认无问题。
+- 多日使用未复现历史 seek 崩溃；旧 `D:\PotPlayer\bugreport.txt` 仍不属于本轮证据。
+- HLG 未进入个人使用范围，保留为未专项验证项，不作为本轮阻塞。
 
 ## 下一步
 
-1. 核对本次属性页改动的云端 CI 三矩阵为绿，并在用户恢复测试时核对 PotPlayer
-   实际加载 DLL 的 SHA256。
-   不要沿用旧构建的哈希；以本次 CI 下载的 x64 artifact 重新计算。
-
-2. 依次打开 XySubFilter 的五个标签页，确认窗口尺寸一致、无控件重叠或截断；
-   在白点输入框连续输入 `203`，确认插入符始终跟随输入位置。
-
-3. 属性页状态行应显示 `Auto>PQ 203` 且带 `sd1` 或 BT.2020；若仍显示 Auto>Off，
-   记录 `tf/sd/matrix` 三项后继续修检测来源。
-
-4. 用 `J-焦虑` 或 `B-巴里·林登` 的 SUP 在 HDR 下复测：保持同一字幕帧，切换
-   `Off`、`PQ 203`、`PQ 50`，确认画面随模式或白点变化。
-
-5. 若原始字幕像素已是 `148` 但屏幕不变，继续排查 madVR 对缓存或传递函数的解释；
-   若原始像素仍为 `255`，继续排查 provider 实例和配置下发。
-
-其余待验证项保留在上方清单。属性页排版已实现，只待真实窗口目视检查；疑似稳定性
-问题查清前不推进 HDR 默认值调整。
+1. 完成静态检查：资源本地化脚本、两个 PowerShell 脚本解析、seek `-PlanOnly`。
+2. 提交代码、资源和状态文档，推送后取得最新 run ID。
+3. 用 `gh run watch <id> --exit-status` 等到 release-win32 / release-x64 /
+   debug-x64 三矩阵全绿；红则读 `gh run view <id> --log-failed` 修复并重推。
+4. 从绿色产物检查五个属性页的中英文标签与下拉项、诊断按钮存在/缺失提示，
+   并对最终 DLL 做一次播放器冒烟测试。
+5. 将实际 run ID、artifact 和冒烟结果写回本文件，再完成最终文档提交和绿色复核。

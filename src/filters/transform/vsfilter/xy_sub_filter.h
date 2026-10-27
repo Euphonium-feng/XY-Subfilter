@@ -84,6 +84,7 @@ public:
     void BeginHdrOptionBatch() override;
     void EndHdrOptionBatch() override;
     CStringW GetHdrStatusText() override;
+    CStringW GetHdrDiagnosticPath() const override;
 private:
     void SetYuvMatrix();
     void SetRgbOutputLevel();

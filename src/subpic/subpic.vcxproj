@@ -66,6 +66,9 @@
     <ClCompile Include="hdr_color.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="hdr_evidence.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="MemSubPic.cpp" />
     <ClCompile Include="PooledSubPic.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -91,6 +94,7 @@
     <ClInclude Include="CRect2.h" />
     <ClInclude Include="DX9SubPic.h" />
     <ClInclude Include="hdr_color.h" />
+    <ClInclude Include="hdr_evidence.h" />
     <ClInclude Include="ISimpleSubPic.h" />
     <ClInclude Include="ISubPic.h" />
     <ClInclude Include="ISubRender.h" />

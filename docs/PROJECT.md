@@ -4,12 +4,14 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 
 ## 当前工作
 
-三项已完成的增强：
+已完成的增强：
 
 1. **SUP/PGS 与 ASS/SRT 字幕的 HDR 白点映射** —— 解决 HDR 片源下字幕过曝。
 2. **界面简体中文化** —— 并修复了中文资源从未被编译、对话框使用光栅字体导致的标签空白。
 3. **属性页宽幅布局与输入修复** —— 所有 XySubFilter 标签页统一为 `360×280` DLU，
    More 页改为横向两栏；白点输入在即时应用刷新后保留插入符和选段。
+4. **可靠性与诊断收口** —— HDR 证据选择逻辑独立可测，运行时界面文本全部走中英文资源，
+   More 页可打开 HDR 诊断日志，seek 压力脚本纳入仓库。
 
 ## 需求
 
@@ -38,7 +40,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 
 1. 同一 SUP 或 ASS 字幕在 HDR 片源下不再过曝：字幕白对应 203 nits 而非数千 nits。
 2. `INT_PGS_HDR_WHITE_NITS` 可调，默认 203；改动后字幕亮度随之变化。
-3. 位图与文本各自的 HDR 模式四档（自动/关闭/PQ/相对白）均可用；自动模式下 SDR 片源行为与改动前逐字节一致。
+3. 位图与文本各自的 HDR 模式三档（自动/关闭/PQ）均可用；`Relative white` 只保留内部
+   ABI 值，不出现在界面；自动模式下 SDR 片源行为与改动前逐字节一致。
 4. 简体中文界面可用，英文界面不受影响，可手动切换。
 5. 新增单元测试与既有回归测试在 GitHub Actions 三矩阵上全绿。
 6. XySubFilter 的“主要 / 更多 / 时间轴 / 路径 / 关于”使用相同页面尺寸；
@@ -46,40 +49,13 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 
 ## 当前状态
 
-功能验收项已实现并通过云端 CI（run `39965292609`，release-win32 /
-release-x64 / debug-x64 均 success）。真实播放器存在**疑似稳定性问题**：
-用户报告 PotPlayer + madVR 的 seek 路径至少崩溃两次，当前尚未稳定复现，也尚未确认
-与本次改动存在因果关系。真实显示环境下的稳定性、观感与排版见 `TODO.md`。
+2026-10-28 用户确认：当前构建已在 PotPlayer + madVR 下连续多日实机使用，
+HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出现问题。
+原先的 seek 稳定性阻塞关闭；2026-05-09 的旧 `bugreport.txt` 仍不能作为本轮证据。
 
-2026-10-24 真实播放反馈：SUP/PGS 在 HDR 下切换 HDR 模式或白点没有可见变化。
-随后尝试的 provider 每帧读取 consumer 版本（run `39984554888`）造成真实播放
-稳定性退化和花屏，已撤回。当前实现改为：consumer 视频引脚提供 PQ/HLG 提示时
-优先采用，HDR 配置带递增 generation 并贯穿 provider、SubPic、调色板和帧 ID；
-属性页 Apply 会把 RGB/HDR 相关选项合并成一次刷新，再调用 consumer 的
-`Clear()`。代码与自动化测试已完成，CI run `39997437527` 三矩阵全绿；
-真实播放器复测由用户暂缓。
+Auto 的正式优先级为 side data、明确 PQ/HLG、文件名 HDR、明确 SDR、BT.2020 /
+consumer `yuvMatrix` 回退、Off。HDR 配置仍由 generation 驱动缓存失效，属性页
+Apply 仍合并 RGB/HDR 刷新并调用一次 `ISubRenderConsumer2::Clear()`。
 
-后续真实播放确认 PQ 映射本身有效，但 Auto 在 HDR 片源下仍解析为 Off，与 SDR
-相同。根因是内置 `XySubFilterConsumer` 从未填充对 provider 报告的 `yuvMatrix`，
-使 Auto 的 BT.2020 回退失效；同时 HDMV provider 仅按 generation 判断 SubPic
-失效，矩阵回退变化时可能复用旧帧。现已补充视频引脚矩阵/传递函数上报、HDR media
-side data 事件提示、按完整配置判断 SubPic 失效，并重排属性页 HDR 区域。
-Relative white 已从界面移除。CI run `40007950976` 的 release-win32 /
-release-x64 / debug-x64 三矩阵全绿；真实播放效果与稳定性仍待复测。
-
-该版实测仍为 `PQ < Auto = SDR`。进一步确认 HDR 测试文件本身是
-BT.2020/PQ，而当前播放的 SDR 文件虽是 10bit，但颜色元数据为 BT.709；
-因此不能按位深猜测 HDR。检测现改为扫描整张 DirectShow 图，优先寻找解码器
-输出引脚上的 PQ/HLG，并允许未设置 colour-info 标志但传递函数码明确为
-PQ/HLG 的情况。CI run `40011453627` 三矩阵全绿；实机复测暂缓，等待用户恢复测试。
-
-该轮仍未改善 Auto。现增加 BT.2020 矩阵位作为独立回退信号，并在 consumer 连接时
-把每个视频引脚的 filter CLSID、pin、media type、`dwControlFlags` 写入
-`%TEMP%\xy_hdr_diag.txt`。同时通过源滤镜 `IFileSourceFilter::GetCurFile()` 读取
-视频文件名，把标准化命名中的独立 `HDR` 标记作为回退；`HDRip` 这类词不会误匹配。
-CI run `40068012174` 三矩阵全绿；实机复测待用户恢复。
-
-2026-10-24 属性页布局调整：Main / More / Timing / Paths / About 统一为
-`360×280` DLU；Main 与 More 改为左右两栏，More 由 `247×420` 的纵向长页
-压缩为 `360×280`。白点编辑框在即时应用刷新时保留原选区和插入符，并且内容
-未变化时不再重写控件文本。云端 CI 由本次提交执行；真实属性页目视检查仍待用户恢复测试。
+HLG 不在个人使用范围内，不实现专用映射、不做专项验收；文档不得把 HLG 观感
+描述为已验证。本轮可靠性改动待云端三矩阵 CI 完成后记录 run ID。

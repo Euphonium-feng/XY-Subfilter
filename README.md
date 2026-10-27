@@ -169,7 +169,8 @@ scoop install xysubfilter-libass-np -g
 
 # 🖼️ HDR 白点映射
 
-> 这是本版本相对上游最重要的增强。全部改动集中在位图字幕（PGS/SUP、DVB）路径上。
+> 这是本版本相对上游最重要的增强，覆盖位图字幕（PGS/SUP、DVB）和
+> ASS/SSA/SRT 等文本字幕两条路径。
 
 ### 选项位置
 
@@ -186,7 +187,10 @@ scoop install xysubfilter-libass-np -g
 └───────────────────────────────────────────────────┘
 ```
 
-### 四种映射模式
+布局或 Auto 结果异常时，点击“打开日志”查看 `%TEMP%\xy_hdr_diag.txt`；
+日志只在播放器连接字幕滤镜时生成。
+
+### 映射模式
 
 <table>
 <tr>
@@ -197,7 +201,7 @@ scoop install xysubfilter-libass-np -g
 <tr>
 <td><b>自动</b> <sub>默认</sub></td>
 <td>绝大多数情况</td>
-<td>消费者上报的 <code>yuvMatrix</code> 以 <code>2020</code> 结尾时按 PQ 编码，否则保持 SDR 行为</td>
+<td>优先使用视频引脚的传递函数；必要时扫描 DirectShow 图、BT.2020 矩阵或文件名 HDR 标记，决定是否按 PQ 编码</td>
 </tr>
 <tr>
 <td><b>关闭</b></td>
@@ -208,11 +212,6 @@ scoop install xysubfilter-libass-np -g
 <td><b>PQ</b></td>
 <td>渲染器按 PQ 解读字幕位图</td>
 <td>把白点编码成绝对 PQ 信号</td>
-</tr>
-<tr>
-<td><b>相对白</b></td>
-<td>渲染器按 SDR 处理字幕位图</td>
-<td>保持 SDR 码值空间，仅在亮度上补偿到更高白点</td>
 </tr>
 </table>
 
@@ -356,7 +355,9 @@ XySubFilter::SetSubtitle
                                           │
                                           ▼
                                   自动模式判定依据：
-                                  consumer yuvMatrix 以 "2020" 结尾 → PQ
+                                   video pin transfer function
+                                   → graph scan / side data / matrix
+                                   → filename HDR fallback → PQ or Off
 ```
 
 > 📌 完整的调用栈、行号与数据结构见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
@@ -436,11 +437,11 @@ XY-Subfilter/
 <tr><th align="left">限制</th><th align="left">说明</th></tr>
 <tr>
 <td><b>自动判定是启发式</b></td>
-<td>渲染接口没有传递函数字段，只能看 <code>yuvMatrix</code>。SDR 的 BT.2020 内容会被误判为 HDR，需手动切到「关闭」。</td>
+<td>协议本身没有传递函数字段，因此 Auto 仍采用启发式链：consumer 传递函数、整图扫描、BT.2020 矩阵和文件名回退。SDR 的 BT.2020 内容可能被误判，需手动切到「关闭」。</td>
 </tr>
 <tr>
-<td><b>仅覆盖位图字幕</b></td>
-<td>ASS/SRT 等文字字幕不做 HDR 映射。接口已预留，后续可扩展。</td>
+<td><b>HLG 尚未单独验收</b></td>
+<td>当前实现会把 PQ/HLG 都作为 HDR 触发 PQ 路径，但个人使用范围未包含 HLG，不能把 HLG 观感视为已验证。</td>
 </tr>
 <tr>
 <td><b>8bit 调色板精度</b></td>
@@ -448,7 +449,7 @@ XY-Subfilter/
 </tr>
 <tr>
 <td><b>依赖消费端语义</b></td>
-<td>madVR 等外部消费端如何解读字幕位图无法从代码判定，故提供「相对白」备选模式。</td>
+<td>madVR 等外部消费端如何解读字幕位图无法从代码判定；Relative white 仅保留内部 ABI 值，已从用户界面隐藏。</td>
 </tr>
 <tr>
 <td><b>不做色调映射</b></td>
@@ -464,7 +465,7 @@ XY-Subfilter/
 | :--- | :--- |
 | [`docs/PROJECT.md`](docs/PROJECT.md) | 目标、范围、验收标准 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | SDR/HDR 管线与模块职责 |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | 14 条技术决策及取舍 |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | 技术决策及取舍 |
 | [`docs/CONSTRAINTS.md`](docs/CONSTRAINTS.md) | 硬约束与已排除做法 |
 | [`docs/TODO.md`](docs/TODO.md) | 进度、待验证项、下一步 |
 

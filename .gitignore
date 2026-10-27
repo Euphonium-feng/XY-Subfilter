@@ -18,3 +18,4 @@ ipch
 /.vs
 /msvc
 /.zcode
+/.debug

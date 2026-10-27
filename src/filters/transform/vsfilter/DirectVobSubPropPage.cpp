@@ -34,6 +34,8 @@
 #include "../../../subtitles/TextRendererMode.h"
 #include "../../../subpic/hdr_color.h"
 
+#include <shellapi.h>
+
 namespace
 {
 struct EditSelection
@@ -87,30 +89,37 @@ void SetEditTextIfChanged(CEdit& edit, const CString& text)
     }
 }
 
-void PopulateTextRendererModeCombo(CComboBox& combo, int selected_mode)
+struct ComboEntry
 {
-    struct Entry
-    {
-        LPCTSTR label;
-        TextRendererMode mode;
-    };
-    const Entry entries[] = {
-        { _T("Legacy GDI (TextOutW)"), TEXT_RENDERER_LEGACY_GDI },
-        { _T("Auto fallback"), TEXT_RENDERER_AUTO_FALLBACK },
-        { _T("Uniscribe"), TEXT_RENDERER_UNISCRIBE },
-    };
+    UINT label_id;
+    DWORD_PTR value;
+};
 
-    selected_mode = NormalizeTextRendererMode(selected_mode);
-    int selected_index = 0;
+void PopulateCombo(
+    CComboBox& combo, const ComboEntry* entries, size_t count, DWORD_PTR selected)
+{
     combo.ResetContent();
-    for (const auto& entry : entries) {
-        const int index = combo.AddString(entry.label);
-        combo.SetItemData(index, entry.mode);
-        if (entry.mode == selected_mode) {
+    int selected_index = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const int index = combo.AddString(ResStr(entries[i].label_id));
+        combo.SetItemData(index, entries[i].value);
+        if (entries[i].value == selected) {
             selected_index = index;
         }
     }
     combo.SetCurSel(selected_index);
+}
+
+void PopulateTextRendererModeCombo(CComboBox& combo, int selected_mode)
+{
+    const ComboEntry entries[] = {
+        { IDS_XY_UI_RENDERER_LEGACY_GDI, TEXT_RENDERER_LEGACY_GDI },
+        { IDS_XY_UI_RENDERER_AUTO_FALLBACK, TEXT_RENDERER_AUTO_FALLBACK },
+        { IDS_XY_UI_RENDERER_UNISCRIBE, TEXT_RENDERER_UNISCRIBE },
+    };
+
+    selected_mode = NormalizeTextRendererMode(selected_mode);
+    PopulateCombo(combo, entries, _countof(entries), selected_mode);
 }
 
 int GetTextRendererModeComboValue(const CComboBox& combo)
@@ -118,6 +127,106 @@ int GetTextRendererModeComboValue(const CComboBox& combo)
     const int index = combo.GetCurSel();
     return index == CB_ERR ? TEXT_RENDERER_LEGACY_GDI
                            : NormalizeTextRendererMode(static_cast<int>(combo.GetItemData(index)));
+}
+
+void PopulateSubpixelPositionCombo(CComboBox& combo, int selected)
+{
+    const ComboEntry entries[] = {
+        { IDS_XY_UI_SUBPIXEL_NONE, 0 },
+        { IDS_XY_UI_SUBPIXEL_2X2, 1 },
+        { IDS_XY_UI_SUBPIXEL_4X4, 2 },
+        { IDS_XY_UI_SUBPIXEL_8X8_VSFILTER, 3 },
+        { IDS_XY_UI_SUBPIXEL_8X8_BILINEAR, 4 },
+    };
+    PopulateCombo(combo, entries, _countof(entries), selected);
+}
+
+void PopulateLayoutSizeCombo(CComboBox& combo, int selected)
+{
+    const ComboEntry entries[] = {
+        { IDS_XY_UI_LAYOUT_ORIGINAL,
+            DirectVobSubXyOptions::LAYOUT_SIZE_OPT_ORIGINAL_VIDEO_SIZE },
+        { IDS_XY_UI_LAYOUT_AR_ADJUSTED,
+            DirectVobSubXyOptions::LAYOUT_SIZE_OPT_AR_ADJUSTED_VIDEO_SIZE },
+        { IDS_XY_UI_LAYOUT_CUSTOM,
+            DirectVobSubXyOptions::LAYOUT_SIZE_OPT_USER_SPECIFIED },
+    };
+    PopulateCombo(combo, entries, _countof(entries), selected);
+}
+
+void PopulateColorSpaceCombo(CComboBox& combo, int selected)
+{
+    const ComboEntry entries[] = {
+        { IDS_XY_UI_AUTO, CDirectVobSub::YuvMatrix_AUTO },
+        { IDS_XY_UI_BT601, CDirectVobSub::BT_601 },
+        { IDS_XY_UI_BT709, CDirectVobSub::BT_709 },
+        { IDS_XY_UI_BT2020, CDirectVobSub::BT_2020 },
+        { IDS_XY_UI_GUESS, CDirectVobSub::GUESS },
+    };
+    PopulateCombo(combo, entries, _countof(entries), selected);
+}
+
+void PopulateYuvRangeCombo(CComboBox& combo, int selected)
+{
+    const ComboEntry entries[] = {
+        { IDS_XY_UI_AUTO, CDirectVobSub::YuvRange_Auto },
+        { IDS_XY_UI_TV, CDirectVobSub::YuvRange_TV },
+        { IDS_XY_UI_PC, CDirectVobSub::YuvRange_PC },
+    };
+    PopulateCombo(combo, entries, _countof(entries), selected);
+}
+
+void PopulateRgbLevelCombo(CComboBox& combo, int selected)
+{
+    const ComboEntry entries[] = {
+        { IDS_XY_UI_AUTO, DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_AUTO },
+        { IDS_XY_UI_PC, DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_PC },
+        { IDS_XY_UI_FORCE_TV, DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_FORCE_TV },
+    };
+    PopulateCombo(combo, entries, _countof(entries), selected);
+}
+
+void PopulateHdrModeCombo(CComboBox& combo, int selected)
+{
+    const ComboEntry entries[] = {
+        { IDS_XY_UI_AUTO, DirectVobSubXyOptions::PGS_HDR_MODE_AUTO },
+        { IDS_XY_UI_HDR_OFF, DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED },
+        { IDS_XY_UI_HDR_PQ, DirectVobSubXyOptions::PGS_HDR_MODE_PQ },
+    };
+    PopulateCombo(combo, entries, _countof(entries), selected);
+}
+
+void PopulateUiLanguageCombo(CComboBox& combo, int selected)
+{
+    const ComboEntry entries[] = {
+        { IDS_XY_UI_AUTO, DirectVobSubXyOptions::UI_LANGUAGE_AUTO },
+        { IDS_XY_UI_ENGLISH, DirectVobSubXyOptions::UI_LANGUAGE_ENGLISH },
+        { IDS_XY_UI_CHINESE, DirectVobSubXyOptions::UI_LANGUAGE_CHINESE_SIMPLIFIED },
+    };
+    PopulateCombo(combo, entries, _countof(entries), selected);
+}
+
+CString FormatCachesMessage(
+    const DirectVobSubXyOptions::CachesInfo& caches_info,
+    const DirectVobSubXyOptions::XyFlyWeightInfo& xy_fw_info)
+{
+    CString msg;
+    msg.Format(
+        ResStr(IDS_XY_UI_CACHES_INFO_FORMAT),
+        caches_info.text_info_cache_cur_item_num, caches_info.text_info_cache_hit_count, caches_info.text_info_cache_query_count,
+        caches_info.word_info_cache_cur_item_num, caches_info.word_info_cache_hit_count, caches_info.word_info_cache_query_count,
+        caches_info.path_cache_cur_item_num, caches_info.path_cache_hit_count, caches_info.path_cache_query_count,
+        caches_info.scanline_cache2_cur_item_num, caches_info.scanline_cache2_hit_count, caches_info.scanline_cache2_query_count,
+        caches_info.non_blur_cache_cur_item_num, caches_info.non_blur_cache_hit_count, caches_info.non_blur_cache_query_count,
+        caches_info.overlay_cache_cur_item_num, caches_info.overlay_cache_hit_count, caches_info.overlay_cache_query_count,
+        caches_info.interpolate_cache_cur_item_num, caches_info.interpolate_cache_hit_count, caches_info.interpolate_cache_query_count,
+        caches_info.bitmap_cache_cur_item_num, caches_info.bitmap_cache_hit_count, caches_info.bitmap_cache_query_count,
+        caches_info.scanline_cache_cur_item_num, caches_info.scanline_cache_hit_count, caches_info.scanline_cache_query_count,
+        caches_info.overlay_key_cache_cur_item_num, caches_info.overlay_key_cache_hit_count, caches_info.overlay_key_cache_query_count,
+        caches_info.clipper_cache_cur_item_num, caches_info.clipper_cache_hit_count, caches_info.clipper_cache_query_count,
+        xy_fw_info.xy_fw_string_w.cur_item_num, xy_fw_info.xy_fw_string_w.hit_count, xy_fw_info.xy_fw_string_w.query_count,
+        xy_fw_info.xy_fw_grouped_draw_items_hash_key.cur_item_num, xy_fw_info.xy_fw_grouped_draw_items_hash_key.hit_count, xy_fw_info.xy_fw_grouped_draw_items_hash_key.query_count);
+    return msg;
 }
 
 }
@@ -226,7 +335,7 @@ HRESULT CreateSubStyleEditDialog(const STSStyle& default_style
     {
         return E_FAIL;
     }
-    (*pages)[0].init(_T("Global Default"), &default_style);
+    (*pages)[0].init(ResStr(IDS_XY_UI_GLOBAL_DEFAULT), &default_style);
     dlg.AddPage(*pages);
     for (int i=0;i<count;i++)
     {
@@ -245,13 +354,13 @@ void EditStyle(HWND hWnd, IXyOptions *filter, /* in-out */STSStyle* default_styl
     HRESULT hr = GetSubStyles(filter, &styles, &style_count);
     CHECK_N_LOG(hr, "Failed to get styles."<<XY_LOG_VAR_2_STR(hr));
     CStyleEditorPPage* pages = NULL;
-    CPropertySheet dlg(_T("Styles"), CWnd::FromHandle(hWnd));
+    CPropertySheet dlg(ResStr(IDS_XY_UI_STYLES_TITLE), CWnd::FromHandle(hWnd));
     hr = CreateSubStyleEditDialog(*default_style, styles+1, style_count, dlg, &pages);
     if (FAILED(hr))
     {
         MessageBoxW(hWnd,
-            L"Failed to create Style editor dialog",
-            L"Fatal",
+            ResStr(IDS_XY_UI_STYLE_EDITOR_FAILED),
+            ResStr(IDS_XY_UI_FATAL_TITLE),
             MB_OK | MB_ICONERROR | MB_APPLMODAL
             );
         DeleteSubStyles(styles, style_count+1);
@@ -572,7 +681,7 @@ bool CDVSMainPPage::OnMessage(UINT uMsg, WPARAM wParam, LPARAM lParam)
                         CFileDialog fd(TRUE, NULL, NULL, 
                             OFN_EXPLORER|OFN_ENABLESIZING|OFN_HIDEREADONLY|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST,
                             _T(".idx .smi .sub .srt .psb .ssa .ass .usf .ssf|*.idx;*.smi;*.sub;*.srt;*.psb;*.ssa;*.ass;*.usf;*.ssf|")
-                            _T("All files (*.*)|*.*||"),
+                            ResStr(IDS_XY_UI_ALL_FILES_FILTER),
                             CDialog::FromHandle(m_Dlg), 0);
 
                         if(fd.DoModal() == IDOK)
@@ -942,7 +1051,8 @@ void CDVSMiscPPage::UpdateControlData(bool fSave)
 
         if (m_colorSpaceDropList.GetCurSel() != CB_ERR)
         {
-            m_colorSpace = m_colorSpaceDropList.GetCurSel();
+            m_colorSpace = static_cast<int>(
+                m_colorSpaceDropList.GetItemData(m_colorSpaceDropList.GetCurSel()));
         }
         else
         {
@@ -951,7 +1061,8 @@ void CDVSMiscPPage::UpdateControlData(bool fSave)
 
         if (m_yuvRangeDropList.GetCurSel() != CB_ERR)
         {
-            m_yuvRange = m_yuvRangeDropList.GetCurSel();
+            m_yuvRange = static_cast<int>(
+                m_yuvRangeDropList.GetItemData(m_yuvRangeDropList.GetCurSel()));
         }
         else
         {
@@ -978,18 +1089,7 @@ void CDVSMiscPPage::UpdateControlData(bool fSave)
         {
             m_colorSpace = CDirectVobSub::YuvMatrix_AUTO;
         }
-        m_colorSpaceDropList.ResetContent();
-        m_colorSpaceDropList.AddString( CString(_T("Auto")) );
-        m_colorSpaceDropList.SetItemData( CDirectVobSub::YuvMatrix_AUTO, CDirectVobSub::YuvMatrix_AUTO );
-        m_colorSpaceDropList.AddString( CString(_T("BT.601")) ); 
-        m_colorSpaceDropList.SetItemData( CDirectVobSub::BT_601, CDirectVobSub::BT_601 );
-        m_colorSpaceDropList.AddString( CString(_T("BT.709")) ); 
-        m_colorSpaceDropList.SetItemData( CDirectVobSub::BT_709, CDirectVobSub::BT_709);
-        m_colorSpaceDropList.AddString( CString(_T("BT.2020")) ); 
-        m_colorSpaceDropList.SetItemData( CDirectVobSub::BT_2020, CDirectVobSub::BT_2020);
-        m_colorSpaceDropList.AddString( CString(_T("Guess")) );
-        m_colorSpaceDropList.SetItemData( CDirectVobSub::GUESS, CDirectVobSub::GUESS );
-        m_colorSpaceDropList.SetCurSel( m_colorSpace ); 
+        PopulateColorSpaceCombo(m_colorSpaceDropList, m_colorSpace);
 
         if( m_yuvRange != CDirectVobSub::YuvRange_Auto &&
             m_yuvRange != CDirectVobSub::YuvRange_PC &&
@@ -997,14 +1097,7 @@ void CDVSMiscPPage::UpdateControlData(bool fSave)
         {
             m_yuvRange = CDirectVobSub::YuvRange_Auto;
         }
-        m_yuvRangeDropList.ResetContent();
-        m_yuvRangeDropList.AddString( CString(_T("Auto")) );
-        m_yuvRangeDropList.SetItemData( CDirectVobSub::YuvRange_Auto, CDirectVobSub::YuvRange_Auto );
-        m_yuvRangeDropList.AddString( CString(_T("TV")) );
-        m_yuvRangeDropList.SetItemData( CDirectVobSub::YuvRange_TV, CDirectVobSub::YuvRange_TV );
-        m_yuvRangeDropList.AddString( CString(_T("PC")) );
-        m_yuvRangeDropList.SetItemData( CDirectVobSub::YuvRange_PC, CDirectVobSub::YuvRange_PC );
-        m_yuvRangeDropList.SetCurSel( m_yuvRange ); 
+        PopulateYuvRangeCombo(m_yuvRangeDropList, m_yuvRange);
 
         m_showosd.SetCheck(m_fOSD);
         m_autoreload.SetCheck(!m_fReloaderDisabled);
@@ -1110,45 +1203,11 @@ bool CDVSMorePPage::OnMessage(UINT uMsg, WPARAM wParam, LPARAM lParam)
                         CHECK_N_LOG(hr, "Failed to get option");
                         hr = m_pDirectVobSubXy->XyGetBin2(DirectVobSubXyOptions::BIN2_XY_FLY_WEIGHT_INFO, reinterpret_cast<LPVOID>(&xy_fw_info), sizeof(xy_fw_info));
                         CHECK_N_LOG(hr, "Failed to get option");
-                        CString msg;
-                        msg.Format(
-                            _T("Cache :stored_num/hit_count/query_count\n")\
-                            _T("  Parser cache 1:%ld/%ld/%ld\n")\
-                            _T("  Parser cache 2:%ld/%ld/%ld\n")\
-                            _T("\n")\
-                            _T("  LV 4:%ld/%ld/%ld\t\t")\
-                            _T("  LV 3:%ld/%ld/%ld\n")\
-                            _T("  LV 2:%ld/%ld/%ld\t\t")\
-                            _T("  LV 1:%ld/%ld/%ld\n")\
-                            _T("  LV 0:%ld/%ld/%ld\n")\
-                            _T("\n")\
-                            _T("  bitmap   :%ld/%ld/%ld\t\t")\
-                            _T("  scan line:%ld/%ld/%ld\n")\
-                            _T("  relay key:%ld/%ld/%ld\t\t")\
-                            _T("  clipper  :%ld/%ld/%ld\n")\
-                            _T("\n")\
-                            _T("  FW string pool    :%ld/%ld/%ld\t\t")\
-                            _T("  FW bitmap key pool:%ld/%ld/%ld\n")\
-                            ,
-                            caches_info.text_info_cache_cur_item_num, caches_info.text_info_cache_hit_count, caches_info.text_info_cache_query_count,
-                            caches_info.word_info_cache_cur_item_num, caches_info.word_info_cache_hit_count, caches_info.word_info_cache_query_count,
-                            caches_info.path_cache_cur_item_num,     caches_info.path_cache_hit_count,     caches_info.path_cache_query_count,
-                            caches_info.scanline_cache2_cur_item_num, caches_info.scanline_cache2_hit_count, caches_info.scanline_cache2_query_count,
-                            caches_info.non_blur_cache_cur_item_num, caches_info.non_blur_cache_hit_count, caches_info.non_blur_cache_query_count,
-                            caches_info.overlay_cache_cur_item_num,  caches_info.overlay_cache_hit_count,  caches_info.overlay_cache_query_count,
-                            caches_info.interpolate_cache_cur_item_num, caches_info.interpolate_cache_hit_count, caches_info.interpolate_cache_query_count,
-                            caches_info.bitmap_cache_cur_item_num, caches_info.bitmap_cache_hit_count, caches_info.bitmap_cache_query_count,
-                            caches_info.scanline_cache_cur_item_num, caches_info.scanline_cache_hit_count, caches_info.scanline_cache_query_count,
-                            caches_info.overlay_key_cache_cur_item_num, caches_info.overlay_key_cache_hit_count, caches_info.overlay_key_cache_query_count,
-                            caches_info.clipper_cache_cur_item_num, caches_info.clipper_cache_hit_count, caches_info.clipper_cache_query_count,
-
-                            xy_fw_info.xy_fw_string_w.cur_item_num, xy_fw_info.xy_fw_string_w.hit_count, xy_fw_info.xy_fw_string_w.query_count,
-                            xy_fw_info.xy_fw_grouped_draw_items_hash_key.cur_item_num, xy_fw_info.xy_fw_grouped_draw_items_hash_key.hit_count, xy_fw_info.xy_fw_grouped_draw_items_hash_key.query_count
-                            );
+                        CString msg = FormatCachesMessage(caches_info, xy_fw_info);
                         MessageBox(
                             m_hwnd,
                             msg,
-                            _T("Caches Info"),
+                            ResStr(IDS_XY_UI_CACHES_INFO_TITLE),
                             MB_OK | MB_ICONINFORMATION | MB_APPLMODAL
                             );
                         return(true);
@@ -1265,37 +1324,9 @@ void CDVSMorePPage::UpdateControlData(bool fSave)
         else if ( m_subpixel_pos_level >= 5 )
             temp = 4;
 
-        m_combo_subpixel_pos.ResetContent();
-        m_combo_subpixel_pos.AddString( CString(_T("NONE(fastest)")) );m_combo_subpixel_pos.SetItemData(0, 0);
-        m_combo_subpixel_pos.AddString( CString(_T("2x2")) );m_combo_subpixel_pos.SetItemData(1, 1);
-        m_combo_subpixel_pos.AddString( CString(_T("4x4")) );m_combo_subpixel_pos.SetItemData(2, 2);
-        m_combo_subpixel_pos.AddString( CString(_T("8x8(vsfilter2.39 default)")) );m_combo_subpixel_pos.SetItemData(3, 3);
-        m_combo_subpixel_pos.AddString( CString(_T("8x8(bilinear)")) );m_combo_subpixel_pos.SetItemData(4, 4);
+        PopulateSubpixelPositionCombo(m_combo_subpixel_pos, temp);
 
-        m_combo_subpixel_pos.SetCurSel( temp );
-
-        switch(m_layout_size_opt)
-        {
-        default:
-        case DirectVobSubXyOptions::LAYOUT_SIZE_OPT_ORIGINAL_VIDEO_SIZE:
-            temp = 0;
-            break;
-        case DirectVobSubXyOptions::LAYOUT_SIZE_OPT_AR_ADJUSTED_VIDEO_SIZE:
-            temp = 1;
-            break;
-        case DirectVobSubXyOptions::LAYOUT_SIZE_OPT_USER_SPECIFIED:
-            temp = 2;
-            break;
-        }
-
-        m_combo_layout_size_opt.ResetContent();
-        m_combo_layout_size_opt.AddString( CString(_T("Use Original Video Size")) );
-        m_combo_layout_size_opt.SetItemData(0, DirectVobSubXyOptions::LAYOUT_SIZE_OPT_ORIGINAL_VIDEO_SIZE);
-        m_combo_layout_size_opt.AddString( CString(_T("Use AR Adjusted Video Size")) );
-        m_combo_layout_size_opt.SetItemData(1, DirectVobSubXyOptions::LAYOUT_SIZE_OPT_AR_ADJUSTED_VIDEO_SIZE);
-        m_combo_layout_size_opt.AddString( CString(_T("Customize ...")) );
-        m_combo_layout_size_opt.SetItemData(2, DirectVobSubXyOptions::LAYOUT_SIZE_OPT_USER_SPECIFIED);
-        m_combo_layout_size_opt.SetCurSel( temp );
+        PopulateLayoutSizeCombo(m_combo_layout_size_opt, m_layout_size_opt);
 
         m_layout_size_x.SetRange32(1, 12800);
         m_layout_size_x.SetPos32(m_layout_size.cx);
@@ -1580,7 +1611,7 @@ void CDVSColorPPage::UpdateControlData(bool fSave)
         m_outputFmtList.DeleteAllItems();
         m_outputFmtList.DeleteColumn(0);
         m_outputFmtList.SetExtendedStyle( (m_outputFmtList.GetStyle()|LVS_EX_CHECKBOXES) & ~LVS_EX_GRIDLINES );
-        m_outputFmtList.InsertColumn(0, _T("output"), LVCFMT_LEFT, 110);
+        m_outputFmtList.InsertColumn(0, ResStr(IDS_XY_UI_OUTPUT_COLUMN), LVCFMT_LEFT, 110);
         for(int i = 0; i < static_cast<int>(m_outputColorSpaceCount); i++)
         {
             m_outputFmtList.InsertItem(i, GetColorSpaceName(m_outputColorSpace[i].color_space,OUTPUT_COLOR_SPACE));
@@ -1592,7 +1623,7 @@ void CDVSColorPPage::UpdateControlData(bool fSave)
         m_inputFmtList.DeleteAllItems();
         m_inputFmtList.DeleteColumn(0);
         m_inputFmtList.SetExtendedStyle(m_inputFmtList.GetStyle()|LVS_EX_CHECKBOXES);
-        m_inputFmtList.InsertColumn(0, _T("input"), LVCFMT_LEFT, 150);		
+        m_inputFmtList.InsertColumn(0, ResStr(IDS_XY_UI_INPUT_COLUMN), LVCFMT_LEFT, 150);
         for(int i = 0; i < static_cast<int>(m_inputColorSpaceCount); i++)
         {
             m_inputFmtList.InsertItem(i, GetColorSpaceName(m_inputColorSpace[i].color_space,INPUT_COLOR_SPACE));
@@ -1870,7 +1901,7 @@ bool CXySubFilterMainPPage::OnMessage(UINT uMsg, WPARAM wParam, LPARAM lParam)
                         CFileDialog fd(TRUE, NULL, NULL, 
                             OFN_EXPLORER|OFN_ENABLESIZING|OFN_HIDEREADONLY|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST,
                             _T(".idx .smi .sub .srt .psb .ssa .ass .usf .ssf|*.idx;*.smi;*.sub;*.srt;*.psb;*.ssa;*.ass;*.usf;*.ssf|")
-                            _T("All files (*.*)|*.*||"),
+                            ResStr(IDS_XY_UI_ALL_FILES_FILTER),
                             CDialog::FromHandle(m_Dlg), 0);
 
                         if(fd.DoModal() == IDOK)
@@ -1890,7 +1921,7 @@ bool CXySubFilterMainPPage::OnMessage(UINT uMsg, WPARAM wParam, LPARAM lParam)
                     {
                         AFX_MANAGE_STATE(AfxGetStaticModuleState());
                         CFileDialog fd(TRUE, _T("dll"), m_csriDllPath, OFN_EXPLORER | OFN_ENABLESIZING | OFN_HIDEREADONLY | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST,
-                            _T("Dynamic Libraries (*.dll)|*.dll|All files (*.*)|*.*||"), CDialog::FromHandle(m_Dlg), 0);
+                            ResStr(IDS_XY_UI_DLL_FILES_FILTER), CDialog::FromHandle(m_Dlg), 0);
                         if(fd.DoModal() == IDOK)
                         {
 							m_csriPathEdit.SetWindowText(fd.GetPathName());
@@ -1967,7 +1998,8 @@ void CXySubFilterMainPPage::UpdateObjectData(bool fSave)
         CHECK_N_LOG(hr, "Failed to set option");
         if (FAILED(hr) && !m_csriDllPath.IsEmpty()) {
             CStringW msg;
-            msg.Format(L"Failed to load CSRI renderer:\n%ls", m_csriDllPath.GetString());
+            msg.Format(ResStr(IDS_XY_UI_CSRI_LOAD_FAILED_FORMAT),
+                m_csriDllPath.GetString());
             AfxMessageBox(msg, MB_ICONWARNING | MB_OK);
         }
         hr = m_pDirectVobSubXy->XySetInt(DirectVobSubXyOptions::INT_SUBTITLE_RENDER_BACKEND, m_backend);
@@ -2073,23 +2105,12 @@ void CXySubFilterMainPPage::UpdateControlData(bool fSave)
         m_csriPathEdit.SetWindowText(m_csriDllPath);
         m_csriResetButton.EnableWindow(!m_csriDllPath.IsEmpty());
 
-        m_backendCombo.ResetContent();
-        struct Entry {
-            LPCTSTR label;
-            SubtitleRenderBackend value;
-        } const entries[] = {
-            { _T("libass (default)"), SUBTITLE_RENDER_BACKEND_LIBASS },
-            { _T("VSFilter (legacy)"), SUBTITLE_RENDER_BACKEND_VSFILTER },
-            { _T("CSRI (experimental)"), SUBTITLE_RENDER_BACKEND_CSRI },
+        const ComboEntry entries[] = {
+            { IDS_XY_UI_BACKEND_LIBASS, SUBTITLE_RENDER_BACKEND_LIBASS },
+            { IDS_XY_UI_BACKEND_VSFILTER, SUBTITLE_RENDER_BACKEND_VSFILTER },
+            { IDS_XY_UI_BACKEND_CSRI, SUBTITLE_RENDER_BACKEND_CSRI },
         };
-
-        int backend_index = 0;
-        for (const auto& entry : entries) {
-            int index = m_backendCombo.AddString(entry.label);
-            m_backendCombo.SetItemData(index, static_cast<DWORD_PTR>(entry.value));
-            if (entry.value == m_backend) backend_index = index;
-        }
-        m_backendCombo.SetCurSel(backend_index);
+        PopulateCombo(m_backendCombo, entries, _countof(entries), m_backend);
 
         int actual_backend = SUBTITLE_RENDER_BACKEND_VSFILTER;
         if (SUCCEEDED(m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_ACTUAL_SUBTITLE_RENDER_BACKEND, &actual_backend))) {
@@ -2098,19 +2119,19 @@ void CXySubFilterMainPPage::UpdateControlData(bool fSave)
             m_pDirectVobSubXy->XyGetBool(DirectVobSubXyOptions::BOOL_IS_BITMAP, &is_bitmap);
             if (is_bitmap) {
                 // Bitmap subtitles do not use the text renderer backend.
-                actual_backend_label = _T("Bitmap (internal)");
+                actual_backend_label = ResStr(IDS_XY_UI_ACTUAL_BITMAP);
             }
             else {
                 switch (NormalizeBackend(actual_backend)) {
                 case SUBTITLE_RENDER_BACKEND_LIBASS:
-                    actual_backend_label = _T("libass");
+                    actual_backend_label = ResStr(IDS_XY_UI_ACTUAL_LIBASS);
                     break;
                 case SUBTITLE_RENDER_BACKEND_CSRI:
-                    actual_backend_label = _T("CSRI");
+                    actual_backend_label = ResStr(IDS_XY_UI_ACTUAL_CSRI);
                     break;
                 case SUBTITLE_RENDER_BACKEND_VSFILTER:
                 default:
-                    actual_backend_label = _T("VSFilter");
+                    actual_backend_label = ResStr(IDS_XY_UI_ACTUAL_VSFILTER);
                     break;
                 }
             }
@@ -2156,6 +2177,7 @@ CXySubFilterMorePPage::CXySubFilterMorePPage(LPUNKNOWN pUnk, HRESULT* phr)
     BindControl(IDC_COMBO_UI_LANGUAGE, m_combo_ui_language);
     BindControl(IDC_COMBO_TEXT_HDR_MODE, m_combo_text_hdr_mode);
     BindControl(IDC_HDR_STATUS, m_hdrStatusLabel);
+    BindControl(IDC_HDR_DIAG_OPEN, m_openHdrDiagnostic);
     BindControl(IDC_EDIT_PGS_HDR_WHITE_NITS, m_edit_pgs_hdr_white_nits);
     BindControl(IDC_SPIN_PGS_HDR_WHITE_NITS, m_spin_pgs_hdr_white_nits);
 
@@ -2185,48 +2207,41 @@ bool CXySubFilterMorePPage::OnMessage(UINT uMsg, WPARAM wParam, LPARAM lParam)
                         CHECK_N_LOG(hr, "Failed to get option");
                         hr = m_pDirectVobSubXy->XyGetBin2(DirectVobSubXyOptions::BIN2_XY_FLY_WEIGHT_INFO, reinterpret_cast<LPVOID>(&xy_fw_info), sizeof(xy_fw_info));
                         CHECK_N_LOG(hr, "Failed to get option");
-                        CString msg;
-                        msg.Format(
-                            _T("Cache :stored_num/hit_count/query_count\n")\
-                            _T("  Parser cache 1:%ld/%ld/%ld\n")\
-                            _T("  Parser cache 2:%ld/%ld/%ld\n")\
-                            _T("\n")\
-                            _T("  LV 4:%ld/%ld/%ld\t\t")\
-                            _T("  LV 3:%ld/%ld/%ld\n")\
-                            _T("  LV 2:%ld/%ld/%ld\t\t")\
-                            _T("  LV 1:%ld/%ld/%ld\n")\
-                            _T("  LV 0:%ld/%ld/%ld\n")\
-                            _T("\n")\
-                            _T("  bitmap   :%ld/%ld/%ld\t\t")\
-                            _T("  scan line:%ld/%ld/%ld\n")\
-                            _T("  relay key:%ld/%ld/%ld\t\t")\
-                            _T("  clipper  :%ld/%ld/%ld\n")\
-                            _T("\n")\
-                            _T("  FW string pool    :%ld/%ld/%ld\t\t")\
-                            _T("  FW bitmap key pool:%ld/%ld/%ld\n")\
-                            ,
-                            caches_info.text_info_cache_cur_item_num, caches_info.text_info_cache_hit_count, caches_info.text_info_cache_query_count,
-                            caches_info.word_info_cache_cur_item_num, caches_info.word_info_cache_hit_count, caches_info.word_info_cache_query_count,
-                            caches_info.path_cache_cur_item_num,     caches_info.path_cache_hit_count,     caches_info.path_cache_query_count,
-                            caches_info.scanline_cache2_cur_item_num, caches_info.scanline_cache2_hit_count, caches_info.scanline_cache2_query_count,
-                            caches_info.non_blur_cache_cur_item_num, caches_info.non_blur_cache_hit_count, caches_info.non_blur_cache_query_count,
-                            caches_info.overlay_cache_cur_item_num,  caches_info.overlay_cache_hit_count,  caches_info.overlay_cache_query_count,
-                            caches_info.interpolate_cache_cur_item_num, caches_info.interpolate_cache_hit_count, caches_info.interpolate_cache_query_count,
-                            caches_info.bitmap_cache_cur_item_num, caches_info.bitmap_cache_hit_count, caches_info.bitmap_cache_query_count,
-                            caches_info.scanline_cache_cur_item_num, caches_info.scanline_cache_hit_count, caches_info.scanline_cache_query_count,
-                            caches_info.overlay_key_cache_cur_item_num, caches_info.overlay_key_cache_hit_count, caches_info.overlay_key_cache_query_count,
-                            caches_info.clipper_cache_cur_item_num, caches_info.clipper_cache_hit_count, caches_info.clipper_cache_query_count,
-
-                            xy_fw_info.xy_fw_string_w.cur_item_num, xy_fw_info.xy_fw_string_w.hit_count, xy_fw_info.xy_fw_string_w.query_count,
-                            xy_fw_info.xy_fw_grouped_draw_items_hash_key.cur_item_num, xy_fw_info.xy_fw_grouped_draw_items_hash_key.hit_count, xy_fw_info.xy_fw_grouped_draw_items_hash_key.query_count
-                            );
+                        CString msg = FormatCachesMessage(caches_info, xy_fw_info);
                         MessageBox(
                             m_hwnd,
                             msg,
-                            _T("Caches Info"),
+                            ResStr(IDS_XY_UI_CACHES_INFO_TITLE),
                             MB_OK | MB_ICONINFORMATION | MB_APPLMODAL
                             );
                         return(true);
+                    }
+                    else if(LOWORD(wParam) == IDC_HDR_DIAG_OPEN)
+                    {
+                        AFX_MANAGE_STATE(AfxGetStaticModuleState());
+                        DirectVobSubImpl* dvs_impl =
+                            dynamic_cast<DirectVobSubImpl*>(m_pDirectVobSub.p);
+                        const CStringW path = dvs_impl
+                            ? dvs_impl->GetHdrDiagnosticPath() : CStringW();
+                        if (path.IsEmpty()
+                            || GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) {
+                            MessageBox(
+                                m_hwnd,
+                                ResStr(IDS_XY_UI_HDR_DIAG_MISSING),
+                                ResStr(IDS_XY_UI_HDR_DIAG_TITLE),
+                                MB_OK | MB_ICONINFORMATION | MB_APPLMODAL);
+                            return true;
+                        }
+                        const HINSTANCE result = ShellExecuteW(
+                            m_hwnd, L"open", path, NULL, NULL, SW_SHOWNORMAL);
+                        if (reinterpret_cast<INT_PTR>(result) <= 32) {
+                            MessageBox(
+                                m_hwnd,
+                                ResStr(IDS_XY_UI_HDR_DIAG_FAILED),
+                                ResStr(IDS_XY_UI_HDR_DIAG_TITLE),
+                                MB_OK | MB_ICONERROR | MB_APPLMODAL);
+                        }
+                        return true;
                     }
                     else if(LOWORD(wParam) == IDC_INSTANTUPDATE)
                     {
@@ -2419,7 +2434,8 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
 
         if (m_combo_yuv_range.GetCurSel() != CB_ERR)
         {
-            m_yuv_range = m_combo_yuv_range.GetCurSel();
+            m_yuv_range = static_cast<int>(
+                m_combo_yuv_range.GetItemData(m_combo_yuv_range.GetCurSel()));
         }
         else
         {
@@ -2427,7 +2443,8 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         }
         if (m_combo_yuv_matrix.GetCurSel() != CB_ERR)
         {
-            m_yuv_matrix = m_combo_yuv_matrix.GetCurSel();
+            m_yuv_matrix = static_cast<int>(
+                m_combo_yuv_matrix.GetItemData(m_combo_yuv_matrix.GetCurSel()));
         }
         else
         {
@@ -2435,7 +2452,8 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         }
         if (m_combo_rgb_level.GetCurSel() != CB_ERR)
         {
-            m_rgb_level = m_combo_rgb_level.GetCurSel();
+            m_rgb_level = static_cast<int>(
+                m_combo_rgb_level.GetItemData(m_combo_rgb_level.GetCurSel()));
         }
         else
         {
@@ -2443,7 +2461,8 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         }
         if (m_combo_pgs_hdr_mode.GetCurSel() != CB_ERR)
         {
-            m_pgs_hdr_mode = m_combo_pgs_hdr_mode.GetCurSel();
+            m_pgs_hdr_mode = static_cast<int>(
+                m_combo_pgs_hdr_mode.GetItemData(m_combo_pgs_hdr_mode.GetCurSel()));
         }
         else
         {
@@ -2457,11 +2476,13 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         }
         if (m_combo_ui_language.GetCurSel() != CB_ERR)
         {
-            m_ui_language = m_combo_ui_language.GetCurSel();
+            m_ui_language = static_cast<int>(
+                m_combo_ui_language.GetItemData(m_combo_ui_language.GetCurSel()));
         }
         if (m_combo_text_hdr_mode.GetCurSel() != CB_ERR)
         {
-            m_text_hdr_mode = m_combo_text_hdr_mode.GetCurSel();
+            m_text_hdr_mode = static_cast<int>(
+                m_combo_text_hdr_mode.GetItemData(m_combo_text_hdr_mode.GetCurSel()));
         }
 
         m_render_to_original_video_size = !!m_checkbox_render_to_original_video_size.GetCheck();
@@ -2496,37 +2517,9 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         else if ( m_subpixel_pos_level >= 5 )
             temp = 4;
 
-        m_combo_subpixel_pos.ResetContent();
-        m_combo_subpixel_pos.AddString( CString(_T("NONE(fastest)")) );m_combo_subpixel_pos.SetItemData(0, 0);
-        m_combo_subpixel_pos.AddString( CString(_T("2x2")) );m_combo_subpixel_pos.SetItemData(1, 1);
-        m_combo_subpixel_pos.AddString( CString(_T("4x4")) );m_combo_subpixel_pos.SetItemData(2, 2);
-        m_combo_subpixel_pos.AddString( CString(_T("8x8(vsfilter2.39 default)")) );m_combo_subpixel_pos.SetItemData(3, 3);
-        m_combo_subpixel_pos.AddString( CString(_T("8x8(bilinear)")) );m_combo_subpixel_pos.SetItemData(4, 4);
+        PopulateSubpixelPositionCombo(m_combo_subpixel_pos, temp);
 
-        m_combo_subpixel_pos.SetCurSel( temp );
-
-        switch(m_layout_size_opt)
-        {
-        default:
-        case DirectVobSubXyOptions::LAYOUT_SIZE_OPT_ORIGINAL_VIDEO_SIZE:
-            temp = 0;
-            break;
-        case DirectVobSubXyOptions::LAYOUT_SIZE_OPT_AR_ADJUSTED_VIDEO_SIZE:
-            temp = 1;
-            break;
-        case DirectVobSubXyOptions::LAYOUT_SIZE_OPT_USER_SPECIFIED:
-            temp = 2;
-            break;
-        }
-
-        m_combo_layout_size_opt.ResetContent();
-        m_combo_layout_size_opt.AddString( CString(_T("Use Original Video Size")) );
-        m_combo_layout_size_opt.SetItemData(0, DirectVobSubXyOptions::LAYOUT_SIZE_OPT_ORIGINAL_VIDEO_SIZE);
-        m_combo_layout_size_opt.AddString( CString(_T("Use AR Adjusted Video Size")) );
-        m_combo_layout_size_opt.SetItemData(1, DirectVobSubXyOptions::LAYOUT_SIZE_OPT_AR_ADJUSTED_VIDEO_SIZE);
-        m_combo_layout_size_opt.AddString( CString(_T("Customize ...")) );
-        m_combo_layout_size_opt.SetItemData(2, DirectVobSubXyOptions::LAYOUT_SIZE_OPT_USER_SPECIFIED);
-        m_combo_layout_size_opt.SetCurSel( temp );
+        PopulateLayoutSizeCombo(m_combo_layout_size_opt, m_layout_size_opt);
 
         m_layout_size_x.SetRange32(1, 12800);
         m_layout_size_x.SetPos32(m_layout_size.cx);
@@ -2545,14 +2538,7 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         {
             m_yuv_range = CDirectVobSub::YuvRange_Auto;
         }
-        m_combo_yuv_range.ResetContent();
-        m_combo_yuv_range.AddString( CString(_T("Auto")) );
-        m_combo_yuv_range.SetItemData( CDirectVobSub::YuvRange_Auto, CDirectVobSub::YuvRange_Auto );
-        m_combo_yuv_range.AddString( CString(_T("TV")) );
-        m_combo_yuv_range.SetItemData( CDirectVobSub::YuvRange_TV, CDirectVobSub::YuvRange_TV );
-        m_combo_yuv_range.AddString( CString(_T("PC")) );
-        m_combo_yuv_range.SetItemData( CDirectVobSub::YuvRange_PC, CDirectVobSub::YuvRange_PC );
-        m_combo_yuv_range.SetCurSel( m_yuv_range );
+        PopulateYuvRangeCombo(m_combo_yuv_range, m_yuv_range);
 
         if( m_yuv_matrix != CDirectVobSub::YuvMatrix_AUTO && 
             m_yuv_matrix != CDirectVobSub::BT_601 && 
@@ -2562,32 +2548,14 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         {
             m_yuv_matrix = CDirectVobSub::YuvMatrix_AUTO;
         }
-        m_combo_yuv_matrix.ResetContent();
-        m_combo_yuv_matrix.AddString( CString(_T("Auto")) );
-        m_combo_yuv_matrix.SetItemData( CDirectVobSub::YuvMatrix_AUTO, CDirectVobSub::YuvMatrix_AUTO );
-        m_combo_yuv_matrix.AddString( CString(_T("BT.601")) ); 
-        m_combo_yuv_matrix.SetItemData( CDirectVobSub::BT_601, CDirectVobSub::BT_601 );
-        m_combo_yuv_matrix.AddString( CString(_T("BT.709")) ); 
-        m_combo_yuv_matrix.SetItemData( CDirectVobSub::BT_709, CDirectVobSub::BT_709);
-        m_combo_yuv_matrix.AddString( CString(_T("BT.2020")) ); 
-        m_combo_yuv_matrix.SetItemData( CDirectVobSub::BT_2020, CDirectVobSub::BT_2020);
-        m_combo_yuv_matrix.AddString( CString(_T("Guess")) );
-        m_combo_yuv_matrix.SetItemData( CDirectVobSub::GUESS, CDirectVobSub::GUESS );
-        m_combo_yuv_matrix.SetCurSel( m_yuv_matrix );
+        PopulateColorSpaceCombo(m_combo_yuv_matrix, m_yuv_matrix);
 
         if (m_rgb_level != DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_PC &&
             m_rgb_level != DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_FORCE_TV)
         {
             m_rgb_level = DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_AUTO;
         }
-        m_combo_rgb_level.ResetContent();
-        m_combo_rgb_level.AddString( CString(_T("AUTO")) );
-        m_combo_rgb_level.SetItemData( DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_AUTO, DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_AUTO );
-        m_combo_rgb_level.AddString( CString(_T("PC")) );
-        m_combo_rgb_level.SetItemData( DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_PC, DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_PC );
-        m_combo_rgb_level.AddString( CString(_T("Force TV")) );
-        m_combo_rgb_level.SetItemData( DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_FORCE_TV, DirectVobSubXyOptions::RGB_OUTPUT_LEVEL_FORCE_TV );
-        m_combo_rgb_level.SetCurSel( m_rgb_level );
+        PopulateRgbLevelCombo(m_combo_rgb_level, m_rgb_level);
 
         if (m_pgs_hdr_mode < DirectVobSubXyOptions::PGS_HDR_MODE_AUTO ||
             m_pgs_hdr_mode >= DirectVobSubXyOptions::PGS_HDR_MODE_COUNT)
@@ -2600,28 +2568,14 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         if (m_pgs_hdr_mode == DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE) {
             m_pgs_hdr_mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
         }
-        m_combo_pgs_hdr_mode.ResetContent();
-        m_combo_pgs_hdr_mode.AddString( CString(_T("Auto")) );
-        m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_AUTO, DirectVobSubXyOptions::PGS_HDR_MODE_AUTO );
-        m_combo_pgs_hdr_mode.AddString( CString(_T("Off (SDR)")) );
-        m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED, DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED );
-        m_combo_pgs_hdr_mode.AddString( CString(_T("PQ (absolute)")) );
-        m_combo_pgs_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_PQ, DirectVobSubXyOptions::PGS_HDR_MODE_PQ );
-        m_combo_pgs_hdr_mode.SetCurSel( m_pgs_hdr_mode );
+        PopulateHdrModeCombo(m_combo_pgs_hdr_mode, m_pgs_hdr_mode);
 
         if (m_ui_language < DirectVobSubXyOptions::UI_LANGUAGE_AUTO ||
             m_ui_language >= DirectVobSubXyOptions::UI_LANGUAGE_COUNT)
         {
             m_ui_language = DirectVobSubXyOptions::UI_LANGUAGE_AUTO;
         }
-        m_combo_ui_language.ResetContent();
-        m_combo_ui_language.AddString( CString(_T("Auto")) );
-        m_combo_ui_language.SetItemData( DirectVobSubXyOptions::UI_LANGUAGE_AUTO, DirectVobSubXyOptions::UI_LANGUAGE_AUTO );
-        m_combo_ui_language.AddString( CString(_T("English")) );
-        m_combo_ui_language.SetItemData( DirectVobSubXyOptions::UI_LANGUAGE_ENGLISH, DirectVobSubXyOptions::UI_LANGUAGE_ENGLISH );
-        m_combo_ui_language.AddString( CString(_T("中文（简体）")) );
-        m_combo_ui_language.SetItemData( DirectVobSubXyOptions::UI_LANGUAGE_CHINESE_SIMPLIFIED, DirectVobSubXyOptions::UI_LANGUAGE_CHINESE_SIMPLIFIED );
-        m_combo_ui_language.SetCurSel( m_ui_language );
+        PopulateUiLanguageCombo(m_combo_ui_language, m_ui_language);
 
         if (m_text_hdr_mode < DirectVobSubXyOptions::PGS_HDR_MODE_AUTO ||
             m_text_hdr_mode >= DirectVobSubXyOptions::PGS_HDR_MODE_COUNT)
@@ -2631,14 +2585,7 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         if (m_text_hdr_mode == DirectVobSubXyOptions::PGS_HDR_MODE_RELATIVE_WHITE) {
             m_text_hdr_mode = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
         }
-        m_combo_text_hdr_mode.ResetContent();
-        m_combo_text_hdr_mode.AddString( CString(_T("Auto")) );
-        m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_AUTO, DirectVobSubXyOptions::PGS_HDR_MODE_AUTO );
-        m_combo_text_hdr_mode.AddString( CString(_T("Off (SDR)")) );
-        m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED, DirectVobSubXyOptions::PGS_HDR_MODE_DISABLED );
-        m_combo_text_hdr_mode.AddString( CString(_T("PQ (absolute)")) );
-        m_combo_text_hdr_mode.SetItemData( DirectVobSubXyOptions::PGS_HDR_MODE_PQ, DirectVobSubXyOptions::PGS_HDR_MODE_PQ );
-        m_combo_text_hdr_mode.SetCurSel( m_text_hdr_mode );
+        PopulateHdrModeCombo(m_combo_text_hdr_mode, m_text_hdr_mode);
 
         m_spin_pgs_hdr_white_nits.SetRange32(50, 1000);
         CString hdr_white_str;
@@ -2652,7 +2599,7 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         m_edit_cache_size.GetWindowText(cache_size_str);
         if (m_cache_size<0 && cache_size_str.IsEmpty())
         {
-            cache_size_str.Format(_T("(auto)%d"), m_auto_cache_size);
+            cache_size_str.Format(ResStr(IDS_XY_UI_AUTO_CACHE_FORMAT), m_auto_cache_size);
         }
         else
         {

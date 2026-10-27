@@ -36,6 +36,9 @@
     <ClCompile Include="color_conv_table.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hdr_evidence.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="SubPicAllocatorPresenterImpl.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -93,6 +96,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="color_conv_table.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hdr_evidence.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ISubRender.h">

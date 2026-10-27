@@ -298,3 +298,40 @@ Timing / Paths / About 原先与 DirectVobSub 共用对话框资源。为统一 
 
 被否方案：关闭白点的即时应用。这样会改变现有交互语义，而且其他触发整页刷新的
 选项仍可能出现同类光标跳动。
+
+## D34：HDR 证据合并与 Auto 判定提取为纯函数
+
+`UpdateConsumerHdrSignal()` 仍负责枚举 DirectShow 引脚和读取媒体类型，但不再内嵌
+“哪种证据优先”的规则。`HdrDetection::PreferHdrEvidence()` 负责合并引脚证据，
+`HdrDetection::ResolveAutoPq()` 负责最终 Auto 判定。
+
+这样可以直接单测 HDR 与 SDR 冲突、未知传输函数、side data、文件名 HDR 和
+BT.2020 回退，而不需要构造 COM 图。规则本身保持既有优先级：side data、
+明确 PQ/HLG、文件名 HDR、明确 SDR、BT.2020 / consumer `yuvMatrix`、Off。
+
+被否方案：把所有规则继续留在匿名命名空间中。这样只能跑集成测试，无法稳定覆盖
+多引脚顺序和冲突证据。
+
+## D35：运行时界面文本统一走双语言资源
+
+属性页中运行时创建的组合框、对话框标题、缓存统计和诊断提示全部使用
+`IDS_XY_UI_*`，不再由 C++ 直接拼接用户可见英文。纯技术产品名和标准缩写
+（libass、VSFilter、CSRI、PQ、HLG、BT.2020、nits、GDI、Uniscribe）保持原样。
+
+`Test-ResourceLocalization.ps1` 在 `debug-x64` 云端构建前检查英文/中文资源字符串
+ID、对话框控件 ID，并拒绝属性页新增未标记豁免的硬编码 `AddString`。
+
+被否方案：只修 Paths 页和 HDR 下拉项。这样 English/中文切换仍会出现半英文界面，
+也会继续产生两套重复填充代码。
+
+## D36：HDR 诊断日志通过属性页按钮打开
+
+日志路径由 `XySubFilter::GetHdrDiagnosticPath()` 统一提供，More 页按钮通过
+`ShellExecuteW` 打开现存日志。路径为空、文件不存在或打开失败时显示本地化提示，
+不自动生成空日志，避免用户误把空文件当作有效诊断结果。
+
+## D37：多日真实使用关闭稳定性阻塞
+
+2026-10-28 用户确认 PotPlayer + madVR 多日使用无异常。没有稳定复现的历史
+seek 崩溃不再作为当前阻塞，也不宣称找到了根因；后续若再次出现，使用
+`scripts/Test-SeekStability.ps1` 收集进程退出、WER、bugreport 和 dump 证据。

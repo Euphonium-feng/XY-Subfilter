@@ -328,6 +328,7 @@ class CXySubFilterMorePPage : public CDVSBasePPage
     CComboBox m_combo_ui_language;
     CComboBox m_combo_text_hdr_mode;
     CStatic m_hdrStatusLabel;
+    CButton m_openHdrDiagnostic;
     CEdit m_edit_pgs_hdr_white_nits;
     CSpinButtonCtrl m_spin_pgs_hdr_white_nits;
     CComboBox m_text_renderer_mode_combo;

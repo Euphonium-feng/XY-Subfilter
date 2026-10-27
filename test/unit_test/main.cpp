@@ -13,6 +13,7 @@
 #include "test_color_conv_table.h"
 #include "test_font_fallback.h"
 #include "test_hdr_color.h"
+#include "test_hdr_evidence.h"
 #include "test_composition_hdr.h"
 #include "test_media_side_data.h"
 #include "test_video_info2_color_info.h"

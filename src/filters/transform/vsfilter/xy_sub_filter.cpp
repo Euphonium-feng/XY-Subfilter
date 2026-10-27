@@ -9,6 +9,7 @@
 #include "../../../SubPic/SimpleSubPicProviderImpl.h"
 #include "../../../subpic/SimpleSubPicWrapper.h"
 #include "../../../subpic/color_conv_table.h"
+#include "../../../subpic/hdr_evidence.h"
 
 #include "CAutoTiming.h"
 #include "xy_logger.h"
@@ -51,25 +52,9 @@ const SubRenderOptionsImpl::OptionMap options[] =
 
 namespace
 {
-struct VideoColorMetadata
+HdrDetection::HdrEvidence ReadVideoColorMetadata(const CMediaType& media_type)
 {
-    HdrColor::HdrSignal signal;
-    int transfer_function;
-    DWORD control_flags;
-    HdrColor::VideoMatrix matrix;
-
-    VideoColorMetadata()
-        : signal(HdrColor::HDR_SIGNAL_UNKNOWN)
-        , transfer_function(-1)
-        , control_flags(0)
-        , matrix(HdrColor::VIDEO_MATRIX_UNKNOWN)
-    {
-    }
-};
-
-VideoColorMetadata ReadVideoColorMetadata(const CMediaType& media_type)
-{
-    VideoColorMetadata metadata;
+    HdrDetection::HdrEvidence metadata;
     if (media_type.majortype != MEDIATYPE_Video
         || media_type.formattype != FORMAT_VideoInfo2
         || !media_type.Format()
@@ -92,14 +77,23 @@ VideoColorMetadata ReadVideoColorMetadata(const CMediaType& media_type)
     return metadata;
 }
 
-void WriteHdrDiagnostic(const CStringW& text)
+CStringW BuildHdrDiagnosticPath()
 {
     wchar_t temp_path[MAX_PATH] = { 0 };
     if (!GetTempPathW(_countof(temp_path), temp_path)) {
-        return;
+        return CStringW();
     }
     CStringW path(temp_path);
     path += L"xy_hdr_diag.txt";
+    return path;
+}
+
+void WriteHdrDiagnostic(const CStringW& text)
+{
+    const CStringW path = BuildHdrDiagnosticPath();
+    if (path.IsEmpty()) {
+        return;
+    }
 
     FILE* file = NULL;
     if (_wfopen_s(&file, path.GetString(), L"w, ccs=UTF-8") == 0 && file) {
@@ -3295,7 +3289,7 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
 
 bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
 {
-    VideoColorMetadata selected;
+    HdrDetection::HdrEvidence selected;
     bool filename_hdr = false;
     CStringW diagnostic;
     auto inspect_filter =
@@ -3353,7 +3347,7 @@ bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
                         pin_info.pFilter->Release();
                     }
                 }
-                const VideoColorMetadata metadata =
+                const HdrDetection::HdrEvidence metadata =
                     ReadVideoColorMetadata(media_type);
                 if (media_type.majortype == MEDIATYPE_Video) {
                     diagnostic.AppendFormat(
@@ -3367,16 +3361,11 @@ bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
                         metadata.control_flags, metadata.transfer_function,
                         int(metadata.matrix), int(metadata.signal));
                 }
-                if (metadata.signal == HdrColor::HDR_SIGNAL_HDR) {
+                if (HdrDetection::PreferHdrEvidence(metadata, selected)) {
                     selected = metadata;
-                    return true;
                 }
-                if ((metadata.signal == HdrColor::HDR_SIGNAL_SDR
-                        && selected.signal != HdrColor::HDR_SIGNAL_SDR)
-                    || (metadata.signal == HdrColor::HDR_SIGNAL_UNKNOWN
-                        && selected.signal == HdrColor::HDR_SIGNAL_UNKNOWN
-                        && metadata.transfer_function >= 0)) {
-                    selected = metadata;
+                if (selected.signal == HdrColor::HDR_SIGNAL_HDR) {
+                    return true;
                 }
             }
             pin.Release();
@@ -3434,6 +3423,11 @@ bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
         << " transfer function:" << transfer_function
         << " control flags:" << selected.control_flags);
     return changed;
+}
+
+CStringW XySubFilter::GetHdrDiagnosticPath() const
+{
+    return BuildHdrDiagnosticPath();
 }
 
 void XySubFilter::UpdateLanguageCount()

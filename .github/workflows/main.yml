@@ -60,6 +60,11 @@ jobs:
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
+      - name: Validate localized resources
+        if: matrix.name == 'debug-x64'
+        shell: pwsh
+        run: ./scripts/Test-ResourceLocalization.ps1
+
       - name: Build and run regression tests
         shell: pwsh
         run: |
