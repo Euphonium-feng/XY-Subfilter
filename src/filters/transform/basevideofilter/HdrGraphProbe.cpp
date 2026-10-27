@@ -1,8 +1,6 @@
 #include "stdafx.h"
 #include "HdrGraphProbe.h"
 
-#include <algorithm>
-#include <limits>
 #include <set>
 #include <vector>
 
@@ -109,7 +107,7 @@ void UpdateActiveSignature(
 
     BITMAPINFOHEADER bih = {};
     if (ExtractBIH(&media_type, &bih)) {
-        candidate.width = unsigned(std::max(0L, bih.biWidth));
+        candidate.width = bih.biWidth > 0 ? unsigned(bih.biWidth) : 0;
         candidate.height = bih.biHeight < 0
             ? unsigned(-bih.biHeight)
             : unsigned(bih.biHeight);
@@ -457,8 +455,10 @@ HdrMkvFileProbeResult ProbeMatroskaFile(
     size_t total = 0;
     while (total < buffer.size()) {
         DWORD read = 0;
-        const DWORD request = DWORD(std::min<size_t>(
-            buffer.size() - total, std::numeric_limits<DWORD>::max()));
+        const size_t remaining = buffer.size() - total;
+        const DWORD request = remaining > 0xFFFFFFFFu
+            ? 0xFFFFFFFFu
+            : DWORD(remaining);
         if (!ReadFile(
                 file,
                 buffer.data() + total,
