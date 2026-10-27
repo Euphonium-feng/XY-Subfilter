@@ -6,6 +6,9 @@
 HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出现问题。
 原先的 seek 稳定性阻塞关闭；历史崩溃未能稳定复现，因此没有根因结论。
 
+深层 Auto HDR 阶段一+二已实现并通过三矩阵；本轮没有再次启动播放器实机测试。
+仓库已于同日切换为 public，以避免私有仓库 Actions 分钟额度再次阻塞标准 runner。
+
 可靠性收口代码已完成，并通过云端三矩阵 CI（run `40552057870`；
 最终记录提交 run `40553848048`）：
 
@@ -124,8 +127,7 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 
 ### 第十轮：深层 Auto HDR 阶段一+二实现
 
-实现已落在分支 `codex/deep-hdr-auto-implementation`，当前被 GitHub Actions
-计费阻塞，尚未获得有效云端验证：
+实现已落在分支 `codex/deep-hdr-auto-implementation`，并通过云端三矩阵：
 
 - `HdrEvidenceSet` 以顺序无关方式合并 transfer、matrix 与 mastering/CLL 证据。
 - `HdrGraphProbe` 只沿 consumer 活动视频路径读取 VIH2、MPEG-2、Dirac 媒体类型。
@@ -152,6 +154,7 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 | `40552057870` | 可靠性收口复跑（release-win32 / release-x64 / debug-x64） | success |
 | `40553848048` | 最终 CI 记录提交复核 | success |
 | `40564644382` | 深层 Auto HDR 首轮 | failure（runner 未启动：GitHub 账户计费/额度限制） |
+| `40569779347` | 深层 Auto HDR 实现（release-win32 / release-x64 / debug-x64） | success |
 
 `39962614076` 的两项失败：
 
@@ -169,11 +172,9 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 
 ### 深层 Auto HDR
 
-阶段一+二代码已完成并推送。当前唯一阻塞是 GitHub 账户计费/额度限制：
-run `40564644382` 的三个 job 均未分配 runner，不能据此判断代码失败。
-恢复 Actions 计费后，下一步是重跑该 run 或以当前 HEAD 重新触发，使用
-`gh run watch --exit-status` 等到 `release-win32`、`release-x64`、`debug-x64`
-全绿；通过后再记录 run ID 并复核最终文档。codec extradata 仍不在本轮范围。
+阶段一+二代码已完成并推送；run `40569779347` 已确认
+`release-win32`、`release-x64`、`debug-x64` 全绿。本轮按计划只做自动化验收，
+未启动 PotPlayer 或进行人工画面测试。codec extradata 仍不在本轮范围。
 
 ### 现有验收收尾
 

@@ -1,7 +1,8 @@
 # 深层 Auto HDR 判定可行性调研
 
-> 后续状态：阶段一+二已在本地分支
-> `codex/deep-hdr-auto-implementation` 实现，当前等待云端三矩阵验证。
+> 后续状态：阶段一+二已在分支
+> `codex/deep-hdr-auto-implementation` 实现，并通过云端三矩阵
+> run `40569779347`。
 > 本文件保留调研依据；实际实现状态以 `docs/TODO.md` 为准。
 
 ## 结论摘要
