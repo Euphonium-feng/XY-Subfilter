@@ -10,6 +10,7 @@
 #include "../../../subpic/SimpleSubPicWrapper.h"
 #include "../../../subpic/color_conv_table.h"
 #include "../../../subpic/hdr_evidence.h"
+#include "../basevideofilter/HdrGraphProbe.h"
 
 #include "CAutoTiming.h"
 #include "xy_logger.h"
@@ -52,31 +53,6 @@ const SubRenderOptionsImpl::OptionMap options[] =
 
 namespace
 {
-HdrDetection::HdrEvidence ReadVideoColorMetadata(const CMediaType& media_type)
-{
-    HdrDetection::HdrEvidence metadata;
-    if (media_type.majortype != MEDIATYPE_Video
-        || media_type.formattype != FORMAT_VideoInfo2
-        || !media_type.Format()
-        || media_type.FormatLength() < sizeof(VIDEOINFOHEADER2)) {
-        return metadata;
-    }
-
-    const DWORD flags =
-        reinterpret_cast<const VIDEOINFOHEADER2*>(media_type.Format())->dwControlFlags;
-    const bool color_info_present =
-        (flags & AMCONTROL_USED) != 0
-        && (flags & AMCONTROL_COLORINFO_PRESENT) != 0;
-    const int transfer_matrix = int((flags & 0x00038000) >> 15);
-    metadata.control_flags = flags;
-    metadata.transfer_function = int((flags & 0xF8000000) >> 27);
-    metadata.matrix = HdrColor::ClassifyVideoMatrix(
-        transfer_matrix, color_info_present);
-    metadata.signal = HdrColor::ClassifyTransferFunction(
-        metadata.transfer_function, color_info_present);
-    return metadata;
-}
-
 CStringW BuildHdrDiagnosticPath()
 {
     wchar_t temp_path[MAX_PATH] = { 0 };
@@ -258,6 +234,9 @@ XySubFilter::XySubFilter( LPUNKNOWN punk,
     , m_consumer_clear_attempted(false)
     , m_last_consumer_clear_hr(S_FALSE)
     , m_video_hdr_signal_pending(0)
+    , m_hdr_probe_pending(0)
+    , m_hdr_probe_completed(false)
+    , m_hdr_mkv_cache_valid(false)
     , m_last_requested(-1)
     , m_workaround_mpc_hc(false)
     , m_disconnect_entered(false)
@@ -509,8 +488,9 @@ STDMETHODIMP XySubFilter::JoinFilterGraph(IFilterGraph* pGraph, LPCWSTR pName)
             {
                 CAutoLock cAutoLock(&m_csConsumer);
                 m_consumer = NULL;
+                m_consumer_filter = NULL;
             }
-            UpdateConsumerHdrSignal(NULL);
+            UpdateConsumerHdrSignal(NULL, L"graph-disconnect");
         }
         ::DeleteSystray(&m_hSystrayThread, &m_tbid);
         m_workaround_mpc_hc   = false;
@@ -581,13 +561,26 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     case BOOL_VIDEO_IS_HDR:
     {
         const bool is_hdr = m_xy_bool_opt[BOOL_VIDEO_IS_HDR];
-        bool changed = false;
+        bool decision_changed = false;
         {
             CAutoLock cAutoLock(&m_csProviderFields);
-            changed = m_video_side_data_hdr != is_hdr;
+            HdrDetection::AutoHdrSignals old_signals;
+            old_signals.graph_signal = m_graph_hdr_signal;
+            old_signals.container_signal = m_container_hdr_signal;
+            old_signals.graph_bt2020_matrix = m_graph_bt2020_matrix
+                || m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].Right(4)
+                    .CompareNoCase(L"2020") == 0;
+            old_signals.container_bt2020_matrix = m_container_bt2020_matrix;
+            old_signals.filename_says_hdr = m_video_filename_hdr;
+            old_signals.side_data_says_hdr = m_video_side_data_hdr;
+
+            HdrDetection::AutoHdrSignals new_signals = old_signals;
+            new_signals.side_data_says_hdr = is_hdr;
+            decision_changed = HdrDetection::ResolveAutoPq(old_signals)
+                != HdrDetection::ResolveAutoPq(new_signals);
             m_video_side_data_hdr = is_hdr;
         }
-        if (changed) {
+        if (decision_changed) {
             InterlockedIncrement(&m_hdr_generation);
             // Called on the video streaming thread. Apply the new revision at
             // the next frame request instead of taking the render locks here.
@@ -1654,6 +1647,19 @@ STDMETHODIMP XySubFilter::RequestFrame( REFERENCE_TIME start, REFERENCE_TIME sto
             XY_LOG_ERROR("Failed to get parameters from consumer.");
             return hr;
         }
+        if (m_hdr_probe_completed
+            && InterlockedExchange(&m_hdr_probe_pending, 0)) {
+            CComPtr<IBaseFilter> consumer_filter;
+            {
+                CAutoLock cAutoLock(&m_csConsumer);
+                consumer_filter = m_consumer_filter;
+            }
+            if (UpdateConsumerHdrSignal(
+                    consumer_filter, L"media-signature-change")) {
+                ++m_context_id;
+                UpdateSubtitle(false);
+            }
+        }
         if (InterlockedExchange(&m_video_hdr_signal_pending, 0)) {
             ++m_context_id;
             UpdateSubtitle(false);
@@ -1738,8 +1744,9 @@ STDMETHODIMP XySubFilter::Disconnect( void )
             {
                 CAutoLock cAutoLock(&m_csConsumer);
                 m_consumer = NULL;
+                m_consumer_filter = NULL;
             }
-            UpdateConsumerHdrSignal(NULL);
+            UpdateConsumerHdrSignal(NULL, L"disconnect");
         }
         else
         {
@@ -2153,7 +2160,7 @@ CStringW XySubFilter::GetHdrStatusText()
 
     CStringW signal;
     signal.Format(L"tf%d/f%08x/b%d/n%d/sd%d/%ls", m_consumer_transfer_function,
-        m_consumer_control_flags, m_consumer_bt2020_matrix ? 1 : 0,
+        m_consumer_control_flags, m_graph_bt2020_matrix ? 1 : 0,
         m_video_filename_hdr ? 1 : 0, m_video_side_data_hdr ? 1 : 0,
         m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].IsEmpty()
             ? L"?" : m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
@@ -2693,6 +2700,7 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
     //fix me: use REFERENCE_TIME instead?
     double fps = 10000000.0/rt_fps;
     bool update_subtitle = false;
+    bool hdr_media_changed = false;
     //bool clear_consumer = false;
 
     if (m_xy_size_opt[SIZE_ORIGINAL_VIDEO]!=originalVideoSize)
@@ -2701,6 +2709,7 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
             <<" to "<<originalVideoSize);
         m_xy_size_opt[SIZE_ORIGINAL_VIDEO] = originalVideoSize;
         update_subtitle = true;
+        hdr_media_changed = true;
     }
     if (m_xy_size_opt[SIZE_AR_ADJUSTED_VIDEO]!=arAdjustedVideoSize)
     {
@@ -2708,6 +2717,7 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
             <<" to "<<arAdjustedVideoSize);
         m_xy_size_opt[SIZE_AR_ADJUSTED_VIDEO] = arAdjustedVideoSize;
         update_subtitle = true;
+        hdr_media_changed = true;
     }
     if (m_xy_rect_opt[RECT_VIDEO_OUTPUT]!=videoOutputRect)
     {
@@ -2730,6 +2740,7 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
         hr = XySetDouble(DOUBLE_FPS, fps);
         CHECK_N_LOG(hr, "Failed to set option");
         ASSERT(SUCCEEDED(hr));
+        hdr_media_changed = true;
     }
     if (m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX]!=consumer_yuv_matrix) {
         const bool old_auto_pq =
@@ -2751,6 +2762,7 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
             ++m_context_id;
         }
         update_subtitle = true;
+        hdr_media_changed = true;
         //clear_consumer = true;
     }
     if (m_xy_int_opt[INT_CONSUMER_SUPPORTED_LEVELS]!=consumer_supported_levels)
@@ -2760,6 +2772,10 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
         m_xy_int_opt[INT_CONSUMER_SUPPORTED_LEVELS] = consumer_supported_levels;
         update_subtitle = true;
         //clear_consumer = true;
+    }
+
+    if (hdr_media_changed && m_hdr_probe_completed) {
+        InterlockedExchange(&m_hdr_probe_pending, 1);
     }
 
     if (update_subtitle)
@@ -3224,27 +3240,31 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
         if (consumer)
         {
             m_consumer = consumer;
-            const bool hdr_hint_changed = UpdateConsumerHdrSignal(consumer_filter);
+            {
+                CAutoLock cAutoLock(&m_csConsumer);
+                m_consumer_filter = consumer_filter;
+            }
             hr = UpdateParamFromConsumer(true);
             if (FAILED(hr))
             {
                 XY_LOG_WARN("Failed to read consumer field.");
             }
-            if (hdr_hint_changed) {
-                ++m_context_id;
-                UpdateSubtitle(false);
-            }
             hr = consumer->Connect(this);
             if (FAILED(hr))
             {
                 XY_LOG_ERROR("Failed to connect "<<XY_LOG_VAR_2_STR(consumer)<<XY_LOG_VAR_2_STR(hr));
-                m_consumer = NULL;
+                {
+                    CAutoLock cAutoLock(&m_csConsumer);
+                    m_consumer = NULL;
+                    m_consumer_filter = NULL;
+                }
                 return hr;
             }
-            if (UpdateConsumerHdrSignal(consumer_filter)) {
+            if (UpdateConsumerHdrSignal(consumer_filter, L"connect")) {
                 ++m_context_id;
                 UpdateSubtitle(false);
             }
+            m_hdr_probe_completed = true;
             XY_LOG_INFO("Connected with "<<XY_LOG_VAR_2_STR(consumer)<<" "
                 <<DumpConsumerInfo().GetString()<<" as "<<DumpProviderInfo().GetString());
 
@@ -3274,7 +3294,11 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
         }
         else
         {
-            UpdateConsumerHdrSignal(NULL);
+            {
+                CAutoLock cAutoLock(&m_csConsumer);
+                m_consumer_filter = NULL;
+            }
+            UpdateConsumerHdrSignal(NULL, L"no-consumer");
             XY_LOG_INFO("No consumer found.");
             hr = S_FALSE;
         }
@@ -3287,142 +3311,215 @@ HRESULT XySubFilter::FindAndConnectConsumer(IFilterGraph* pGraph)
     return hr;
 }
 
-bool XySubFilter::UpdateConsumerHdrSignal(IBaseFilter* consumer_filter)
+bool XySubFilter::UpdateConsumerHdrSignal(
+    IBaseFilter* consumer_filter,
+    const wchar_t* scan_reason)
 {
-    HdrDetection::HdrEvidence selected;
-    bool filename_hdr = false;
-    CStringW diagnostic;
-    auto inspect_filter =
-        [&selected, &filename_hdr, &diagnostic](IBaseFilter* filter) -> bool {
-        CComPtr<IEnumPins> pins;
-        if (!filter || FAILED(filter->EnumPins(&pins)) || !pins) {
-            return false;
-        }
-
-        CStringW filter_name;
-        CLSID filter_id = GUID_NULL;
-        FILTER_INFO filter_info = { 0 };
-        filter->GetClassID(&filter_id);
-        if (SUCCEEDED(filter->QueryFilterInfo(&filter_info))) {
-            filter_name = filter_info.achName;
-            if (filter_info.pGraph) {
-                filter_info.pGraph->Release();
-            }
-        }
-
-        CComQIPtr<IFileSourceFilter> source(filter);
-        if (source) {
-            LPOLESTR source_path = NULL;
-            AM_MEDIA_TYPE source_type;
-            ZeroMemory(&source_type, sizeof(source_type));
-            if (SUCCEEDED(source->GetCurFile(&source_path, &source_type))
-                && source_path) {
-                filename_hdr = filename_hdr
-                    || HdrColor::FilenameIndicatesHdr(source_path);
-                diagnostic.AppendFormat(
-                    L"source=%ls nameHdr=%d\r\n", source_path,
-                    HdrColor::FilenameIndicatesHdr(source_path) ? 1 : 0);
-                CoTaskMemFree(source_path);
-            }
-            if (source_type.pbFormat) {
-                CoTaskMemFree(source_type.pbFormat);
-            }
-            if (source_type.pUnk) {
-                source_type.pUnk->Release();
-            }
-        }
-
-        CComPtr<IPin> pin;
-        ULONG fetched = 0;
-        while (pins->Next(1, &pin, &fetched) == S_OK) {
-            CMediaType media_type;
-            if (SUCCEEDED(pin->ConnectionMediaType(&media_type))) {
-                PIN_INFO pin_info = { 0 };
-                CStringW pin_name;
-                PIN_DIRECTION direction = PINDIR_INPUT;
-                pin->QueryDirection(&direction);
-                if (SUCCEEDED(pin->QueryPinInfo(&pin_info))) {
-                    pin_name = pin_info.achName;
-                    if (pin_info.pFilter) {
-                        pin_info.pFilter->Release();
-                    }
-                }
-                const HdrDetection::HdrEvidence metadata =
-                    ReadVideoColorMetadata(media_type);
-                if (media_type.majortype == MEDIATYPE_Video) {
-                    diagnostic.AppendFormat(
-                        L"filter=%ls clsid=%ls pin=%ls dir=%d major=%ls fmt=%ls sub=%ls "
-                        L"flags=0x%08x tf=%d matrix=%d signal=%d\r\n",
-                        filter_name.GetString(), GuidToString(filter_id).GetString(),
-                        pin_name.GetString(), int(direction),
-                        GuidToString(media_type.majortype).GetString(),
-                        GuidToString(media_type.formattype).GetString(),
-                        GuidToString(media_type.subtype).GetString(),
-                        metadata.control_flags, metadata.transfer_function,
-                        int(metadata.matrix), int(metadata.signal));
-                }
-                if (HdrDetection::PreferHdrEvidence(metadata, selected)) {
-                    selected = metadata;
-                }
-                if (selected.signal == HdrColor::HDR_SIGNAL_HDR) {
-                    return true;
-                }
-            }
-            pin.Release();
-            fetched = 0;
-        }
-        return false;
-    };
-
-    if (consumer_filter && !inspect_filter(consumer_filter) && m_pGraph) {
-        // The selected consumer may sit behind a converter whose media type
-        // no longer carries the decoder's colour metadata. Scan the graph once
-        // so the original LAV/decoder output can still identify PQ/HLG.
-        CComPtr<IEnumFilters> filters;
-        if (SUCCEEDED(m_pGraph->EnumFilters(&filters)) && filters) {
-            CComPtr<IBaseFilter> filter;
-            ULONG fetched = 0;
-            while (filters->Next(1, &filter, &fetched) == S_OK) {
-                if (inspect_filter(filter)) {
-                    break;
-                }
-                filter.Release();
-                fetched = 0;
-            }
-        }
+    if (!consumer_filter) {
+        m_hdr_probe_completed = false;
+        InterlockedExchange(&m_hdr_probe_pending, 0);
     }
-
-    const HdrColor::HdrSignal signal = selected.signal;
-    const int transfer_function = selected.transfer_function;
-    const bool bt2020_matrix = selected.matrix == HdrColor::VIDEO_MATRIX_2020;
-
-    bool changed = false;
+    HdrDetection::AutoHdrSignals old_signals;
+    CStringW yuv_matrix;
     {
         CAutoLock cAutoLock(&m_csProviderFields);
-        changed = m_consumer_hdr_signal != signal
-            || m_consumer_transfer_function != transfer_function
-            || m_consumer_control_flags != selected.control_flags
-            || m_consumer_bt2020_matrix != bt2020_matrix
-            || m_video_filename_hdr != filename_hdr;
-        m_consumer_hdr_signal = signal;
-        m_consumer_transfer_function = transfer_function;
-        m_consumer_control_flags = selected.control_flags;
-        m_consumer_bt2020_matrix = bt2020_matrix;
-        m_video_filename_hdr = filename_hdr;
+        old_signals.graph_signal = m_graph_hdr_signal;
+        old_signals.container_signal = m_container_hdr_signal;
+        old_signals.graph_bt2020_matrix = m_graph_bt2020_matrix;
+        old_signals.container_bt2020_matrix = m_container_bt2020_matrix;
+        old_signals.filename_says_hdr = m_video_filename_hdr;
+        old_signals.side_data_says_hdr = m_video_side_data_hdr;
+        yuv_matrix = m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX];
     }
-    if (changed) {
+    const bool consumer_yuv_2020 =
+        yuv_matrix.Right(4).CompareNoCase(L"2020") == 0;
+    old_signals.graph_bt2020_matrix =
+        old_signals.graph_bt2020_matrix || consumer_yuv_2020;
+    const bool old_auto_pq = HdrDetection::ResolveAutoPq(old_signals);
+
+    const ULONGLONG started = GetTickCount64();
+    HdrGraphProbeResult graph;
+    if (consumer_filter) {
+        graph = ProbeHdrGraph(consumer_filter);
+    }
+
+    std::wstring source_path = graph.source_path;
+    bool filename_hdr = !source_path.empty()
+        && HdrColor::FilenameIndicatesHdr(source_path.c_str());
+
+    HdrDetection::HdrEvidenceSet container_evidence;
+    HdrMkvFileProbeResult mkv;
+    HdrMkvFileStatus identity_status = HDR_MKV_FILE_NOT_MKV;
+    unsigned long long identity_size = 0;
+    unsigned long long identity_time = 0;
+    bool used_cached_mkv = false;
+    bool probe_attempted = false;
+
+    if (!filename_hdr && !source_path.empty()) {
+        identity_status = GetLocalMkvFileIdentity(
+            source_path, &identity_size, &identity_time);
+        if (identity_status == HDR_MKV_FILE_OK) {
+            {
+                CAutoLock cAutoLock(&m_csProviderFields);
+                used_cached_mkv = m_hdr_mkv_cache_valid
+                    && m_hdr_mkv_cache_path.CompareNoCase(source_path.c_str()) == 0
+                    && m_hdr_mkv_cache.file_size == identity_size
+                    && m_hdr_mkv_cache.last_write_time == identity_time;
+                if (used_cached_mkv) {
+                    mkv = m_hdr_mkv_cache;
+                }
+            }
+
+            if (!used_cached_mkv) {
+                probe_attempted = true;
+                mkv = ProbeMatroskaFile(
+                    source_path, graph.active_signature);
+                if (mkv.file_status == HDR_MKV_FILE_OK) {
+                    CAutoLock cAutoLock(&m_csProviderFields);
+                    m_hdr_mkv_cache = mkv;
+                    m_hdr_mkv_cache_path = source_path.c_str();
+                    m_hdr_mkv_cache_valid = true;
+                }
+            }
+
+            const HdrDetection::HdrMkvTrack* selected_track =
+                HdrDetection::GetSelectedMkvTrack(mkv.header);
+            if (mkv.file_status == HDR_MKV_FILE_OK
+                && mkv.header.status == HDR_MKV_PROBE_OK
+                && selected_track) {
+                container_evidence.Add(selected_track->evidence);
+            }
+        }
+    }
+
+    const HdrColor::HdrSignal graph_signal = graph.evidence.signal;
+    const bool graph_bt2020 =
+        graph.evidence.matrix == HdrColor::VIDEO_MATRIX_2020;
+    const HdrColor::HdrSignal container_signal =
+        container_evidence.signal;
+    const bool container_bt2020 =
+        container_evidence.matrix == HdrColor::VIDEO_MATRIX_2020;
+
+    HdrDetection::AutoHdrSignals new_signals;
+    new_signals.graph_signal = graph_signal;
+    new_signals.container_signal = container_signal;
+    new_signals.graph_bt2020_matrix = graph_bt2020 || consumer_yuv_2020;
+    new_signals.container_bt2020_matrix = container_bt2020;
+    new_signals.filename_says_hdr = filename_hdr;
+    new_signals.side_data_says_hdr = old_signals.side_data_says_hdr;
+    const bool new_auto_pq = HdrDetection::ResolveAutoPq(new_signals);
+    const bool decision_changed = old_auto_pq != new_auto_pq;
+
+    {
+        CAutoLock cAutoLock(&m_csProviderFields);
+        m_graph_hdr_signal = graph_signal;
+        m_container_hdr_signal = container_signal;
+        m_consumer_transfer_function =
+            graph.evidence.selected_transfer_function;
+        m_consumer_control_flags =
+            graph.evidence.selected_control_flags;
+        m_graph_bt2020_matrix = graph_bt2020;
+        m_container_bt2020_matrix = container_bt2020;
+        m_video_filename_hdr = filename_hdr;
+        m_hdr_source_path = source_path.c_str();
+        m_hdr_active_signature = graph.active_signature;
+        if (source_path.empty()) {
+            m_hdr_mkv_cache_valid = false;
+            m_hdr_mkv_cache_path.Empty();
+        }
+    }
+
+    if (decision_changed) {
         InterlockedIncrement(&m_hdr_generation);
     }
+
+    CStringW diagnostic;
+    diagnostic.Format(
+        L"schema=xy-hdr-probe/1\r\nscan=%ls durationMs=%llu "
+        L"filters=%u pins=%u limit=%d source=%ls nameHdr=%d "
+        L"active=%ux%u codec=%d fpsDurNs=%llu\r\n",
+        scan_reason ? scan_reason : L"unknown",
+        static_cast<unsigned long long>(GetTickCount64() - started),
+        graph.filters_scanned,
+        graph.pins_scanned,
+        graph.limit_reached ? 1 : 0,
+        source_path.empty() ? L"?" : source_path.c_str(),
+        filename_hdr ? 1 : 0,
+        graph.active_signature.width,
+        graph.active_signature.height,
+        int(graph.active_signature.codec),
+        graph.active_signature.frame_duration_ns);
     diagnostic.AppendFormat(
-        L"RESULT signal=%d tf=%d flags=0x%08x matrix=%d bt2020=%d nameHdr=%d yuv=%ls\r\n",
-        int(signal), transfer_function, selected.control_flags, int(selected.matrix),
-        bt2020_matrix ? 1 : 0, filename_hdr ? 1 : 0,
-        m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
+        L"graph signal=%d matrix=%d transfer=%d flags=0x%08x "
+        L"selectedSource=%d selectedStage=%d depth=%d\r\n",
+        int(graph_signal),
+        int(graph.evidence.matrix),
+        graph.evidence.selected_transfer_function,
+        graph.evidence.selected_control_flags,
+        int(graph.evidence.selected_source),
+        int(graph.evidence.selected_stage),
+        graph.evidence.selected_depth);
+
+    if (!source_path.empty()) {
+        diagnostic.AppendFormat(
+            L"mkv identity=%d size=%llu mtime=%llu cached=%d "
+            L"probe=%d fileStatus=%d headerStatus=%d tracks=%u "
+            L"selectedTrack=%d elements=%llu bytes=%u\r\n",
+            int(identity_status),
+            identity_size,
+            identity_time,
+            used_cached_mkv ? 1 : 0,
+            probe_attempted ? 1 : 0,
+            int(mkv.file_status),
+            int(mkv.header.status),
+            unsigned(mkv.header.video_tracks.size()),
+            mkv.header.selected_track_index,
+            mkv.header.elements_scanned,
+            unsigned(mkv.bytes_read));
+
+        const HdrDetection::HdrMkvTrack* selected_track =
+            HdrDetection::GetSelectedMkvTrack(mkv.header);
+        if (selected_track) {
+            diagnostic.AppendFormat(
+                L"mkvTrack number=%llu codec=%d size=%ux%u fpsDurNs=%llu "
+                L"tf=%d matrix=%d primaries=%d mastering=%d cll=%d "
+                L"signal=%d\r\n",
+                selected_track->track_number,
+                int(selected_track->codec),
+                selected_track->width,
+                selected_track->height,
+                selected_track->frame_duration_ns,
+                selected_track->transfer_characteristics,
+                selected_track->matrix_coefficients,
+                selected_track->primaries,
+                selected_track->evidence.mastering_metadata ? 1 : 0,
+                selected_track->evidence.content_light ? 1 : 0,
+                int(selected_track->evidence.signal));
+        }
+    }
+
+    diagnostic.AppendFormat(
+        L"RESULT graph=%d container=%d tf=%d flags=0x%08x "
+        L"graph2020=%d container2020=%d nameHdr=%d sideData=%d "
+        L"autoPQ=%d decisionChanged=%d yuv=%ls\r\n",
+        int(graph_signal),
+        int(container_signal),
+        graph.evidence.selected_transfer_function,
+        graph.evidence.selected_control_flags,
+        graph_bt2020 ? 1 : 0,
+        container_bt2020 ? 1 : 0,
+        filename_hdr ? 1 : 0,
+        old_signals.side_data_says_hdr ? 1 : 0,
+        new_auto_pq ? 1 : 0,
+        decision_changed ? 1 : 0,
+        yuv_matrix.GetString());
     WriteHdrDiagnostic(diagnostic);
-    XY_LOG_INFO("Consumer HDR signal:" << signal
-        << " transfer function:" << transfer_function
-        << " control flags:" << selected.control_flags);
-    return changed;
+    XY_LOG_INFO("HDR probe: graph:" << graph_signal
+        << " container:" << container_signal
+        << " filename:" << filename_hdr
+        << " current:" << old_signals.side_data_says_hdr
+        << " decisionChanged:" << decision_changed);
+    return decision_changed;
 }
 
 CStringW XySubFilter::GetHdrDiagnosticPath() const

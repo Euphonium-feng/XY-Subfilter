@@ -5,6 +5,7 @@
 #include "SubRenderIntf.h"
 #include "SubRenderOptionsImpl.h"
 #include "../../../subpic/hdr_color.h"
+#include "../basevideofilter/HdrGraphProbe.h"
 
 class CDirectVobSubFilter;
 
@@ -91,7 +92,9 @@ private:
     void SetHdrMode();
     void ApplyHdrRefresh();
     HRESULT RefreshConsumerCache();
-    bool UpdateConsumerHdrSignal(IBaseFilter* consumer_filter);
+    bool UpdateConsumerHdrSignal(
+        IBaseFilter* consumer_filter,
+        const wchar_t* scan_reason = L"connect");
     bool Open();
 
     void UpdateSubtitle(bool fApplyDefStyle = true);
@@ -168,6 +171,7 @@ private:
     HANDLE m_hSystrayThread;
 
     CComPtr<ISubRenderConsumer> m_consumer;
+    CComPtr<IBaseFilter> m_consumer_filter;
     ULONGLONG m_context_id;
 
     CCritSec m_csHdrRefresh;
@@ -176,6 +180,13 @@ private:
     bool m_consumer_clear_attempted;
     HRESULT m_last_consumer_clear_hr;
     volatile LONG m_video_hdr_signal_pending;
+    volatile LONG m_hdr_probe_pending;
+    bool m_hdr_probe_completed;
+    CStringW m_hdr_source_path;
+    HdrDetection::HdrMediaSignature m_hdr_active_signature;
+    CStringW m_hdr_mkv_cache_path;
+    HdrMkvFileProbeResult m_hdr_mkv_cache;
+    bool m_hdr_mkv_cache_valid;
 
     REFERENCE_TIME m_last_requested;
 

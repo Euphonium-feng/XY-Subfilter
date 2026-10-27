@@ -60,15 +60,25 @@
 - Auto 判定必须优先采用 consumer 视频引脚 `VIDEOINFOHEADER2` 中的传递函数；
   BT.2020 矩阵只是在没有传递函数信息时的回退，不能覆盖明确的 SDR 曲线。
 - 不能按 10bit/P010 位深自动判定 HDR；10bit SDR 同样常见。consumer 引脚不含
-  元数据时必须扫描上游 DirectShow 图，但不得把图扫描放进逐帧热路径。
+  元数据时必须沿活动视频路径向上游读取，不得枚举无关分支，也不得把路径扫描
+  放进逐帧热路径。
 - Auto 的 BT.2020 回退必须同时接受 consumer `yuvMatrix` 字符串和图内
   `VIDEOINFOHEADER2` matrix 位；明确的 SDR transfer 仍优先。
 - 文件名回退只检查源滤镜返回的文件名本身，不检查目录；`HDR` 必须为独立标记，
   不能把 `HDRip` 当作 HDR。
+- 本地 MKV 探针只读取前 2 MiB、最多 4096 个 EBML 元素和 8 层嵌套；不读取
+  Cluster 或视频样本。文件名已有 HDR 标记、远程路径、UNC、设备路径和非 MKV
+  文件不得触发文件读取。
+- MKV 使用 H.273 transfer/matrix 枚举；PQ=`16`、HLG=`18`，不得与 DXVA2 的
+  PQ=`8`、HLG=`10` 混用。多视频轨无法按当前媒体签名唯一匹配时返回 Unknown。
+- 图探测必须支持 `FORMAT_MPEG2_VIDEO` 与 `FORMAT_DiracVideoInfo` 中的嵌套
+  `VIDEOINFOHEADER2`，并限制为 64 个 filter、128 个 pin；顺序不得改变结论。
 - 内置 consumer 必须在媒体类型变化时填充 `yuvMatrix`，否则 provider 的 BT.2020
   回退没有输入；HDR side data 只能作为事件提示，不得恢复每帧读取 consumer 配置。
 - 每次 HDR 配置变化必须递增 generation，并让 SubPic、调色板和对外 bitmap ID
   一起失效；仅比较 mode/white 数值不足以证明缓存已刷新。
+- 只有最终 Auto PQ/Off 结果变化才需要递增有效 HDR generation；仅诊断字段变化
+  不得造成无意义重渲染。
 - 即使 generation 不变，Auto 因矩阵回退从 Off 解析到 PQ 时也必须丢弃 SubPic；
   provider 的失效判据必须比较完整 HDR 配置。
 - 属性页一次 Apply 引发的 RGB/HDR 选项变化必须合并，只执行一次重新渲染和一次

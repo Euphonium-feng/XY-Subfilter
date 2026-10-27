@@ -34,11 +34,13 @@ DirectVobSubImpl::DirectVobSubImpl(const Option *options, CCritSec * pLock)
     : XyOptionsImpl(options)
     , m_propsLock(pLock)
     , m_hdr_generation(0)
-    , m_consumer_hdr_signal(HdrColor::HDR_SIGNAL_UNKNOWN)
+    , m_graph_hdr_signal(HdrColor::HDR_SIGNAL_UNKNOWN)
+    , m_container_hdr_signal(HdrColor::HDR_SIGNAL_UNKNOWN)
     , m_video_side_data_hdr(false)
     , m_consumer_transfer_function(-1)
     , m_consumer_control_flags(0)
-    , m_consumer_bt2020_matrix(false)
+    , m_graph_bt2020_matrix(false)
+    , m_container_bt2020_matrix(false)
     , m_video_filename_hdr(false)
 {
 }
@@ -914,14 +916,16 @@ HdrColor::Config DirectVobSubImpl::ResolveHdrMode(int mode) const
         break;
     }
 
-    // AUTO: prefer the transfer function read from the consumer's connected
-    // video pin. A BT.2020 matrix is only the fallback when that metadata is
-    // unavailable; explicit modes always override both.
-    const bool bt2020_matrix = m_consumer_bt2020_matrix
+    // AUTO: combine evidence collected from the active video path and the
+    // bounded local MKV probe. Filename HDR remains a positive signal; a
+    // BT.2020 matrix is only used when no transfer HDR/SDR evidence exists.
+    const bool graph_bt2020_matrix = m_graph_bt2020_matrix
         || m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].Right(4).CompareNoCase(L"2020") == 0;
     HdrDetection::AutoHdrSignals auto_signals;
-    auto_signals.signal = m_consumer_hdr_signal;
-    auto_signals.bt2020_matrix = bt2020_matrix;
+    auto_signals.graph_signal = m_graph_hdr_signal;
+    auto_signals.container_signal = m_container_hdr_signal;
+    auto_signals.graph_bt2020_matrix = graph_bt2020_matrix;
+    auto_signals.container_bt2020_matrix = m_container_bt2020_matrix;
     auto_signals.filename_says_hdr = m_video_filename_hdr;
     auto_signals.side_data_says_hdr = m_video_side_data_hdr;
     const bool likely_hdr = HdrDetection::ResolveAutoPq(auto_signals);

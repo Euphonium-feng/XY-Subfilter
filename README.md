@@ -201,7 +201,7 @@ scoop install xysubfilter-libass-np -g
 <tr>
 <td><b>自动</b> <sub>默认</sub></td>
 <td>绝大多数情况</td>
-<td>优先使用视频引脚的传递函数；必要时扫描 DirectShow 图、BT.2020 矩阵或文件名 HDR 标记，决定是否按 PQ 编码</td>
+<td>优先使用视频引脚传递函数；沿活动视频路径检查嵌套媒体类型；文件名未提示 HDR 时，再读取本地 MKV 的 Colour/mastering 元数据；最后使用 BT.2020 回退</td>
 </tr>
 <tr>
 <td><b>关闭</b></td>
@@ -437,7 +437,7 @@ XY-Subfilter/
 <tr><th align="left">限制</th><th align="left">说明</th></tr>
 <tr>
 <td><b>自动判定是启发式</b></td>
-<td>协议本身没有传递函数字段，因此 Auto 仍采用启发式链：consumer 传递函数、整图扫描、BT.2020 矩阵和文件名回退。SDR 的 BT.2020 内容可能被误判，需手动切到「关闭」。</td>
+<td>协议本身没有传递函数字段，因此 Auto 仍采用启发式链：side data、活动视频路径、文件名、MKV 元数据和 BT.2020 回退。MKV 探针只读取前 2 MiB 头部且仅在文件名没有 HDR 标记时运行；SDR 的 BT.2020 内容仍可能被误判，需手动切到「关闭」。</td>
 </tr>
 <tr>
 <td><b>HLG 尚未单独验收</b></td>

@@ -18,6 +18,9 @@
     <ClCompile Include="BaseVideoFilter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="HdrGraphProbe.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="MediaSideData.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -27,6 +30,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BaseVideoFilter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="HdrGraphProbe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="MediaSideData.h">

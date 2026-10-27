@@ -122,6 +122,17 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 - NO-GO：完整码流扫描、视频 tap、帧级分析、madVR/LAV 私有接口主判据。
 - 暂缓：MP4/MOV、TS/M2TS、BDMV、网络流和 HLG/DoVi 专项分类。
 
+### 第十轮：深层 Auto HDR 阶段一+二实现
+
+实现已落在本地分支 `codex/deep-hdr-auto-implementation`，等待云端验证：
+
+- `HdrEvidenceSet` 以顺序无关方式合并 transfer、matrix 与 mastering/CLL 证据。
+- `HdrGraphProbe` 只沿 consumer 活动视频路径读取 VIH2、MPEG-2、Dirac 媒体类型。
+- `hdr_mkv_probe` 有界解析本地 MKV Tracks/Colour/mastering/CLL，H.273 枚举显式转换。
+- 多视频轨只在 codec、宽高、帧时长唯一匹配时采用；文件名已提示 HDR 时跳过文件 I/O。
+- 媒体签名变化和 side-data 事件只在最终 Auto PQ/Off 变化时刷新字幕。
+- 新增合成 EBML、图拓扑、嵌套媒体类型和证据顺序测试。
+
 ## CI 记录
 
 | Run | 内容 | 结果 |
@@ -156,11 +167,9 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 
 ### 深层 Auto HDR
 
-生产实现尚未开始。若接受调研结论，按以下顺序另开实现任务：
-
-1. 稳定现有证据模型：活动主视频路径、嵌套 VIH、matrix/transfer 独立合并。
-2. 增加本地 MKV 有界头部探针，并完成 H.273 到内部枚举的显式转换。
-3. 只有前两步仍证明有足够漏判时，再评估 codec extradata。
+阶段一+二代码已完成，当前下一步是提交、推送并以 `gh run watch --exit-status`
+等待 `release-win32`、`release-x64`、`debug-x64` 全绿。通过后再记录 run ID，
+并再次复核最终文档提交。codec extradata 仍不在本轮范围。
 
 ### 现有验收收尾
 

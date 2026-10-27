@@ -82,6 +82,8 @@
     <ClInclude Include="test_font_fallback.h" />
     <ClInclude Include="test_hdr_color.h" />
     <ClInclude Include="test_hdr_evidence.h" />
+    <ClInclude Include="test_hdr_mkv_probe.h" />
+    <ClInclude Include="test_hdr_graph_probe.h" />
     <ClInclude Include="test_composition_hdr.h" />
     <ClInclude Include="test_media_side_data.h" />
     <ClInclude Include="test_video_info2_color_info.h" />

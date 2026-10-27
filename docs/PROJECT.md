@@ -12,6 +12,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
    More 页改为横向两栏；白点输入在即时应用刷新后保留插入符和选段。
 4. **可靠性与诊断收口** —— HDR 证据选择逻辑独立可测，运行时界面文本全部走中英文资源，
    More 页可打开 HDR 诊断日志，seek 压力脚本纳入仓库。
+5. **深层 Auto HDR 探测** —— 沿活动视频路径读取嵌套媒体类型；文件名未提示 HDR 时，
+   有界读取本地 MKV 的 Colour/mastering 元数据作为兜底。
 
 ## 需求
 
@@ -30,11 +32,13 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 - 白点亮度选项（默认 203 nits），两条路径共用。
 - 属性页、托盘菜单与提示文案的简体中文化，支持中英切换。
 - 属性页统一尺寸与横向排版；数字编辑框在即时应用期间不得丢失光标位置。
+- 本地 MKV 头部 HDR 元数据探测；不读取 Cluster 或视频样本。
 
 排除：
 
 - 16bit 字幕面（调色板级 8bit 映射已满足平色字幕精度要求，接口预留）。
 - 修改 `SubRenderIntf.h` 协议本身。
+- 完整码流扫描、视频 tap、帧级亮度分析、MP4/TS/BDMV 和网络流容器探测。
 
 ## 验收标准
 
@@ -54,8 +58,10 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 原先的 seek 稳定性阻塞关闭；2026-05-09 的旧 `bugreport.txt` 仍不能作为本轮证据。
 
 Auto 的正式优先级为 side data、明确 PQ/HLG、文件名 HDR、明确 SDR、BT.2020 /
-consumer `yuvMatrix` 回退、Off。HDR 配置仍由 generation 驱动缓存失效，属性页
-Apply 仍合并 RGB/HDR 刷新并调用一次 `ISubRenderConsumer2::Clear()`。
+consumer `yuvMatrix` 回退、Off。图探测只沿当前 consumer 的活动视频路径进行；
+本地 MKV `Colour` 与 mastering/CLL 在文件名未提示 HDR 时补充正向证据。HDR 配置
+仍由 generation 驱动缓存失效，属性页 Apply 仍合并 RGB/HDR 刷新并调用一次
+`ISubRenderConsumer2::Clear()`。
 
 HLG 不在个人使用范围内，不实现专用映射、不做专项验收；文档不得把 HLG 观感
 描述为已验证。本轮可靠性改动已通过云端三矩阵 CI（run `40552057870`；

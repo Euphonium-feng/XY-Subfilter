@@ -150,7 +150,7 @@ If Auto or placement looks wrong, use **Open log** to view
 <tr>
 <td><b>Auto</b> <sub>default</sub></td>
 <td>Most cases</td>
-<td>Prefers the video pin's transfer function, with graph scanning, BT.2020 matrix, and filename HDR fallbacks</td>
+<td>Prefers the video pin's transfer function, follows the active video path, and falls back to local MKV Colour/mastering metadata when the filename has no HDR marker</td>
 </tr>
 <tr>
 <td><b>Off</b></td>
@@ -344,7 +344,7 @@ git submodule update --init --recursive --remote
 <tr><th align="left">Limitation</th><th align="left">Details</th></tr>
 <tr>
 <td><b>Auto-detection is a heuristic</b></td>
-<td>The protocol has no transfer-function field, so Auto uses consumer hints, graph scanning, BT.2020 matrix, and filename fallback. SDR BT.2020 content can still be misdetected; switch to "Off" manually.</td>
+<td>The protocol has no transfer-function field, so Auto uses side data, the active video path, filename hints, local MKV metadata, and a BT.2020 fallback. The MKV probe reads at most the first 2 MiB and only runs when the filename has no HDR marker. SDR BT.2020 content can still be misdetected; switch to "Off" manually.</td>
 </tr>
 <tr>
 <td><b>HLG is not separately validated</b></td>

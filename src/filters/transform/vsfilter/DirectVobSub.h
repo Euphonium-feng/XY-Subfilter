@@ -27,6 +27,7 @@
 #include "version.h"
 #include "XyOptionsImpl.h"
 #include "../../../subpic/hdr_color.h"
+#include "../../../subpic/hdr_evidence.h"
 
 class DirectVobSubImpl : public IDirectVobSub2, public XyOptionsImpl, public IFilterVersion
 {
@@ -81,11 +82,13 @@ protected:
     CCritSec *m_propsLock;
 
     volatile LONG m_hdr_generation;
-    HdrColor::HdrSignal m_consumer_hdr_signal;
+    HdrColor::HdrSignal m_graph_hdr_signal;
+    HdrColor::HdrSignal m_container_hdr_signal;
     bool m_video_side_data_hdr;
     int m_consumer_transfer_function;
     DWORD m_consumer_control_flags;
-    bool m_consumer_bt2020_matrix;
+    bool m_graph_bt2020_matrix;
+    bool m_container_bt2020_matrix;
     bool m_video_filename_hdr;
 
     int m_bt601Width, m_bt601Height;//for AUTO_GUESS
@@ -121,7 +124,8 @@ public:
     virtual HRESULT OnOptionChanged(unsigned field);
 
     // Resolves INT_PGS_HDR_MODE / INT_PGS_HDR_WHITE_NITS into a mapping config.
-    // AUTO falls back to the video's YCbCr matrix as reported by the consumer.
+    // AUTO uses the active graph path, optional local MKV metadata, filename,
+    // and the consumer's YCbCr matrix as a final fallback.
     HdrColor::Config ResolvePgsHdrConfig() const;
 
     // Same mapping rules for ASS/SRT text, driven by INT_TEXT_HDR_MODE and the

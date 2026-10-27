@@ -301,8 +301,8 @@ Timing / Paths / About 原先与 DirectVobSub 共用对话框资源。为统一 
 
 ## D34：HDR 证据合并与 Auto 判定提取为纯函数
 
-`UpdateConsumerHdrSignal()` 仍负责枚举 DirectShow 引脚和读取媒体类型，但不再内嵌
-“哪种证据优先”的规则。`HdrDetection::PreferHdrEvidence()` 负责合并引脚证据，
+`UpdateConsumerHdrSignal()` 仍负责启动图探测，但不再内嵌“哪种证据优先”的规则。
+`HdrDetection::HdrEvidenceSet` 负责顺序无关地合并 transfer/matrix/mastering 证据，
 `HdrDetection::ResolveAutoPq()` 负责最终 Auto 判定。
 
 这样可以直接单测 HDR 与 SDR 冲突、未知传输函数、side data、文件名 HDR 和
@@ -335,3 +335,43 @@ ID、对话框控件 ID，并拒绝属性页新增未标记豁免的硬编码 `A
 2026-10-28 用户确认 PotPlayer + madVR 多日使用无异常。没有稳定复现的历史
 seek 崩溃不再作为当前阻塞，也不宣称找到了根因；后续若再次出现，使用
 `scripts/Test-SeekStability.ps1` 收集进程退出、WER、bugreport 和 dump 证据。
+
+## D38：Auto 图探测只沿活动视频路径
+
+原实现先检查 consumer，再枚举整张图；任意已连接视频引脚的 HDR 都可能提前结束扫描，
+既缺少拓扑约束，也让无法独立比较的 transfer/matrix 证据受枚举顺序影响。
+
+现在 `ProbeHdrGraph()` 从所选 consumer 的视频输入引脚沿 `ConnectedTo()` 反向追踪
+活动路径，只读取该路径上已连接输入的媒体类型。扫描限制为 64 个 filter、128 个
+pin；未连接引脚和旁路 filter 不参与决策。媒体类型解析同时覆盖
+`FORMAT_VideoInfo2`、`FORMAT_MPEG2_VIDEO` 和 `FORMAT_DiracVideoInfo`。
+
+被否方案：保留整图扫描后只调整优先级。这样仍可能被辅助视频流或无关分支污染，
+也无法保证证据顺序稳定。
+
+## D39：文件名之后才读取本地 MKV 头部
+
+文件名中的独立 `HDR` 标记是该用户的规范命名主信号。为减少无意义 I/O，只有文件名
+未提示 HDR、活动视频路径提供本地 `.mkv` 路径时才启动容器探针。
+
+探针最多读取 2 MiB，最多处理 4096 个 EBML 元素和 8 层嵌套，支持未知长度 Segment；
+读取 Tracks/Colour/MasteringMetadata/MaxCLL/MaxFALL，不读取 Cluster 或视频样本。
+H.273 transfer=`16`/`18` 转换为内部 HDR，matrix=`9`/`10` 作为 BT.2020 回退。
+
+多视频轨使用当前 DirectShow 媒体签名中的 codec、宽高和帧时长做唯一匹配；无法
+唯一命中的轨道不采用。文件结果按规范化路径、文件大小和 mtime 缓存。
+
+被否方案：直接解析第一条视频轨。多轨文件中可能误用辅助轨，不能作为“当前播放轨”
+的可靠替代。
+
+## D40：媒体签名变化只在边界触发一次重扫
+
+连接时完成一次图与文件探测。播放中 `UpdateParamFromConsumer()` 检测到原始尺寸、
+AR 尺寸、帧率或 consumer `yuvMatrix` 变化时，只设置一次重扫标记；下一次
+`RequestFrame()` 处理该标记并执行一次有界探测。常规逐帧路径不读取文件。
+
+只有最终 Auto PQ/Off 结果变化才递增有效 HDR generation；side-data 事件同样先比较
+Auto 结果，避免文件名已经确定 PQ 时仅因冗余提示触发不必要的字幕刷新。
+
+被否方案：在 `RequestFrame()` 每帧读取 consumer 或文件。该做法已被实际播放证明会
+造成稳定性退化，也会制造不必要的 I/O。

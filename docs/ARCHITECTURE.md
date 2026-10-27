@@ -142,19 +142,29 @@ HDR 配置还携带递增 generation；`HdmvSubtitleProviderImpl`、`Composition
 | `PGS_HDR_MODE_DISABLED` | `MAP_OFF` |
 | `PGS_HDR_MODE_PQ` | `MAP_PQ`，白点取自 `INT_PGS_HDR_WHITE_NITS` |
 | `PGS_HDR_MODE_RELATIVE_WHITE` | `MAP_RELATIVE_WHITE` |
-| `PGS_HDR_MODE_AUTO` | side data 或明确 PQ/HLG → `MAP_PQ`；随后按文件名 HDR、明确 SDR、BT.2020/consumer `yuvMatrix` 回退 |
+| `PGS_HDR_MODE_AUTO` | side data、图内明确 HDR、文件名 HDR 或 MKV 明确 HDR → `MAP_PQ`；随后按明确 SDR、BT.2020/consumer `yuvMatrix` 回退 |
 
-入口：`ResolvePgsHdrConfig()` 读 `INT_PGS_HDR_MODE`，`ResolveTextHdrConfig()` 读 `INT_TEXT_HDR_MODE`，白点共用。`XySubFilter::UpdateConsumerHdrSignal()` 从 consumer 已连接视频引脚的 `VIDEOINFOHEADER2.dwControlFlags` 提取传递函数；PQ/HLG 为 HDR，明确 SDR 曲线优先于 BT.2020 矩阵回退。
+入口：`ResolvePgsHdrConfig()` 读 `INT_PGS_HDR_MODE`，`ResolveTextHdrConfig()` 读
+`INT_TEXT_HDR_MODE`，白点共用。`XySubFilter::UpdateConsumerHdrSignal()` 委托
+`ProbeHdrGraph()` 从所选 consumer 的视频输入沿 `ConnectedTo()` 反向追踪活动路径；
+只读取路径上已连接引脚的媒体类型，最多 64 个 filter、128 个 pin。
 
-若 consumer 引脚已被转换且不再携带原始颜色元数据，则在同一检测阶段枚举整张
-DirectShow 图，优先采用任何解码器/中间引脚上的 PQ/HLG 信息。该扫描只在 consumer
-连接阶段执行，不进入逐帧热路径。
+`ReadVideoColorMetadata()` 支持直接 `FORMAT_VideoInfo2`，以及
+`FORMAT_MPEG2_VIDEO`、`FORMAT_DiracVideoInfo` 内嵌的
+`VIDEOINFOHEADER2`。所有证据先归一化为 `HdrEvidenceSet`，HDR、SDR、BT.2020
+和静态 mastering/CLL 字段分别合并，因此引脚枚举顺序不改变 Auto 结论。
 
-检测同时保留 BT.2020 matrix 位；当传递函数未知时，`2020` 与 consumer 的
-`yuvMatrix` 字符串一样作为 Auto 回退。连接阶段还会把视频引脚元数据写入
-`%TEMP%\xy_hdr_diag.txt`，正常播放不受影响。
+当文件名未含独立 `HDR` 标记且活动路径返回本地 `.mkv` 路径时，
+`ProbeMatroskaFile()` 最多读取前 2 MiB，交给 `ProbeMatroskaHeader()` 解析
+Tracks/Colour/MasteringMetadata/MaxCLL/MaxFALL。探测最多读取 4096 个 EBML
+元素、深度 8；不读取 Cluster 或视频样本。H.273 transfer=`16`/`18` 会先转换为
+内部 HDR 信号，不能直接复用 DXVA2 的 `8`/`10` 枚举。
 
-图扫描同时查询各滤镜的 `IFileSourceFilter::GetCurFile()`。标准化视频文件名中的
+多视频轨 MKV 用当前 DirectShow 媒体签名（codec、宽高、帧时长）做唯一匹配；
+无法唯一确定时容器证据为 Unknown，不按首轨猜测。文件探测结果按路径、大小和
+mtime 缓存；文件名已经提示 HDR 时不执行文件 I/O。
+
+文件名来自活动路径上的 `IFileSourceFilter::GetCurFile()`。标准化视频文件名中的
 独立 `HDR` 标记优先于错误的 SDR 元数据；匹配限定在文件名而非目录，并要求 `HDR`
 右侧不是字母，以避免 `HDRip` 误判。
 
@@ -165,9 +175,10 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 配置。
 
 色彩科学集中在 `src/subpic/hdr_color.{h,cpp}`，HDR 证据合并与 AUTO 优先级集中在
-`src/subpic/hdr_evidence.{h,cpp}`；两者都是纯函数、无 Win32 依赖，分别由
-`test_hdr_color.h` 和 `test_hdr_evidence.h` 覆盖。`UpdateConsumerHdrSignal()`
-只负责读取 DirectShow 引脚并调用纯函数，避免图扫描顺序改变最终 Auto 结论。
+`src/subpic/hdr_evidence.{h,cpp}`，EBML 解析集中在 `src/subpic/hdr_mkv_probe.{h,cpp}`；
+这些模块不依赖 DirectShow。`HdrGraphProbe` 位于 basevideofilter，负责 COM 图遍历、
+媒体类型读取和本地文件包装。`UpdateConsumerHdrSignal()` 只在连接或媒体签名变化后
+执行一次有界探测，不进入逐帧热路径。
 
 `DirectVobSubImpl::GetHdrDiagnosticPath()` 与日志写入共用
 `%TEMP%\xy_hdr_diag.txt`。属性页的 `Open log` / “打开日志”按钮只打开已存在的日志；
