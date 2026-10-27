@@ -4,7 +4,6 @@
 #include <set>
 #include <vector>
 
-#include "../../../DSUtil/DSUtil.h"
 #include "../../../../include/moreuuids.h"
 
 namespace
@@ -54,6 +53,16 @@ const VIDEOINFOHEADER* GetVideoInfo(const CMediaType& media_type)
     return NULL;
 }
 
+const BITMAPINFOHEADER* GetBitmapInfoHeader(const CMediaType& media_type)
+{
+    const VIDEOINFOHEADER2* video_info2 = GetVideoInfo2(media_type);
+    if (video_info2) {
+        return &video_info2->bmiHeader;
+    }
+    const VIDEOINFOHEADER* video_info = GetVideoInfo(media_type);
+    return video_info ? &video_info->bmiHeader : NULL;
+}
+
 HdrDetection::HdrCodecFamily ClassifyCodec(const CMediaType& media_type)
 {
     if (media_type.subtype == MEDIASUBTYPE_HEVC
@@ -72,20 +81,20 @@ HdrDetection::HdrCodecFamily ClassifyCodec(const CMediaType& media_type)
         return HdrDetection::HDR_CODEC_MPEG2;
     }
 
-    BITMAPINFOHEADER bih = {};
-    if (ExtractBIH(&media_type, &bih)) {
-        if (bih.biCompression == MAKEFOURCC('A', 'V', '0', '1')) {
+    const BITMAPINFOHEADER* bih = GetBitmapInfoHeader(media_type);
+    if (bih) {
+        if (bih->biCompression == MAKEFOURCC('A', 'V', '0', '1')) {
             return HdrDetection::HDR_CODEC_AV1;
         }
-        if (bih.biCompression == MAKEFOURCC('H', 'E', 'V', 'C')
-            || bih.biCompression == MAKEFOURCC('H', '2', '6', '5')) {
+        if (bih->biCompression == MAKEFOURCC('H', 'E', 'V', 'C')
+            || bih->biCompression == MAKEFOURCC('H', '2', '6', '5')) {
             return HdrDetection::HDR_CODEC_HEVC;
         }
-        if (bih.biCompression == MAKEFOURCC('H', '2', '6', '4')
-            || bih.biCompression == MAKEFOURCC('A', 'V', 'C', '1')) {
+        if (bih->biCompression == MAKEFOURCC('H', '2', '6', '4')
+            || bih->biCompression == MAKEFOURCC('A', 'V', 'C', '1')) {
             return HdrDetection::HDR_CODEC_H264;
         }
-        if (bih.biCompression == MAKEFOURCC('V', 'P', '9', '0')) {
+        if (bih->biCompression == MAKEFOURCC('V', 'P', '9', '0')) {
             return HdrDetection::HDR_CODEC_VP9;
         }
     }
@@ -105,12 +114,12 @@ void UpdateActiveSignature(
     HdrDetection::HdrMediaSignature candidate;
     candidate.codec = ClassifyCodec(media_type);
 
-    BITMAPINFOHEADER bih = {};
-    if (ExtractBIH(&media_type, &bih)) {
-        candidate.width = bih.biWidth > 0 ? unsigned(bih.biWidth) : 0;
-        candidate.height = bih.biHeight < 0
-            ? unsigned(-bih.biHeight)
-            : unsigned(bih.biHeight);
+    const BITMAPINFOHEADER* bih = GetBitmapInfoHeader(media_type);
+    if (bih) {
+        candidate.width = bih->biWidth > 0 ? unsigned(bih->biWidth) : 0;
+        candidate.height = bih->biHeight < 0
+            ? unsigned(-bih->biHeight)
+            : unsigned(bih->biHeight);
     }
 
     const VIDEOINFOHEADER2* video_info2 = GetVideoInfo2(media_type);
