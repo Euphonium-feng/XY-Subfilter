@@ -6,7 +6,7 @@
 HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出现问题。
 原先的 seek 稳定性阻塞关闭；历史崩溃未能稳定复现，因此没有根因结论。
 
-可靠性收口代码已完成，当前等待云端三矩阵 CI：
+可靠性收口代码已完成，并通过云端三矩阵 CI（run `40552057870`）：
 
 - `src/subpic/hdr_evidence.{h,cpp}` 提供可单测的 HDR 证据合并和 Auto 判定。
 - 属性页运行时下拉项、缓存窗口和提示文案已接入中英文资源。
@@ -123,6 +123,8 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 | `40007950976` | consumer 矩阵上报、HDR side data 事件、SubPic 失效修复与属性页重排 | success |
 | `40011453627` | 全图 HDR 信号扫描、无 colour-info 的 PQ/HLG 码检测 | success |
 | `40068012174` | 文件名 HDR 回退、BT.2020 回退与连接诊断文件 | success |
+| `40550761466` | 可靠性收口首轮 | failure（win32 文件选择框参数错误） |
+| `40552057870` | 可靠性收口复跑（release-win32 / release-x64 / debug-x64） | success |
 
 `39962614076` 的两项失败：
 
@@ -138,10 +140,8 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 
 ## 下一步
 
-1. 完成静态检查：资源本地化脚本、两个 PowerShell 脚本解析、seek `-PlanOnly`。
-2. 提交代码、资源和状态文档，推送后取得最新 run ID。
-3. 用 `gh run watch <id> --exit-status` 等到 release-win32 / release-x64 /
-   debug-x64 三矩阵全绿；红则读 `gh run view <id> --log-failed` 修复并重推。
-4. 从绿色产物检查五个属性页的中英文标签与下拉项、诊断按钮存在/缺失提示，
-   并对最终 DLL 做一次播放器冒烟测试。
-5. 将实际 run ID、artifact 和冒烟结果写回本文件，再完成最终文档提交和绿色复核。
+1. 绿色产物下载在当前网络下被 Azure Blob 连接 EOF 阻塞；网络恢复后下载
+   `vsfilter-xysubfilter-x64`，记录 SHA256，并检查五个属性页的中英文标签与下拉项、
+   诊断按钮存在/缺失提示。
+2. 对最终 DLL 做一次播放器冒烟测试，确认属性页和诊断按钮可用。
+3. 将产物 SHA256 和冒烟结果写回本文件；代码和资源本身已通过三矩阵 CI。

@@ -58,4 +58,4 @@ consumer `yuvMatrix` 回退、Off。HDR 配置仍由 generation 驱动缓存失�
 Apply 仍合并 RGB/HDR 刷新并调用一次 `ISubRenderConsumer2::Clear()`。
 
 HLG 不在个人使用范围内，不实现专用映射、不做专项验收；文档不得把 HLG 观感
-描述为已验证。本轮可靠性改动待云端三矩阵 CI 完成后记录 run ID。
+描述为已验证。本轮可靠性改动已通过云端三矩阵 CI（run `40552057870`）。
