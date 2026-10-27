@@ -124,7 +124,8 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 
 ### 第十轮：深层 Auto HDR 阶段一+二实现
 
-实现已落在本地分支 `codex/deep-hdr-auto-implementation`，等待云端验证：
+实现已落在分支 `codex/deep-hdr-auto-implementation`，当前被 GitHub Actions
+计费阻塞，尚未获得有效云端验证：
 
 - `HdrEvidenceSet` 以顺序无关方式合并 transfer、matrix 与 mastering/CLL 证据。
 - `HdrGraphProbe` 只沿 consumer 活动视频路径读取 VIH2、MPEG-2、Dirac 媒体类型。
@@ -150,6 +151,7 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 | `40550761466` | 可靠性收口首轮 | failure（win32 文件选择框参数错误） |
 | `40552057870` | 可靠性收口复跑（release-win32 / release-x64 / debug-x64） | success |
 | `40553848048` | 最终 CI 记录提交复核 | success |
+| `40564644382` | 深层 Auto HDR 首轮 | failure（runner 未启动：GitHub 账户计费/额度限制） |
 
 `39962614076` 的两项失败：
 
@@ -167,9 +169,11 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 
 ### 深层 Auto HDR
 
-阶段一+二代码已完成，当前下一步是提交、推送并以 `gh run watch --exit-status`
-等待 `release-win32`、`release-x64`、`debug-x64` 全绿。通过后再记录 run ID，
-并再次复核最终文档提交。codec extradata 仍不在本轮范围。
+阶段一+二代码已完成并推送。当前唯一阻塞是 GitHub 账户计费/额度限制：
+run `40564644382` 的三个 job 均未分配 runner，不能据此判断代码失败。
+恢复 Actions 计费后，下一步是重跑该 run 或以当前 HEAD 重新触发，使用
+`gh run watch --exit-status` 等到 `release-win32`、`release-x64`、`debug-x64`
+全绿；通过后再记录 run ID 并复核最终文档。codec extradata 仍不在本轮范围。
 
 ### 现有验收收尾
 
