@@ -244,6 +244,21 @@ TEST(HdrGraphProbeTest, TruncatedVideoInfoIsRejected)
     EXPECT_EQ(HdrColor::HDR_SIGNAL_UNKNOWN, evidence.signal);
 }
 
+TEST(HdrGraphProbeTest, AcceptsPqWithoutColourInfoButRejectsSdrGuess)
+{
+    const CMediaType pq = MakeProbeVideoType(
+        MEDIASUBTYPE_HEVC, FORMAT_VideoInfo2, 8u << 27);
+    const CMediaType sdr = MakeProbeVideoType(
+        MEDIASUBTYPE_HEVC, FORMAT_VideoInfo2, 1u << 27);
+
+    EXPECT_EQ(
+        HdrColor::HDR_SIGNAL_HDR,
+        ReadVideoColorMetadata(pq).signal);
+    EXPECT_EQ(
+        HdrColor::HDR_SIGNAL_UNKNOWN,
+        ReadVideoColorMetadata(sdr).signal);
+}
+
 TEST(HdrGraphProbeTest, FindsUpstreamPqBehindRgbConsumerInput)
 {
     const DWORD pq_flags =
