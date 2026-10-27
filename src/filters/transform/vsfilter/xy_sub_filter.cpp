@@ -3385,7 +3385,7 @@ bool XySubFilter::UpdateConsumerHdrSignal(
             const HdrDetection::HdrMkvTrack* selected_track =
                 HdrDetection::GetSelectedMkvTrack(mkv.header);
             if (mkv.file_status == HDR_MKV_FILE_OK
-                && mkv.header.status == HDR_MKV_PROBE_OK
+                && mkv.header.status == HdrDetection::HDR_MKV_PROBE_OK
                 && selected_track) {
                 container_evidence.Add(selected_track->evidence);
             }
