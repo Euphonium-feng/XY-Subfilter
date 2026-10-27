@@ -110,6 +110,18 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 | E | 将 seek 压力脚本迁移到 `scripts/Test-SeekStability.ps1`，支持 `-PlanOnly` 和 JSON 输出 |
 | F | README、PROJECT、ARCHITECTURE、CONSTRAINTS、DECISIONS 同步当前实现 |
 
+### 第九轮：深层 Auto HDR 判定调研
+
+2026-10-28 在本地分支 `codex/research-hdr-auto-depth` 完成静态调研，
+结论记录在 `docs/research/hdr-auto-detection.md`。本轮未修改生产代码，
+未运行播放器、单元测试或云端构建，也未推送远程。
+
+- GO：修正 DirectShow 活动主视频路径、MPEG-2/Dirac 嵌套 VIH 和证据顺序问题。
+- GO：增加本地 MKV 有界 EBML 头部探针，提取 Colour、mastering 和 CLL。
+- CONDITIONAL：仅在 CodecPrivate 已暴露时解析 `avcC`/`hvcC`/`av1C`。
+- NO-GO：完整码流扫描、视频 tap、帧级分析、madVR/LAV 私有接口主判据。
+- 暂缓：MP4/MOV、TS/M2TS、BDMV、网络流和 HLG/DoVi 专项分类。
+
 ## CI 记录
 
 | Run | 内容 | 结果 |
@@ -141,6 +153,16 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 - HLG 未进入个人使用范围，保留为未专项验证项，不作为本轮阻塞。
 
 ## 下一步
+
+### 深层 Auto HDR
+
+生产实现尚未开始。若接受调研结论，按以下顺序另开实现任务：
+
+1. 稳定现有证据模型：活动主视频路径、嵌套 VIH、matrix/transfer 独立合并。
+2. 增加本地 MKV 有界头部探针，并完成 H.273 到内部枚举的显式转换。
+3. 只有前两步仍证明有足够漏判时，再评估 codec extradata。
+
+### 现有验收收尾
 
 1. 绿色产物下载在当前网络下被 Azure Blob 连接 EOF 阻塞；网络恢复后下载
    `vsfilter-xysubfilter-x64`，记录 SHA256，并检查五个属性页的中英文标签与下拉项、
