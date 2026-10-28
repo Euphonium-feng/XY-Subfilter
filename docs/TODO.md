@@ -6,8 +6,9 @@
 HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出现问题。
 原先的 seek 稳定性阻塞关闭；历史崩溃未能稳定复现，因此没有根因结论。
 
-深层 Auto HDR 阶段一+二已实现并通过三矩阵；本轮没有再次启动播放器实机测试。
-仓库已于同日切换为 public，以避免私有仓库 Actions 分钟额度再次阻塞标准 runner。
+深层 Auto HDR 阶段一+二已合并到 `master`，最终三矩阵 run `40658251653` 全绿；
+本轮没有对 tagged build 再次启动播放器实机测试。仓库已于同日切换为 public，
+以避免私有仓库 Actions 分钟额度再次阻塞标准 runner。
 
 可靠性收口代码已完成，并通过云端三矩阵 CI（run `40552057870`；
 最终记录提交 run `40553848048`）：
@@ -18,6 +19,24 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 - `scripts/Test-SeekStability.ps1` 取代本地 `.debug/repro-seek.ps1`。
 - `scripts/Test-ResourceLocalization.ps1` 在 `debug-x64` 构建前校验资源。
 - HLG 保留现有处理，但不在个人使用范围内，也未做专项验收。
+
+## 0.1.0 发布
+
+2026-10-28 已完成首个正式版本发布：
+
+- annotated tag `0.1.0` 指向提交 `65171fd76fdb576935114b9d5d84da7202c9d677`。
+- GitHub Release：`https://github.com/Euphonium-feng/XY-Subfilter/releases/tag/0.1.0`
+- `XY-SubFilter-0.1.0-win64.zip`：5,892,808 bytes，SHA-256
+  `9110DA20D4008217102FD7B1AE5EC0B94C58BF3AF184709B556970A3BEB31FA3`
+- `XY-SubFilter-0.1.0-win32.zip`：5,223,006 bytes，SHA-256
+  `07027A9E691D8EF1C8963B9ADB69E07A7DB7B2B3C25CF29D8377D5249937B732`
+- 发布源码最终三矩阵 run `40658251653`：`release-win32`、`release-x64`、
+  `debug-x64` 全部通过。
+- 两个 ZIP 已从 Release 回读，SHA-256 与本地产物一致；每个 ZIP 均包含
+  `XySubFilter.dll`、`VSFilter.dll` 及安装/卸载脚本。
+
+发布验收基于自动化测试和云端构建；没有对 tagged build 启动 PotPlayer 做实机复测。
+此前多日 PotPlayer + madVR 使用记录仍有效，但不能替代本次发布包的单独冒烟记录。
 
 ## 已完成
 
@@ -155,6 +174,7 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 | `40553848048` | 最终 CI 记录提交复核 | success |
 | `40564644382` | 深层 Auto HDR 首轮 | failure（runner 未启动：GitHub 账户计费/额度限制） |
 | `40569779347` | 深层 Auto HDR 实现（release-win32 / release-x64 / debug-x64） | success |
+| `40658251653` | 合并后最终三矩阵（`0.1.0` 发布源码） | success |
 
 `39962614076` 的两项失败：
 
@@ -172,14 +192,14 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 
 ### 深层 Auto HDR
 
-阶段一+二代码已完成并推送；run `40569779347` 已确认
+阶段一+二代码已合并；run `40658251653` 已确认
 `release-win32`、`release-x64`、`debug-x64` 全绿。本轮按计划只做自动化验收，
 未启动 PotPlayer 或进行人工画面测试。codec extradata 仍不在本轮范围。
 
-### 现有验收收尾
+### 发布后可选人工验证
 
-1. 绿色产物下载在当前网络下被 Azure Blob 连接 EOF 阻塞；网络恢复后下载
-   `vsfilter-xysubfilter-x64`，记录 SHA256，并检查五个属性页的中英文标签与下拉项、
-   诊断按钮存在/缺失提示。
-2. 对最终 DLL 做一次播放器冒烟测试，确认属性页和诊断按钮可用。
-3. 将产物 SHA256 和冒烟结果写回本文件；代码和资源本身已通过三矩阵 CI。
+1. 解压 `XY-SubFilter-0.1.0-win64.zip`，用管理员权限运行
+   `Install_XySubFilter.bat`，在 PotPlayer + madVR 中做一次字幕、HDR 和 seek 冒烟。
+2. 检查五个属性页的中英文标签与下拉项、More 页“打开日志”在日志存在/缺失两种状态下
+   的行为，并把结果补写到本文件。
+3. 该冒烟用于补齐发布包实机记录，不再是代码合并或 Release 发布的阻塞项。
