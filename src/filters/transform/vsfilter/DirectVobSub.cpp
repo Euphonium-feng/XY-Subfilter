@@ -982,7 +982,8 @@ CStringW DirectVobSubImpl::GetHdrStatusText()
         hash = CStringW(sha1.Left(7));
     }
     CStringW value;
-    value.Format(L"%ls %d | %ls",
+    value.Format(L"%ls: %ls %d | %ls",
+        is_bitmap ? L"Bitmap" : L"Text",
         mode.GetString(), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS], hash.GetString());
     return value;
 }

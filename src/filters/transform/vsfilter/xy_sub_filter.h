@@ -92,6 +92,7 @@ private:
     void SetHdrMode();
     void ApplyHdrRefresh();
     HRESULT RefreshConsumerCache();
+    void LogHdrConfiguration(const wchar_t* event, unsigned field);
     bool UpdateConsumerHdrSignal(
         IBaseFilter* consumer_filter,
         const wchar_t* scan_reason = L"connect");

@@ -137,7 +137,10 @@ The **"More"** property page offers three settings:
 Property page → **More** → **Subtitle Output** group.
 
 If Auto or placement looks wrong, use **Open log** to view
-`%TEMP%\xy_hdr_diag.txt`; the log is created only while the filter is connected.
+`%TEMP%\xy_hdr_diag.txt`. The log appends probe results plus the requested and
+resolved bitmap/text modes, active renderer backend and generation after each
+apply. Bitmap and text modes are independent; ASS/SSA/SRT is controlled only by
+**Text HDR**.
 
 ### Mapping modes
 

@@ -64,15 +64,41 @@ CStringW BuildHdrDiagnosticPath()
     return path;
 }
 
-void WriteHdrDiagnostic(const CStringW& text)
+void AppendHdrDiagnostic(const CStringW& text)
 {
     const CStringW path = BuildHdrDiagnosticPath();
     if (path.IsEmpty()) {
         return;
     }
 
+    const unsigned long long max_file_size = 512ULL * 1024ULL;
+    bool truncate = false;
+    WIN32_FILE_ATTRIBUTE_DATA attributes = {};
+    if (GetFileAttributesExW(
+            path.GetString(), GetFileExInfoStandard, &attributes)
+        && attributes.nFileSizeHigh == 0
+        && attributes.nFileSizeLow > max_file_size) {
+        truncate = true;
+    }
+
     FILE* file = NULL;
-    if (_wfopen_s(&file, path.GetString(), L"w, ccs=UTF-8") == 0 && file) {
+    if (_wfopen_s(
+            &file,
+            path.GetString(),
+            truncate ? L"w, ccs=UTF-8" : L"a, ccs=UTF-8") == 0
+        && file) {
+        SYSTEMTIME local_time = {};
+        GetLocalTime(&local_time);
+        fwprintf(
+            file,
+            L"\r\n[%04u-%02u-%02u %02u:%02u:%02u.%03u]\r\n",
+            local_time.wYear,
+            local_time.wMonth,
+            local_time.wDay,
+            local_time.wHour,
+            local_time.wMinute,
+            local_time.wSecond,
+            local_time.wMilliseconds);
         fwprintf(file, L"%ls", text.GetString());
         fclose(file);
     }
@@ -2076,6 +2102,7 @@ void XySubFilter::ApplyHdrRefresh()
     ++m_context_id;
     UpdateSubtitle(false);
     RefreshConsumerCache();
+    LogHdrConfiguration(L"refresh-applied", 0);
 }
 
 HRESULT XySubFilter::RefreshConsumerCache()
@@ -2108,6 +2135,57 @@ HRESULT XySubFilter::RefreshConsumerCache()
             << XY_LOG_VAR_2_STR(clear_hr));
     }
     return clear_hr;
+}
+
+void XySubFilter::LogHdrConfiguration(
+    const wchar_t* event, unsigned field)
+{
+    const SubtitleRenderBackend backend =
+        GetActualSubtitleRenderBackend();
+    const wchar_t* backend_name = L"VSFilter";
+    if (backend == SUBTITLE_RENDER_BACKEND_LIBASS) {
+        backend_name = L"libass";
+    }
+    else if (backend == SUBTITLE_RENDER_BACKEND_CSRI) {
+        backend_name = L"CSRI";
+    }
+
+    CStringW diagnostic;
+    {
+        CAutoLock cProviderLock(&m_csProviderFields);
+        const int pgs_mode = m_xy_int_opt[INT_PGS_HDR_MODE];
+        const int text_mode = m_xy_int_opt[INT_TEXT_HDR_MODE];
+        const int white_nits = m_xy_int_opt[INT_PGS_HDR_WHITE_NITS];
+        const HdrColor::Config bitmap_config = ResolvePgsHdrConfig();
+        const HdrColor::Config text_config = ResolveTextHdrConfig();
+
+        diagnostic.Format(
+            L"schema=xy-hdr-config/1\r\n"
+            L"event=%ls field=%u backend=%ls isBitmap=%d "
+            L"requestedBitmap=%d requestedText=%d white=%d "
+            L"resolvedBitmap=%d resolvedText=%d generation=%llu "
+            L"graph=%d container=%d nameHdr=%d sideData=%d "
+            L"graph2020=%d container2020=%d yuv=%ls\r\n",
+            event ? event : L"unknown",
+            field,
+            backend_name,
+            m_xy_bool_opt[BOOL_IS_BITMAP] ? 1 : 0,
+            pgs_mode,
+            text_mode,
+            white_nits,
+            bitmap_config.mode,
+            text_config.mode,
+            GetHdrGeneration(),
+            int(m_graph_hdr_signal),
+            int(m_container_hdr_signal),
+            m_video_filename_hdr ? 1 : 0,
+            m_video_side_data_hdr ? 1 : 0,
+            m_graph_bt2020_matrix ? 1 : 0,
+            m_container_bt2020_matrix ? 1 : 0,
+            m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].IsEmpty()
+                ? L"?" : m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
+    }
+    AppendHdrDiagnostic(diagnostic);
 }
 
 CStringW XySubFilter::GetHdrStatusText()
@@ -2165,7 +2243,8 @@ CStringW XySubFilter::GetHdrStatusText()
         m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].IsEmpty()
             ? L"?" : m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
     CStringW value;
-    value.Format(L"%ls | %ls | clr %ls",
+    value.Format(L"%ls: %ls | %ls | clr %ls",
+        is_bitmap ? L"Bitmap" : L"Text",
         mode.GetString(), signal.GetString(), clear_state);
     return value;
 }
@@ -3318,6 +3397,13 @@ bool XySubFilter::UpdateConsumerHdrSignal(
     if (!consumer_filter) {
         m_hdr_probe_completed = false;
         InterlockedExchange(&m_hdr_probe_pending, 0);
+        CStringW disconnect_diagnostic;
+        disconnect_diagnostic.Format(
+            L"schema=xy-hdr-probe/1\r\n"
+            L"scan=%ls state=disconnect preservedEvidence=1\r\n",
+            scan_reason ? scan_reason : L"disconnect");
+        AppendHdrDiagnostic(disconnect_diagnostic);
+        return false;
     }
     HdrDetection::AutoHdrSignals old_signals;
     CStringW yuv_matrix;
@@ -3513,7 +3599,7 @@ bool XySubFilter::UpdateConsumerHdrSignal(
         new_auto_pq ? 1 : 0,
         decision_changed ? 1 : 0,
         yuv_matrix.GetString());
-    WriteHdrDiagnostic(diagnostic);
+    AppendHdrDiagnostic(diagnostic);
     XY_LOG_INFO("HDR probe: graph:" << graph_signal
         << " container:" << container_signal
         << " filename:" << filename_hdr

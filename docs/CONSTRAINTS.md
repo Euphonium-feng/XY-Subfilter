@@ -91,13 +91,14 @@
   madVR 做 HDR 处理；SDR 直通只用于对照，不是默认方案。
 - `Relative white` 已证明会让 madVR 路径过曝，不再暴露给用户；保留枚举值只为避免
   改变既有外部 ABI。
-- 位图与文本字幕共用同一 HDR Auto 解析和白点；任何 consumer 信号修复必须同时
-  验证两条管线，不能只修 PGS。
+- 位图与文本字幕共用 HDR Auto 证据和白点，但模式选项独立；任何 consumer 信号
+  修复必须同时验证两条管线，不能只修 PGS。ASS/SSA/SRT 只受文本模式控制。
 - HDR 证据合并和 Auto 判定必须使用 `HdrDetection` 纯函数；DirectShow 引脚枚举
   只能负责采集，不得在扫描循环中重新实现优先级。
 - 属性页运行时用户可见文本必须来自 `IDS_XY_UI_*`（产品或标准缩写除外）；
   `Test-ResourceLocalization.ps1` 失败时不得绕过，除非在对应行标注
   `l10n-exempt:` 并说明技术理由。
-- `%TEMP%\xy_hdr_diag.txt` 只有播放/连接阶段生成；打开日志按钮不得创建空文件。
+- `%TEMP%\xy_hdr_diag.txt` 在探测或 HDR 配置刷新时生成并追加，超过 512 KiB
+  后轮换；disconnect 不得覆盖上次有效证据。打开日志按钮本身不得创建空文件。
 - HLG 当前与 PQ 共用 HDR 证据分类，个人范围不做专用映射或专项验收；文档不得把
   HLG 观感描述为已验证。

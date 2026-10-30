@@ -183,9 +183,15 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 `DirectVobSubImpl::GetHdrDiagnosticPath()` 与日志写入共用
 `%TEMP%\xy_hdr_diag.txt`。属性页的 `Open log` / “打开日志”按钮只打开已存在的日志；
 文件缺失或 `ShellExecuteW` 失败时显示本地化提示，不创建空文件。
+日志采用追加写入并在超过 512 KiB 后轮换。每次图/容器探测和 HDR 配置刷新都会
+记录时间、事件、实际渲染后端（libass/VSFilter/CSRI）、位图/文本请求模式、
+最终解析模式、generation 和当前 HDR 证据。断开连接只追加事件，不再用全零结果
+覆盖上一次有效探测。
 
 文本与位图共用 `DirectVobSubImpl::ResolveHdrMode()`、同一个 consumer HDR 信号和
-`INT_PGS_HDR_WHITE_NITS`；因此 Auto 检测与白点调整会同时作用于两类字幕。
+`INT_PGS_HDR_WHITE_NITS`，但模式选项仍然独立。属性页将二者明确标为
+“位图字幕 HDR”和“文本字幕 HDR”，HDR 状态行也以 `Bitmap:` / `Text:` 前缀
+区分当前字幕类型。
 
 ## 界面与本地化
 
