@@ -44,8 +44,9 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
   output/clip 变化时调用 `Invalidate()`，避免同字幕区间返回旧布局帧。
 - `ResolveInput` 增加默认构造函数；修复 Win32 Release 下未初始化字段导致的
   `MissingDisplayFallsBackToVideo` / `InvalidRectFallsBackSafely` 失败。
-- 最终功能提交 `4854327`（内容与本地 `4b64448` 相同）的 run `42259761429`
-  三矩阵全绿；Win32 首轮为已知 yasm `STATUS_DLL_NOT_FOUND`，重跑通过。
+- 功能提交 `4b64448` 的 run `42259761429` 三矩阵全绿；Win32 首轮为已知
+  yasm `STATUS_DLL_NOT_FOUND`，重跑通过。末次文档提交 `4f1b00a` 的 run
+  `42262535081` 同样三矩阵全绿。
 - PGS/SUP/DVB 依赖 consumer 按标准 `GetOutputRect`/`GetClipRect` 语义执行缩放。
   外部 consumer 若忽略该语义，实际画面仍需用户手动验收；不能仅凭代码宣称
   所有渲染器都已生效。
@@ -236,7 +237,8 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 | `42249026874` | Win32 显式字段修复 | failure（Win32 Release 单测未初始化字段） |
 | `42255336219` | 缓存失效 + Win32 单测初始化修复 | success（三矩阵） |
 | `42257724330` | 类型 gating + README/docs | failure（`pSubStream.p` 编译错误） |
-| `42259761429` | 最终功能提交 `4854327` | success（三矩阵；Win32 yasm 首轮失败后重跑通过） |
+| `42259761429` | 功能提交 `4b64448` | success（三矩阵；Win32 yasm 首轮失败后重跑通过） |
+| `42262535081` | 文档提交 `4f1b00a` | success（三矩阵） |
 
 `39962614076` 的两项失败：
 
