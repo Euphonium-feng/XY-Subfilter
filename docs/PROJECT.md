@@ -92,5 +92,6 @@ Auto 与手动 PQ 均未呈现预期映射。已排除 CSRI；当前保存的 `t
 实现已覆盖文本与 PGS/SUP/DVB：布局解析、consumer 字段映射、More 页下拉、注册表
 持久化、诊断字段、合成单测和缓存失效均已完成；VobSub/SSF 按 provider 类型排除。
 缓存失效与 Win32 单测初始化修复提交 run `42255336219` 三矩阵全绿。类型 gating 与
-文档提交的最终 run 在完成后记录。尚无播放器实机验收；PGS 位图是否按外部 consumer
-的 `GetOutputRect` / `GetClipRect` 语义缩放，必须由用户手动确认。
+文档提交的最终功能 run `42259761429` 亦三矩阵全绿（对应远程提交 `4854327`；
+Win32 首轮 yasm 环境失败后重跑通过）。尚无播放器实机验收；PGS 位图是否按外部
+consumer 的 `GetOutputRect` / `GetClipRect` 语义缩放，必须由用户手动确认。
