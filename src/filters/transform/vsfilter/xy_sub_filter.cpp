@@ -2715,7 +2715,7 @@ void XySubFilter::SetSubtitle( ISubStream* pSubStream, bool fApplyDefStyle /*= t
     else if (CComQIPtr<ISubPicProviderEx>(pSubStream))
     {
         const bool pixel_subtitle_provider =
-            dynamic_cast<CRenderedHdmvSubtitle*>(pSubStream.p) != NULL;
+            dynamic_cast<CRenderedHdmvSubtitle*>(pSubStream) != NULL;
         m_sub_provider = DEBUG_NEW XySubRenderProviderWrapper(
             CComQIPtr<ISubPicProviderEx>(pSubStream), NULL,
             pixel_subtitle_provider);
