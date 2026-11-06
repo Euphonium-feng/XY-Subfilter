@@ -122,7 +122,9 @@ STDMETHODIMP XySubRenderProviderWrapper::RequestFrame( IXySubRenderFrame**subRen
     ASSERT(m_consumer);
     hr = m_consumer->XyGetSize(DirectVobSubXyOptions::SIZE_ORIGINAL_VIDEO, &original_video_size);
     ASSERT(SUCCEEDED(hr));
-    const RECT video_rect(CPoint(), original_video_size);
+    const RECT video_rect = {
+        0, 0, original_video_size.cx, original_video_size.cy
+    };
     m_display_layout = ResolveDisplayLayout(m_consumer, video_rect);
     hr = m_consumer->XyGetBool(DirectVobSubXyOptions::BOOL_SUB_FRAME_USE_DST_ALPHA, &use_dst_alpha);
 
