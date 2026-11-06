@@ -19,6 +19,7 @@
 #include "test_composition_hdr.h"
 #include "test_media_side_data.h"
 #include "test_video_info2_color_info.h"
+#include "test_subtitle_display_layout.h"
 #include "test_overall.h"
 
 #ifdef DEBUG

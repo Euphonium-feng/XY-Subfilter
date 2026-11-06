@@ -193,6 +193,31 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 “位图字幕 HDR”和“文本字幕 HDR”，HDR 状态行也以 `Bitmap:` / `Text:` 前缀
 区分当前字幕类型。
 
+## 字幕显示区域（实现中）
+
+`src/subpic/subtitle_display_layout.{h,cpp}` 是不依赖 DirectShow 的布局选择模块。
+它接收活动视频矩形、完整显示矩形和画幅模式，返回子目标矩形、生效模式和回退原因。
+Auto 使用完整显示区域；显式画幅在显示区域内生成最大居中内接画布。
+
+数据流：
+
+```
+XySubRenderProviderWrapper2
+  → consumer.fullscreenRect / displayModeSize
+  → SubtitleDisplayLayout::ResolveTargetRect()
+  → subtitleTargetRect
+  → CRenderedTextSubtitle::RenderEx()
+
+XySubRenderProviderWrapper (PGS/SUP)
+  → 同一显示区域解析
+  → 视频输出矩形保持不变
+  → 位图目标/缩放映射（尚未完成）
+```
+
+`videoOutputRect` 始终表示活动画面；只有 `subtitleTargetRect` 可选替换。关闭、
+非全屏、字段缺失或矩形无效时回退活动视频矩形。当前实现尚未完成 PGS 映射、
+资源检查和云端构建验证。
+
 ## 界面与本地化
 
 - 资源：单份 `VSFilter.rc` 内含英文与简体中文两个语言块，由 `AFX_TARG_ENU` / `AFX_TARG_CHS` 同时定义后一并编译进 DLL；中文块以 GBK + `#pragma code_page(936)` 存储。

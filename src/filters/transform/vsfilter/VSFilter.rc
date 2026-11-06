@@ -476,9 +476,11 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,209,156,10
     LTEXT           " (reloading is disabled while showing the property pages)",IDC_STATIC,24,220,150,8
     CONTROL         "Appl&y changes immediately",IDC_INSTANTUPDATE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,234,130,10
-    CONTROL         "Allow video renderer to &reposition simple SSA/ASS subtitles",IDC_CHECKBOX_ALLOW_MOVING,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,193,231,152,10
-    LTEXT           "Text renderer for legacy VSFilter paths:",IDC_STATIC,193,181,152,8
-    COMBOBOX        IDC_COMBO_TEXT_RENDERER_MODE,193,192,152,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Text renderer for legacy VSFilter paths:",IDC_STATIC,193,171,152,8
+    COMBOBOX        IDC_COMBO_TEXT_RENDERER_MODE,193,182,152,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Allow video renderer to &reposition simple SSA/ASS subtitles",IDC_CHECKBOX_ALLOW_MOVING,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,193,213,152,10
+    LTEXT           "Subtitle display area",IDC_STATIC,193,231,152,8
+    COMBOBOX        IDC_COMBO_SUBTITLE_DISPLAY_AREA,193,242,152,64,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "",IDC_HDR_STATUS,7,263,346,8
     PUSHBUTTON      "Open log",IDC_HDR_DIAG_OPEN,310,245,43,14
     CONTROL         "Render To Original Video Size",IDC_CHECKBOX_RENDER_TO_ORIGINAL_VIDEO_SIZE,
@@ -852,6 +854,8 @@ BEGIN
     IDS_RG_PGS_HDR_WHITE_NITS           "pgs_hdr_white_nits"
     IDS_RG_UI_LANGUAGE                  "ui_language"
     IDS_RG_TEXT_HDR_MODE                "text_hdr_mode"
+    IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES "use_display_area_for_subtitles"
+    IDS_RG_SUBTITLE_DISPLAY_ASPECT      "subtitle_display_aspect"
     IDS_RG_SUPPORTED_VERSION "supported_version"
     IDS_RG_VERSION          "version"
 #else
@@ -899,6 +903,8 @@ BEGIN
     IDS_RG_PGS_HDR_WHITE_NITS           "PGS_HDR_WHITE_NITS"
     IDS_RG_UI_LANGUAGE                  "UI_LANGUAGE"
     IDS_RG_TEXT_HDR_MODE                "TEXT_HDR_MODE"
+    IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES "USE_DISPLAY_AREA_FOR_SUBTITLES"
+    IDS_RG_SUBTITLE_DISPLAY_ASPECT      "SUBTITLE_DISPLAY_ASPECT"
     IDS_RG_SUPPORTED_VERSION "Supported Version"
     IDS_RG_VERSION          "Version"
 #endif
@@ -952,6 +958,14 @@ BEGIN
     IDS_XY_UI_STYLE_EDITOR_FAILED    "Failed to create Style editor dialog"
     IDS_XY_UI_FATAL_TITLE            "Fatal"
     IDS_XY_UI_CSRI_LOAD_FAILED_FORMAT "Failed to load CSRI renderer:\n%ls"
+    IDS_XY_UI_SUBTITLE_DISPLAY_AREA "Subtitle display area"
+    IDS_XY_UI_ASPECT_OFF "Off"
+    IDS_XY_UI_ASPECT_AUTO "Auto (display)"
+    IDS_XY_UI_ASPECT_16_9 "16:9"
+    IDS_XY_UI_ASPECT_16_10 "16:10"
+    IDS_XY_UI_ASPECT_21_9 "21:9"
+    IDS_XY_UI_ASPECT_32_9 "32:9"
+    IDS_XY_UI_ASPECT_4_3 "4:3"
 END
 #endif    // English (United States) resources
 /////////////////////////////////////////////////////////////////////////////
@@ -1397,11 +1411,13 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,209,156,10
     LTEXT           "（显示属性页期间不会重新加载）",IDC_STATIC,24,220,150,8
     CONTROL         "立即应用更改(&Y)",IDC_INSTANTUPDATE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,234,130,10
-    CONTROL         "允许视频渲染器重定位简单 SSA/ASS 字幕(&R)",IDC_CHECKBOX_ALLOW_MOVING,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,193,231,152,10
-    LTEXT           "旧版 VSFilter 路径的文本渲染器：",IDC_STATIC,193,181,152,8
-    COMBOBOX        IDC_COMBO_TEXT_RENDERER_MODE,193,192,152,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "允许视频渲染器重定位简单 SSA/ASS 字幕(&R)",IDC_CHECKBOX_ALLOW_MOVING,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,193,213,152,10
+    LTEXT           "旧版 VSFilter 路径的文本渲染器：",IDC_STATIC,193,171,152,8
+    COMBOBOX        IDC_COMBO_TEXT_RENDERER_MODE,193,182,152,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "字幕显示区域",IDC_STATIC,193,231,152,8
+    COMBOBOX        IDC_COMBO_SUBTITLE_DISPLAY_AREA,193,242,152,64,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "",IDC_HDR_STATUS,7,263,346,8
-    PUSHBUTTON      "打开日志",IDC_HDR_DIAG_OPEN,310,245,43,14
+    PUSHBUTTON      "打开日志",IDC_HDR_DIAG_OPEN,310,204,43,14
     CONTROL         "渲染到原始视频尺寸",IDC_CHECKBOX_RENDER_TO_ORIGINAL_VIDEO_SIZE,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,166,156,10
     EDITTEXT        IDC_EDIT_CACHE_SIZE,73,59,44,14,ES_AUTOHSCROLL,WS_EX_RIGHT
@@ -1773,6 +1789,8 @@ BEGIN
     IDS_RG_PGS_HDR_WHITE_NITS           "pgs_hdr_white_nits"
     IDS_RG_UI_LANGUAGE                  "ui_language"
     IDS_RG_TEXT_HDR_MODE                "text_hdr_mode"
+    IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES "use_display_area_for_subtitles"
+    IDS_RG_SUBTITLE_DISPLAY_ASPECT      "subtitle_display_aspect"
     IDS_RG_SUPPORTED_VERSION "supported_version"
     IDS_RG_VERSION          "version"
 #else
@@ -1820,6 +1838,8 @@ BEGIN
     IDS_RG_PGS_HDR_WHITE_NITS           "PGS_HDR_WHITE_NITS"
     IDS_RG_UI_LANGUAGE                  "UI_LANGUAGE"
     IDS_RG_TEXT_HDR_MODE                "TEXT_HDR_MODE"
+    IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES "USE_DISPLAY_AREA_FOR_SUBTITLES"
+    IDS_RG_SUBTITLE_DISPLAY_ASPECT      "SUBTITLE_DISPLAY_ASPECT"
     IDS_RG_SUPPORTED_VERSION "Supported Version"
     IDS_RG_VERSION          "Version"
 #endif
@@ -1873,6 +1893,14 @@ BEGIN
     IDS_XY_UI_STYLE_EDITOR_FAILED    "无法创建样式编辑对话框"
     IDS_XY_UI_FATAL_TITLE            "错误"
     IDS_XY_UI_CSRI_LOAD_FAILED_FORMAT "无法加载 CSRI 渲染器：\n%ls"
+    IDS_XY_UI_SUBTITLE_DISPLAY_AREA "字幕显示区域"
+    IDS_XY_UI_ASPECT_OFF "关闭"
+    IDS_XY_UI_ASPECT_AUTO "自动（显示区域）"
+    IDS_XY_UI_ASPECT_16_9 "16:9"
+    IDS_XY_UI_ASPECT_16_10 "16:10"
+    IDS_XY_UI_ASPECT_21_9 "21:9"
+    IDS_XY_UI_ASPECT_32_9 "32:9"
+    IDS_XY_UI_ASPECT_4_3 "4:3"
 END
 #endif    // Chinese (Simplified, PRC) resources
 

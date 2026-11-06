@@ -62,6 +62,8 @@ const SubRenderOptionsImpl::OptionMap options[] =
     {"arAdjustedVideoSize", SubRenderOptionsImpl::OPTION_TYPE_SIZE     , SIZE_AR_ADJUSTED_VIDEO},
     {"videoOutputRect"    , SubRenderOptionsImpl::OPTION_TYPE_RECT     , RECT_VIDEO_OUTPUT     },
     {"subtitleTargetRect" , SubRenderOptionsImpl::OPTION_TYPE_RECT     , RECT_SUBTITLE_TARGET  },
+    {"fullscreenRect"     , SubRenderOptionsImpl::OPTION_TYPE_RECT     , RECT_FULLSCREEN       },
+    {"displayModeSize"    , SubRenderOptionsImpl::OPTION_TYPE_SIZE     , SIZE_DISPLAY_MODE     },
     {"frameRate"          , SubRenderOptionsImpl::OPTION_TYPE_ULONGLONG, ULONGLOG_FRAME_RATE   },
     {"refreshRate"        , SubRenderOptionsImpl::OPTION_TYPE_DOUBLE   , DOUBLE_REFRESH_RATE   },
     {"yuvMatrix"          , SubRenderOptionsImpl::OPTION_TYPE_STRING   , STRING_YUV_MATRIX     },
@@ -767,8 +769,10 @@ void XySubFilterConsumer::InitConsumerFields()
 
     m_xy_size_opt[SIZE_ORIGINAL_VIDEO   ].SetSize(m_w, m_h);
     m_xy_size_opt[SIZE_AR_ADJUSTED_VIDEO].SetSize(m_w, m_h);//fix me: important! AR adjusted video size not filled properly
+    m_xy_size_opt[SIZE_DISPLAY_MODE     ].SetSize(0, 0);
     m_xy_rect_opt[RECT_VIDEO_OUTPUT     ].SetRect(0, 0, m_w, m_h);
     m_xy_rect_opt[RECT_SUBTITLE_TARGET  ].SetRect(0, 0, m_w, m_h);
+    m_xy_rect_opt[RECT_FULLSCREEN       ].SetRectEmpty();
 
     InitObj4OSD();
 }

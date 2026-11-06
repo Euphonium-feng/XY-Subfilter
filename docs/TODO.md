@@ -15,6 +15,36 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 Auto；正在增加可保留的运行态诊断，以区分属性页未下发、刷新未应用和实际渲染器
 不匹配三种情况。
 
+2026-11-06 当前活动任务：在分支 `codex/display-area-subtitle-layout` 实现
+“按显示器区域排版字幕”。用户确认的目标是：16:9 显示器全屏播放 21:9 视频时，
+15:9/16:9 母版字幕继续按完整显示区域排版，不随活动画面等比缩小。
+
+当前实现状态（已提交前收口）：
+
+- 已新增纯函数模块 `src/subpic/subtitle_display_layout.{h,cpp}`，定义
+  Off/Auto/16:9/16:10/21:9/32:9/4:3 和显示区域内接画布计算。
+- 已追加内部选项 `BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES` 与
+  `INT_SUBTITLE_DISPLAY_ASPECT`；默认关闭和 Off，未重排既有选项 ID。
+- 已声明并持久化 `use_display_area_for_subtitles`、
+  `subtitle_display_aspect` 两个 General 注册表值。
+- `XySubFilter` 显式读取外部 consumer 的 `fullscreenRect` /
+  `displayModeSize`，并用独立的 `BOOL_CONSUMER_IS_FULLSCREEN` 记录字段是否
+  确实大于活动视频矩形；窗口模式、字段缺失和无效矩形路径回退视频矩形。
+- `XySubRenderProviderWrapper2` 使用统一的 `SubtitleDisplayLayout::ConsumerInput`
+  解析文本目标矩形，避免与 provider 各自维护一套优先级。
+- `HdmvSubtitleProviderImpl`（PGS/SUP/DVB）使用
+  `SubtitleDisplayLayout::ResolveBitmapPlacement` 设置 `GetOutputRect` /
+  `GetClipRect`：源位图仍是视频坐标，consumer 按显示区域缩放/裁剪。
+- 已新增合成单测 `test_subtitle_display_layout.h` 并接入项目文件，覆盖显示矩形、
+  画幅内接、字段缺失回退、consumer 输入和位图放置；尚未在本地运行。
+- More 页已增加“字幕显示区域”下拉与中英文资源；
+  `Test-ResourceLocalization.ps1` 已通过（53 个 UI 字符串、16 个对话框）。
+- PGS/SUP/DVB 依赖 consumer 按标准 `GetOutputRect`/`GetClipRect` 语义执行缩放。
+  外部 consumer 若忽略该语义，实际画面仍需用户手动验收；不能仅凭代码宣称
+  所有渲染器都已生效。
+- 诊断日志追加 video/display/chosen/fullscreen/target/scale/fallback 字段；
+  已做参数审计，但仍需通过云端编译与运行验证。
+
 可靠性收口代码已完成，并通过云端三矩阵 CI（run `40552057870`；
 最终记录提交 run `40553848048`）：
 
@@ -209,6 +239,18 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 - HLG 未进入个人使用范围，保留为未专项验证项，不作为本轮阻塞。
 
 ## 下一步
+
+### 按显示器区域排版字幕
+
+1. 完成 `XySubRenderProviderWrapper2` 的显示区域解析和文本目标矩形接线，
+   保留窗口模式及缺失字段回退。
+2. 完成 PGS/SUP/DVB 的现有输出路径映射，确保 1:1 路径不额外重采样，
+   非 1:1 路径记录实际缩放比例。
+3. 修正 More 页控件布局、DirectVobSub 页面隔离、资源 ID 和中英文对齐。
+4. 运行静态检查、资源检查、PowerShell/XML 解析和 `git diff --check`。
+5. 提交并推送分支，使用 `gh run watch --exit-status` 等待
+   `release-win32`、`release-x64`、`debug-x64` 全绿。
+6. 云端全绿后仅交付用户手动实机验收；代理不得启动 PotPlayer 或进行自动实机测试。
 
 ### 深层 Auto HDR
 

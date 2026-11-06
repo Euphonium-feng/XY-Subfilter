@@ -290,7 +290,7 @@ HRESULT XyOptionsImpl::DoSetField( unsigned field, void const *value )
         }
         break;
     case OPTION_TYPE_ULONGLONG:
-        if (m_xy_ulonglong_opt[field] = *(ULONGLONG*)value)
+        if (m_xy_ulonglong_opt[field] != *(ULONGLONG*)value)
         {
             m_xy_ulonglong_opt[field] = *(ULONGLONG*)value;
             hr = OnOptionChanged(field);

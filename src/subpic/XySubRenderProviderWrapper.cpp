@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "XySubRenderProviderWrapper.h"
+#include "IDirectVobSubXy.h"
 
 #if ENABLE_XY_LOG_RENDERER_REQUEST2
 #  define TRACE_RENDERER_REQUEST(msg) XY_LOG_TRACE(msg)
@@ -8,6 +9,57 @@
 #  define TRACE_RENDERER_REQUEST(msg)
 #  define TRACE_RENDERER_REQUEST_TIMING(msg)
 #endif
+
+namespace
+{
+SubtitleDisplayLayout::ResolveResult ResolveDisplayLayout(
+    IXyOptions* consumer, const RECT& video_rect)
+{
+    SubtitleDisplayLayout::ConsumerInput input;
+    input.video_rect = video_rect;
+
+    if (!consumer
+        || FAILED(consumer->XyGetBool(
+            DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
+            &input.enabled))
+        || !input.enabled) {
+        return SubtitleDisplayLayout::ResolveFromConsumerInput(input);
+    }
+
+    if (FAILED(consumer->XyGetInt(
+            DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
+            &input.aspect_mode))
+        || input.aspect_mode == DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF) {
+        return SubtitleDisplayLayout::ResolveFromConsumerInput(input);
+    }
+
+    if (FAILED(consumer->XyGetBool(
+            DirectVobSubXyOptions::BOOL_CONSUMER_IS_FULLSCREEN,
+            &input.fullscreen))
+        || !input.fullscreen) {
+        return SubtitleDisplayLayout::ResolveFromConsumerInput(input);
+    }
+
+    RECT fullscreen = {};
+    if (SUCCEEDED(consumer->XyGetRect(
+            DirectVobSubXyOptions::RECT_FULLSCREEN, &fullscreen))
+        && SubtitleDisplayLayout::IsValidRect(fullscreen)) {
+        input.fullscreen_rect = fullscreen;
+        input.has_fullscreen_rect = true;
+    }
+
+    SIZE display_mode = {};
+    if (SUCCEEDED(consumer->XyGetSize(
+            DirectVobSubXyOptions::SIZE_DISPLAY_MODE, &display_mode))
+        && display_mode.cx > 0
+        && display_mode.cy > 0) {
+        input.display_mode_size = display_mode;
+        input.has_display_mode_size = true;
+    }
+
+    return SubtitleDisplayLayout::ResolveFromConsumerInput(input);
+}
+}
 
 XySubRenderProviderWrapper::XySubRenderProviderWrapper( ISubPicProviderEx *provider
     , HRESULT* phr/*=NULL*/ )
@@ -70,6 +122,8 @@ STDMETHODIMP XySubRenderProviderWrapper::RequestFrame( IXySubRenderFrame**subRen
     ASSERT(m_consumer);
     hr = m_consumer->XyGetSize(DirectVobSubXyOptions::SIZE_ORIGINAL_VIDEO, &original_video_size);
     ASSERT(SUCCEEDED(hr));
+    const RECT video_rect(CPoint(), original_video_size);
+    m_display_layout = ResolveDisplayLayout(m_consumer, video_rect);
     hr = m_consumer->XyGetBool(DirectVobSubXyOptions::BOOL_SUB_FRAME_USE_DST_ALPHA, &use_dst_alpha);
 
     if (m_original_video_size!=original_video_size
@@ -203,8 +257,13 @@ HRESULT XySubRenderProviderWrapper::Render( REFERENCE_TIME now, POSITION pos, do
     m_provider->Unlock();
     if (hr == S_OK)
     {
-        CRect video_rect(CPoint(0,0), m_original_video_size);
-        m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(mem_subpic, video_rect, video_rect, now, &hr);
+        CRect output_rect(CPoint(0,0), m_original_video_size);
+        CRect clip_rect = output_rect;
+        if (m_display_layout.uses_display_area) {
+            clip_rect = m_display_layout.target_rect;
+        }
+        m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
+            mem_subpic, output_rect, clip_rect, now, &hr);
     }
     else
     {
@@ -322,6 +381,14 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     ASSERT(output_rect.Width()<=subtitle_target_rect.Width() && output_rect.Height()<=subtitle_target_rect.Height());
     hr = m_consumer->XyGetSize(DirectVobSubXyOptions::SIZE_LAYOUT_WITH, &original_video_size);
     ASSERT(SUCCEEDED(hr));
+    const RECT resolved_video_rect = output_rect;
+    m_display_layout = ResolveDisplayLayout(m_consumer, resolved_video_rect);
+    if (m_display_layout.uses_display_area) {
+        subtitle_target_rect = m_display_layout.target_rect;
+    }
+    else if (!m_display_layout.target_rect.right) {
+        m_display_layout.target_rect = subtitle_target_rect;
+    }
     hr = m_consumer->XyGetInt(DirectVobSubXyOptions::INT_MAX_BITMAP_COUNT2, &m_max_bitmap_count2);
     ASSERT(SUCCEEDED(hr));
     hr = m_consumer->XyGetBool(DirectVobSubXyOptions::BOOL_SUB_FRAME_USE_DST_ALPHA, &use_dst_alpha);
@@ -331,6 +398,7 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     {
         output_rect = CRect(CPoint(), original_video_size);
         subtitle_target_rect = output_rect;
+        m_display_layout = SubtitleDisplayLayout::ResolveResult();
     }
 
     m_render_to_original_video_size = render_to_original_video_size;

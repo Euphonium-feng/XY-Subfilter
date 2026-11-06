@@ -1,6 +1,7 @@
 #pragma once
 
 #include "XySubRenderIntf.h"
+#include "subtitle_display_layout.h"
 
 interface ISubPicProviderEx;
 interface IXyOptions;
@@ -32,6 +33,7 @@ private:
     CComPtr<IXySubRenderFrame> m_xy_sub_render_frame;
     CSize m_original_video_size;
     bool m_use_dst_alpha;
+    SubtitleDisplayLayout::ResolveResult m_display_layout;
 };
 
 class XySubRenderProviderWrapper2: public CUnknown, public IXySubRenderProvider
@@ -60,6 +62,7 @@ private:
     CSize m_original_video_size;
     bool m_use_dst_alpha;
     bool m_render_to_original_video_size;
+    SubtitleDisplayLayout::ResolveResult m_display_layout;
 
     double m_fps;
 

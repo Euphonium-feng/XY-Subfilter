@@ -263,6 +263,8 @@
 #define IDC_STATIC_PGS_HDR_WHITE_NITS   351
 #define IDC_COMBO_UI_LANGUAGE           352
 #define IDS_RG_TEXT_HDR_MODE            1082
+#define IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES 1136
+#define IDS_RG_SUBTITLE_DISPLAY_ASPECT  1137
 #define IDS_XY_UI_AUTO                  1083
 #define IDS_XY_UI_TV                    1084
 #define IDS_XY_UI_PC                    1085
@@ -308,9 +310,18 @@
 #define IDS_XY_UI_STYLE_EDITOR_FAILED   1125
 #define IDS_XY_UI_FATAL_TITLE           1126
 #define IDS_XY_UI_CSRI_LOAD_FAILED_FORMAT 1127
+#define IDS_XY_UI_SUBTITLE_DISPLAY_AREA 1128
+#define IDS_XY_UI_ASPECT_OFF            1129
+#define IDS_XY_UI_ASPECT_AUTO           1130
+#define IDS_XY_UI_ASPECT_16_9           1131
+#define IDS_XY_UI_ASPECT_16_10          1132
+#define IDS_XY_UI_ASPECT_21_9           1133
+#define IDS_XY_UI_ASPECT_32_9           1134
+#define IDS_XY_UI_ASPECT_4_3            1135
 #define IDC_COMBO_TEXT_HDR_MODE         353
 #define IDC_HDR_STATUS                  354
 #define IDC_HDR_DIAG_OPEN               355
+#define IDC_COMBO_SUBTITLE_DISPLAY_AREA 356
 #define IDD_XY_SUB_FILTER_ABOUTPAGE     360
 #define IDD_XY_SUB_FILTER_PATHSPAGE     361
 #define IDD_XY_SUB_FILTER_TIMINGPAGE    362

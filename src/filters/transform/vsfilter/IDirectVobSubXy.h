@@ -160,6 +160,10 @@ namespace DirectVobSubXyOptions
         INT_UI_LANGUAGE,        //see @UiLanguage
         INT_TEXT_HDR_MODE,      //see @PgsHdrMode, applies to ASS/SRT text
         BOOL_VIDEO_IS_HDR,      //consumer -> provider hint from HDR media side data
+        BOOL_CONSUMER_IS_FULLSCREEN,
+        BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
+        INT_SUBTITLE_DISPLAY_ASPECT, //see @SubtitleDisplayAspect
+        RECT_FULLSCREEN,             //consumer fullscreen rect, appended for ABI
 
         OPTION_COUNT
     };
@@ -231,6 +235,17 @@ namespace DirectVobSubXyOptions
         UI_LANGUAGE_CHINESE_SIMPLIFIED,
         UI_LANGUAGE_COUNT
     };
+    enum SubtitleDisplayAspect
+    {
+        SUBTITLE_DISPLAY_ASPECT_OFF = 0,
+        SUBTITLE_DISPLAY_ASPECT_AUTO,
+        SUBTITLE_DISPLAY_ASPECT_16_9,
+        SUBTITLE_DISPLAY_ASPECT_16_10,
+        SUBTITLE_DISPLAY_ASPECT_21_9,
+        SUBTITLE_DISPLAY_ASPECT_32_9,
+        SUBTITLE_DISPLAY_ASPECT_4_3,
+        SUBTITLE_DISPLAY_ASPECT_COUNT
+    };
     struct TextSettings {
         void* lf;
         int lflen;
@@ -285,12 +300,16 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_UI_LANGUAGE},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_TEXT_HDR_MODE},
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_VIDEO_IS_HDR},
+        {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_CONSUMER_IS_FULLSCREEN},
+        {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_SUBTITLE_DISPLAY_ASPECT},
 
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ORIGINAL_VIDEO},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ASS_PLAY_RESOLUTION},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_RW, SIZE_USER_SPECIFIED_LAYOUT_SIZE},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_LAYOUT_WITH},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_RW, SIZE_AR_ADJUSTED_VIDEO},
+        {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_DISPLAY_MODE},
 
         {XyOptionsImpl::OPTION_TYPE_STRING, XyOptionsImpl::OPTION_MODE_RW, STRING_LOAD_EXT_LIST},
         {XyOptionsImpl::OPTION_TYPE_STRING, XyOptionsImpl::OPTION_MODE_RW, STRING_PGS_YUV_RANGE},
@@ -385,6 +404,9 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_PGS_HDR_WHITE_NITS},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_UI_LANGUAGE},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_TEXT_HDR_MODE},
+        {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_CONSUMER_IS_FULLSCREEN},
+        {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_SUBTITLE_DISPLAY_ASPECT},
 
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_MAX_BITMAP_COUNT},
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_COMBINE_BITMAPS},
@@ -398,9 +420,11 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_RW, SIZE_USER_SPECIFIED_LAYOUT_SIZE},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_RW, SIZE_LAYOUT_WITH},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_AR_ADJUSTED_VIDEO},
+        {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_DISPLAY_MODE},
 
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_VIDEO_OUTPUT},
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_SUBTITLE_TARGET},
+        {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_FULLSCREEN},
 
         {XyOptionsImpl::OPTION_TYPE_DOUBLE, XyOptionsImpl::OPTION_MODE_RW, DOUBLE_FPS},
 
@@ -466,6 +490,7 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_RW  , SIZE_AR_ADJUSTED_VIDEO},
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_VIDEO_OUTPUT},
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_SUBTITLE_TARGET},
+        {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_FULLSCREEN},
         {XyOptionsImpl::OPTION_TYPE_ULONGLONG, XyOptionsImpl::OPTION_MODE_READ, ULONGLOG_FRAME_RATE},
 
         {XyOptionsImpl::OPTION_TYPE_DOUBLE, XyOptionsImpl::OPTION_MODE_READ, DOUBLE_REFRESH_RATE},

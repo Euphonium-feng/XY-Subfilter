@@ -26,6 +26,8 @@ private :
     CSize                       m_cur_output_size;
     bool m_use_dst_alpha;
     HdrColor::Config m_applied_hdr_config;
+    CRect m_subtitle_output_rect;
+    CRect m_subtitle_clip_rect;
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;
     CComPtr<IXySubRenderFrame>  m_xy_sub_render_frame;

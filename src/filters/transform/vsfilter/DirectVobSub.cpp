@@ -832,7 +832,9 @@ HRESULT DirectVobSubImpl::OnOptionChanged( unsigned field )
 
     if (field == INT_PGS_HDR_MODE
         || field == INT_PGS_HDR_WHITE_NITS
-        || field == INT_TEXT_HDR_MODE) {
+        || field == INT_TEXT_HDR_MODE
+        || field == INT_SUBTITLE_DISPLAY_ASPECT
+        || field == BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES) {
         InterlockedIncrement(&m_hdr_generation);
     }
 
@@ -1470,6 +1472,19 @@ CDirectVobSub::CDirectVobSub( const Option *options, CCritSec * pLock )
         || m_xy_int_opt[INT_TEXT_HDR_MODE] >= DirectVobSubXyOptions::PGS_HDR_MODE_COUNT) {
         m_xy_int_opt[INT_TEXT_HDR_MODE] = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
     }
+    m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES] =
+        !!theApp.GetProfileInt(ResStr(IDS_R_GENERAL),
+            ResStr(IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES), 0);
+    m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT] = theApp.GetProfileInt(
+        ResStr(IDS_R_GENERAL), ResStr(IDS_RG_SUBTITLE_DISPLAY_ASPECT),
+        DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF);
+    if (m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]
+            < DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF
+        || m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]
+            >= DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_COUNT) {
+        m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT] =
+            DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
+    }
     ApplyUiLanguage(m_xy_int_opt[INT_UI_LANGUAGE]);
     s_active_ui_language = m_xy_int_opt[INT_UI_LANGUAGE];
 
@@ -1604,6 +1619,12 @@ STDMETHODIMP CDirectVobSub::UpdateRegistry()
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_PGS_HDR_WHITE_NITS), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]);
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_UI_LANGUAGE), m_xy_int_opt[INT_UI_LANGUAGE]);
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_TEXT_HDR_MODE), m_xy_int_opt[INT_TEXT_HDR_MODE]);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES),
+        m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES] ? 1 : 0);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_SUBTITLE_DISPLAY_ASPECT),
+        m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]);
 
     //save output color config
     {
@@ -1867,6 +1888,19 @@ CDVS4XySubFilter::CDVS4XySubFilter( const Option *options, CCritSec * pLock )
         || m_xy_int_opt[INT_TEXT_HDR_MODE] >= DirectVobSubXyOptions::PGS_HDR_MODE_COUNT) {
         m_xy_int_opt[INT_TEXT_HDR_MODE] = DirectVobSubXyOptions::PGS_HDR_MODE_AUTO;
     }
+    m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES] =
+        !!theApp.GetProfileInt(ResStr(IDS_R_GENERAL),
+            ResStr(IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES), 0);
+    m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT] = theApp.GetProfileInt(
+        ResStr(IDS_R_GENERAL), ResStr(IDS_RG_SUBTITLE_DISPLAY_ASPECT),
+        DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF);
+    if (m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]
+            < DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF
+        || m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]
+            >= DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_COUNT) {
+        m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT] =
+            DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
+    }
     ApplyUiLanguage(m_xy_int_opt[INT_UI_LANGUAGE]);
     s_active_ui_language = m_xy_int_opt[INT_UI_LANGUAGE];
 
@@ -2041,6 +2075,12 @@ STDMETHODIMP CDVS4XySubFilter::UpdateRegistry()
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_PGS_HDR_WHITE_NITS), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]);
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_UI_LANGUAGE), m_xy_int_opt[INT_UI_LANGUAGE]);
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_TEXT_HDR_MODE), m_xy_int_opt[INT_TEXT_HDR_MODE]);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES),
+        m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES] ? 1 : 0);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_SUBTITLE_DISPLAY_ASPECT),
+        m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]);
 
     CString str_load_level;
     switch(m_xy_int_opt[INT_LOAD_SETTINGS_LEVEL])

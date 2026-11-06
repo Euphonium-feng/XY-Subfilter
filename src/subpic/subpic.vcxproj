@@ -79,6 +79,9 @@
     <ClCompile Include="SimpleSubpicImpl.cpp" />
     <ClCompile Include="SimpleSubPicProviderImpl.cpp" />
     <ClCompile Include="SimpleSubPicWrapper.cpp" />
+    <ClCompile Include="subtitle_display_layout.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
@@ -107,6 +110,7 @@
     <ClInclude Include="SimpleSubpicImpl.h" />
     <ClInclude Include="SimpleSubPicProviderImpl.h" />
     <ClInclude Include="SimpleSubPicWrapper.h" />
+    <ClInclude Include="subtitle_display_layout.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="SubPicAllocatorPresenterImpl.h" />
     <ClInclude Include="SubPicImpl.h" />
