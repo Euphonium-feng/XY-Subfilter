@@ -18,7 +18,7 @@ void ExpectRectEquals(const RECT& expected, const RECT& actual)
 SubtitleDisplayLayout::ResolveInput MakeLayoutInput(
     int aspect_mode, const RECT& video, const RECT& display)
 {
-    SubtitleDisplayLayout::ResolveInput input;
+    SubtitleDisplayLayout::ResolveInput input = {};
     input.aspect_mode = aspect_mode;
     input.fullscreen = true;
     input.video_rect = video;

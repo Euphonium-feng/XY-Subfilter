@@ -27,6 +27,17 @@ namespace
 
 namespace SubtitleDisplayLayout
 {
+    ResolveInput::ResolveInput()
+        : aspect_mode(ASPECT_OFF)
+        , fullscreen(false)
+        , video_rect()
+        , fullscreen_rect()
+        , has_fullscreen_rect(false)
+        , display_mode_size()
+        , has_display_mode_size(false)
+    {
+    }
+
     ResolveResult::ResolveResult()
         : target_rect()
         , resolved_aspect_mode(ASPECT_OFF)

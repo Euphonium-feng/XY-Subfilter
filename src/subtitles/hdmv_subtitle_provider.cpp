@@ -171,8 +171,20 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         const SubtitleDisplayLayout::BitmapPlacement placement =
             SubtitleDisplayLayout::ResolveBitmapPlacement(
                 video_rect, display_layout.target_rect, use_display_area);
+        const RECT previous_output_rect = m_subtitle_output_rect;
+        const RECT previous_clip_rect = m_subtitle_clip_rect;
         m_subtitle_output_rect = placement.output_rect;
         m_subtitle_clip_rect = placement.clip_rect;
+        if (previous_output_rect.left != m_subtitle_output_rect.left
+            || previous_output_rect.top != m_subtitle_output_rect.top
+            || previous_output_rect.right != m_subtitle_output_rect.right
+            || previous_output_rect.bottom != m_subtitle_output_rect.bottom
+            || previous_clip_rect.left != m_subtitle_clip_rect.left
+            || previous_clip_rect.top != m_subtitle_clip_rect.top
+            || previous_clip_rect.right != m_subtitle_clip_rect.right
+            || previous_clip_rect.bottom != m_subtitle_clip_rect.bottom) {
+            Invalidate(-1);
+        }
     }
 
     hr = Render( now, pos );

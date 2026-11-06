@@ -125,7 +125,18 @@ STDMETHODIMP XySubRenderProviderWrapper::RequestFrame( IXySubRenderFrame**subRen
     const RECT video_rect = {
         0, 0, original_video_size.cx, original_video_size.cy
     };
-    m_display_layout = ResolveDisplayLayout(m_consumer, video_rect);
+    const SubtitleDisplayLayout::ResolveResult display_layout =
+        ResolveDisplayLayout(m_consumer, video_rect);
+    const SubtitleDisplayLayout::ResolveResult& previous_layout =
+        m_display_layout;
+    if (previous_layout.uses_display_area != display_layout.uses_display_area
+        || previous_layout.target_rect.left != display_layout.target_rect.left
+        || previous_layout.target_rect.top != display_layout.target_rect.top
+        || previous_layout.target_rect.right != display_layout.target_rect.right
+        || previous_layout.target_rect.bottom != display_layout.target_rect.bottom) {
+        Invalidate();
+    }
+    m_display_layout = display_layout;
     hr = m_consumer->XyGetBool(DirectVobSubXyOptions::BOOL_SUB_FRAME_USE_DST_ALPHA, &use_dst_alpha);
 
     if (m_original_video_size!=original_video_size

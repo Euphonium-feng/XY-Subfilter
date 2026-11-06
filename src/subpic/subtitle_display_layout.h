@@ -41,6 +41,8 @@ namespace SubtitleDisplayLayout
         bool has_fullscreen_rect;
         SIZE display_mode_size;
         bool has_display_mode_size;
+
+        ResolveInput();
     };
 
     struct ResolveResult
