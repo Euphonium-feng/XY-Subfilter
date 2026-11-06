@@ -62,11 +62,12 @@ SubtitleDisplayLayout::ResolveResult ResolveDisplayLayout(
 }
 
 XySubRenderProviderWrapper::XySubRenderProviderWrapper( ISubPicProviderEx *provider
-    , HRESULT* phr/*=NULL*/ )
+    , HRESULT* phr/*=NULL*/, bool use_display_area/*=false*/ )
     : CUnknown(NAME("XySubRenderProviderWrapper"), NULL, phr)
     , m_provider(provider)
     , m_consumer(NULL)
     , m_use_dst_alpha(false)
+    , m_use_display_area(use_display_area)
 {
     HRESULT hr = NOERROR;
     if (!provider)
@@ -126,7 +127,9 @@ STDMETHODIMP XySubRenderProviderWrapper::RequestFrame( IXySubRenderFrame**subRen
         0, 0, original_video_size.cx, original_video_size.cy
     };
     const SubtitleDisplayLayout::ResolveResult display_layout =
-        ResolveDisplayLayout(m_consumer, video_rect);
+        m_use_display_area
+        ? ResolveDisplayLayout(m_consumer, video_rect)
+        : SubtitleDisplayLayout::ResolveResult();
     const SubtitleDisplayLayout::ResolveResult& previous_layout =
         m_display_layout;
     if (previous_layout.uses_display_area != display_layout.uses_display_area

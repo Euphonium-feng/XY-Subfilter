@@ -11,7 +11,8 @@ interface ISubPicProviderEx2;
 class XySubRenderProviderWrapper: public CUnknown, public IXySubRenderProvider
 {
 public:
-    XySubRenderProviderWrapper( ISubPicProviderEx *provider, HRESULT* phr/*=NULL*/ );
+    XySubRenderProviderWrapper( ISubPicProviderEx *provider
+        , HRESULT* phr/*=NULL*/, bool use_display_area/*=false*/ );
     virtual ~XySubRenderProviderWrapper() {}
 
     DECLARE_IUNKNOWN;
@@ -33,6 +34,7 @@ private:
     CComPtr<IXySubRenderFrame> m_xy_sub_render_frame;
     CSize m_original_video_size;
     bool m_use_dst_alpha;
+    bool m_use_display_area;
     SubtitleDisplayLayout::ResolveResult m_display_layout;
 };
 

@@ -110,5 +110,11 @@
   的矩形。
 - PGS/SUP/DVB 继续使用现有缩放链路；1:1 映射不得额外重采样。非 1:1 缩放必须有
   测试和诊断记录，不得声称所有分辨率都无损。
+- 显示区域改变导致 `GetOutputRect` / `GetClipRect` 变化时，必须丢弃当前字幕
+  区间的缓存帧；仅更新成员矩形而让 `Render()` 提前返回会继续显示旧布局。
+- `XySubRenderProviderWrapper` 同时服务 VobSub 与 SSF。显示区域能力必须按
+  provider 类型开启，只覆盖计划内的 PGS/SUP/DVB，不得顺带改变 VobSub/SSF。
+- 内置 `XySubFilterConsumer` 不掌握真实桌面显示区域，必须保持
+  `displayModeSize=(0,0)` 与空 `fullscreenRect`；不得伪造显示器尺寸。
 - 代理不得在功能完成后自行启动 PotPlayer 实机验收；自动验证只认合成单测、
   静态检查和 GitHub Actions 三矩阵，实机结果需用户提供。

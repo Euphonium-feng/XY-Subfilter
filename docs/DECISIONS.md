@@ -400,5 +400,24 @@ yuvMatrix 和当前 HDR 证据。资源标签改为“Bitmap HDR / Text HDR”�
 画幅在显示区域内生成最大居中内接画布。`videoOutputRect` 保持不变，只替换
 `subtitleTargetRect`。非全屏、字段缺失或无效矩形安全回退。
 
+落地细节：
+
+- 文本路径由 `XySubRenderProviderWrapper2` 把显示区域传给
+  `CRenderedTextSubtitle::RenderEx()`；现有字号、边距与对齐逻辑不变。
+- PGS/SUP/DVB 不新增采样器。`GetOutputRect` 仍返回活动视频坐标，
+  `GetClipRect` 返回显示区域目标，由 consumer 按 `SubRenderIntf` 语义执行
+  缩放/裁剪；1:1 时不产生额外重采样，其他比例记录在诊断日志中。
+- `XySubRenderProviderWrapper` 与 `HdmvSubtitleProviderImpl` 在 output/clip
+  变化时调用 `Invalidate()`。否则 `Render()` 会在字幕时间仍有效时提前返回，
+  继续复用旧布局的帧。
+- 通用 `XySubRenderProviderWrapper` 同时服务 VobSub 与 SSF，因此按 provider
+  类型只对 `CRenderedHdmvSubtitle` 开启显示区域；VobSub/SSF 保持旧行为。
+- 内置 `XySubFilterConsumer` 无法取得真实显示器区域，保持空 `fullscreenRect`
+  与 `(0,0)` `displayModeSize`，不伪造字段。
+
 被否方案：用固定比例估算黑边、把窗口尺寸当显示器、直接拉伸 PGS、或让 provider
 依赖 madVR/LAV 私有接口。这些方案会在窗口模式或不同渲染器下产生错误位置。
+
+未验证项：外部 consumer 是否严格按 `GetOutputRect` / `GetClipRect` 缩放位图，
+以及 madVR 下 PGS/SUP/DVB 的实际观感，只能由用户手动验收；自动测试覆盖纯布局
+选择、字段回退和缓存失效路径。

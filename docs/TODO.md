@@ -19,7 +19,7 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 “按显示器区域排版字幕”。用户确认的目标是：16:9 显示器全屏播放 21:9 视频时，
 15:9/16:9 母版字幕继续按完整显示区域排版，不随活动画面等比缩小。
 
-当前实现状态（已提交前收口）：
+当前实现状态（代码与自动化验证已收口）：
 
 - 已新增纯函数模块 `src/subpic/subtitle_display_layout.{h,cpp}`，定义
   Off/Auto/16:9/16:10/21:9/32:9/4:3 和显示区域内接画布计算。
@@ -36,14 +36,21 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
   `SubtitleDisplayLayout::ResolveBitmapPlacement` 设置 `GetOutputRect` /
   `GetClipRect`：源位图仍是视频坐标，consumer 按显示区域缩放/裁剪。
 - 已新增合成单测 `test_subtitle_display_layout.h` 并接入项目文件，覆盖显示矩形、
-  画幅内接、字段缺失回退、consumer 输入和位图放置；尚未在本地运行。
+  画幅内接、字段缺失回退、consumer 输入和位图放置。
 - More 页已增加“字幕显示区域”下拉与中英文资源；
   `Test-ResourceLocalization.ps1` 已通过（53 个 UI 字符串、16 个对话框）。
+- `XySubRenderProviderWrapper` 仅对 `CRenderedHdmvSubtitle` 开启显示区域解析，
+  VobSub/SSF 保持旧行为；该通用 wrapper 与 `HdmvSubtitleProviderImpl` 在
+  output/clip 变化时调用 `Invalidate()`，避免同字幕区间返回旧布局帧。
+- `ResolveInput` 增加默认构造函数；修复 Win32 Release 下未初始化字段导致的
+  `MissingDisplayFallsBackToVideo` / `InvalidRectFallsBackSafely` 失败。
+- run `42255336219` 的 `release-win32`、`release-x64`、`debug-x64` 已全绿；
+  这是缓存失效与单测修复提交的验证结果。
 - PGS/SUP/DVB 依赖 consumer 按标准 `GetOutputRect`/`GetClipRect` 语义执行缩放。
   外部 consumer 若忽略该语义，实际画面仍需用户手动验收；不能仅凭代码宣称
   所有渲染器都已生效。
 - 诊断日志追加 video/display/chosen/fullscreen/target/scale/fallback 字段；
-  已做参数审计，但仍需通过云端编译与运行验证。
+  已做参数审计，并随 run `42255336219` 通过云端编译与回归测试。
 
 可靠性收口代码已完成，并通过云端三矩阵 CI（run `40552057870`；
 最终记录提交 run `40553848048`）：
@@ -225,6 +232,9 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 | `40569779347` | 深层 Auto HDR 实现（release-win32 / release-x64 / debug-x64） | success |
 | `40658251653` | 合并后最终三矩阵（`0.1.0` 发布源码） | success |
 | `41018526246` | ASS 文本 HDR 诊断与控件语义修复 | success |
+| `42248047195` | 显示区域首轮 | failure（`RECT` 初始化列表编译错误） |
+| `42249026874` | Win32 显式字段修复 | failure（Win32 Release 单测未初始化字段） |
+| `42255336219` | 缓存失效 + Win32 单测初始化修复 | success（三矩阵） |
 
 `39962614076` 的两项失败：
 
@@ -242,15 +252,12 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 
 ### 按显示器区域排版字幕
 
-1. 完成 `XySubRenderProviderWrapper2` 的显示区域解析和文本目标矩形接线，
-   保留窗口模式及缺失字段回退。
-2. 完成 PGS/SUP/DVB 的现有输出路径映射，确保 1:1 路径不额外重采样，
-   非 1:1 路径记录实际缩放比例。
-3. 修正 More 页控件布局、DirectVobSub 页面隔离、资源 ID 和中英文对齐。
-4. 运行静态检查、资源检查、PowerShell/XML 解析和 `git diff --check`。
-5. 提交并推送分支，使用 `gh run watch --exit-status` 等待
-   `release-win32`、`release-x64`、`debug-x64` 全绿。
-6. 云端全绿后仅交付用户手动实机验收；代理不得启动 PotPlayer 或进行自动实机测试。
+1. 记录类型 gating、README 与 docs 最终提交的三矩阵 run ID（三矩阵必须全绿）。
+2. 交付用户手动验收 PotPlayer + madVR：16:9 显示器全屏播放 21:9 视频，
+   分别用 ASS 与 PGS/SUP 检查 `关闭` / `自动` / `16:9` 的字幕位置和缩放。
+3. 若外部 consumer 未按 `GetClipRect` 缩放 PGS，记录实际渲染器行为后再决定是否
+   增加 provider 侧重排；本轮不引入额外重采样器。
+4. 代理不得启动 PotPlayer 或进行自动实机测试，实机结果由用户提供。
 
 ### 深层 Auto HDR
 

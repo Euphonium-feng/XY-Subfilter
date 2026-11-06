@@ -163,6 +163,30 @@ scoop install xysubfilter-libass-np -g
 | `English` | 强制英文界面 |
 | `中文（简体）` | 强制简体中文界面 |
 
+### 🖥️ 字幕显示区域
+
+属性页 **「更多」** → **「字幕显示区域」** 提供一档默认关闭的布局选项，
+用于 16:9 显示器全屏播放 21:9 等宽银幕视频时，让字幕继续按完整显示器区域排版，
+而不是只按中间的活动画面缩小。
+
+| 选项 | 行为 |
+| :--- | :--- |
+| `关闭`（默认） | 与旧版本完全一致，字幕目标仍是活动视频矩形 |
+| `自动（显示区域）` | 使用 consumer 提供的完整显示矩形；保持显示器自身宽高比 |
+| `16:9` / `16:10` / `21:9` / `32:9` / `4:3` | 在显示区域内生成该比例的最大居中内接画布 |
+
+生效条件与边界：
+
+- 仅在 consumer 报告全屏，并提供了有效的 `fullscreenRect` 或
+  `displayModeSize` 时生效；内置 `XySubFilterConsumer` 不伪造桌面显示区域。
+- 窗口模式、字段缺失、矩形无效或内接失败时安全回退活动视频矩形。
+- 文本字幕沿用现有字号、边距和对齐逻辑，只替换排版目标。
+- PGS/SUP/DVB 通过现有 `GetOutputRect` / `GetClipRect` 帧协议映射，由外部
+  consumer 执行必要的缩放和裁剪；不保证所有分辨率都 1:1，也不保证所有渲染器
+  都遵循该协议。实际观感需在 PotPlayer + madVR 等目标环境中确认。
+- 诊断日志 `%TEMP%\xy_hdr_diag.txt` 会记录 `videoRect`、`displayRect`、
+  `chosenAspect`、`targetRect`、`bitmapScale` 与 `fallback`。
+
 ---
 
 #<a id="hdr"></a>

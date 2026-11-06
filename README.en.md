@@ -123,6 +123,34 @@ The **"More"** property page offers three settings:
 | `English` | Force the English UI |
 | `中文（简体）` | Force the Simplified Chinese UI |
 
+### 🖥️ Subtitle display area
+
+**More** → **Subtitle display area** adds a layout option that is off by default.
+It lets subtitles keep using the full display area when a 21:9 movie is played
+fullscreen on a 16:9 monitor, instead of shrinking into the active video rectangle.
+
+| Option | Behaviour |
+| :--- | :--- |
+| `Off` (default) | Identical to the previous release; the active video rectangle remains the target |
+| `Auto (display)` | Uses the consumer's full display rectangle and keeps its aspect ratio |
+| `16:9` / `16:10` / `21:9` / `32:9` / `4:3` | Fits the largest centred canvas of that aspect inside the display area |
+
+Scope and fallbacks:
+
+- Active only when the consumer reports fullscreen and supplies a valid
+  `fullscreenRect` or `displayModeSize`; the built-in `XySubFilterConsumer`
+  does not invent a desktop display rectangle.
+- Windowed playback, missing fields, invalid rectangles, or a failed aspect fit
+  fall back to the active video rectangle.
+- Text subtitles keep the existing font size, margins, and alignment logic;
+  only the layout target changes.
+- PGS/SUP/DVB use the existing `GetOutputRect` / `GetClipRect` frame contract,
+  leaving any required scaling and clipping to the external consumer. Pixel-exact
+  1:1 output is not guaranteed for every resolution, and not every renderer
+  honours this contract. Verify the result in the target player.
+- `%TEMP%\xy_hdr_diag.txt` records `videoRect`, `displayRect`, `chosenAspect`,
+  `targetRect`, `bitmapScale`, and `fallback`.
+
 ---
 
 #<a id="hdr"></a>

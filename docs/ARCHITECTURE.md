@@ -193,7 +193,7 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 “位图字幕 HDR”和“文本字幕 HDR”，HDR 状态行也以 `Bitmap:` / `Text:` 前缀
 区分当前字幕类型。
 
-## 字幕显示区域（实现中）
+## 字幕显示区域
 
 `src/subpic/subtitle_display_layout.{h,cpp}` 是不依赖 DirectShow 的布局选择模块。
 它接收活动视频矩形、完整显示矩形和画幅模式，返回子目标矩形、生效模式和回退原因。
@@ -208,15 +208,31 @@ XySubRenderProviderWrapper2
   → subtitleTargetRect
   → CRenderedTextSubtitle::RenderEx()
 
-XySubRenderProviderWrapper (PGS/SUP)
+XySubRenderProviderWrapper (PGS/SUP/DVB)
   → 同一显示区域解析
-  → 视频输出矩形保持不变
-  → 位图目标/缩放映射（尚未完成）
+  → GetOutputRect = 活动视频矩形
+  → GetClipRect = 显示区域目标
+  → consumer 按 SubRenderIntf 语义缩放/裁剪
+
+HdmvSubtitleProviderImpl (.sup)
+  → 同一显示区域解析
+  → SubtitleDisplayLayout::ResolveBitmapPlacement()
+  → 源位图保持视频坐标，clip 指向显示区域
 ```
 
 `videoOutputRect` 始终表示活动画面；只有 `subtitleTargetRect` 可选替换。关闭、
-非全屏、字段缺失或矩形无效时回退活动视频矩形。当前实现尚未完成 PGS 映射、
-资源检查和云端构建验证。
+非全屏、字段缺失或矩形无效时回退活动视频矩形。内置 `XySubFilterConsumer`
+不提供真实桌面显示区域，因此该功能只对外部 consumer 生效。
+
+`XySubRenderProviderWrapper` 也服务 VobSub 与 SSF；构造函数按 provider 类型
+（仅 `CRenderedHdmvSubtitle`）开启显示区域，避免把布局改动扩散到计划外的格式。
+文本 wrapper2 在输出矩形或字幕目标变化时调用 `Invalidate()`；PGS/SUP/DVB 的
+wrapper 与 `HdmvSubtitleProviderImpl` 在 output/clip 矩形变化时同样丢弃旧帧，
+防止同一字幕区间继续返回旧布局的缓存帧。
+
+位图路径不新增重采样器：`GetOutputRect` 仍是视频坐标，显示区域只通过
+`GetClipRect` 表达。外部 consumer 是否按该协议缩放/裁剪、以及实际 scale，
+必须由用户实机确认；不能仅凭代码宣称所有渲染器都已生效。
 
 ## 界面与本地化
 
