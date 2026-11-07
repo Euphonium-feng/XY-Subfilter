@@ -395,29 +395,35 @@ yuvMatrix 和当前 HDR 证据。资源标签改为“Bitmap HDR / Text HDR”�
 以该矩形为字幕画布，会把按 16:9 母版设计的字幕整体缩小。用户需要的是继续按完整
 显示器（本机 2560×1440）布局，让多出的高度承载上下黑边中的字幕。
 
-实现采用默认关闭的单下拉：Off、Auto、16:9、16:10、21:9、32:9、4:3。Auto 优先
-使用标准 `fullscreenRect`，缺失时使用 `displayModeSize` 构造 `(0,0,W,H)`；显式
-画幅在显示区域内生成最大居中内接画布。`videoOutputRect` 保持不变，只替换
-`subtitleTargetRect`。非全屏、字段缺失或无效矩形安全回退。
+实现采用默认关闭的单下拉：Off、Auto、16:9、16:10、21:9、32:9、4:3。
 
-落地细节：
+第一版把 `fullscreenRect` 直接当成渲染画布，出现了“选择自动/16:9 后字幕全部
+消失”。根因是三个坐标空间被混用：屏幕显示坐标被直接传进了以源视频像素为基准的
+渲染器。按 `SubRenderIntf.h` 的示例，`GetOutputRect`、`GetClipRect`、
+`GetBitmap.position` 必须同属一个空间；示例 1 的 `output=(0,0,720,480)`、
+`clip=(0,-80,720,560)` 证明 clip 可以超出视频且带负值，但不是屏幕坐标。
 
-- 文本路径由 `XySubRenderProviderWrapper2` 把显示区域传给
-  `CRenderedTextSubtitle::RenderEx()`；现有字号、边距与对齐逻辑不变。
-- PGS/SUP/DVB 不新增采样器。`GetOutputRect` 仍返回活动视频坐标，
-  `GetClipRect` 返回显示区域目标，由 consumer 按 `SubRenderIntf` 语义执行
-  缩放/裁剪；1:1 时不产生额外重采样，其他比例记录在诊断日志中。
-- `XySubRenderProviderWrapper` 与 `HdmvSubtitleProviderImpl` 在 output/clip
-  变化时调用 `Invalidate()`。否则 `Render()` 会在字幕时间仍有效时提前返回，
-  继续复用旧布局的帧。
-- 通用 `XySubRenderProviderWrapper` 同时服务 VobSub 与 SSF，因此按 provider
-  类型只对 `CRenderedHdmvSubtitle` 开启显示区域；VobSub/SSF 保持旧行为。
-- 内置 `XySubFilterConsumer` 无法取得真实显示器区域，保持空 `fullscreenRect`
-  与 `(0,0)` `displayModeSize`，不伪造字段。
+第二版改为以下设计：
 
-被否方案：用固定比例估算黑边、把窗口尺寸当显示器、直接拉伸 PGS、或让 provider
-依赖 madVR/LAV 私有接口。这些方案会在窗口模式或不同渲染器下产生错误位置。
+- 画布直接取 consumer 已提供的 `subtitleTargetRect`。关闭时字幕本来就靠它显示在
+  黑边，说明该矩形可信；不再引入 `fullscreenRect` 作为渲染画布。
+- Auto = `subtitleTargetRect`；显式画幅 = 在其内部取最大居中内接画布。若画布不能
+  完整包含 `videoOutputRect` 就回退，因为 `RTS::RenderEx` 会以 `E_NOTIMPL` 丢弃整帧。
+- 文本渲染改为整块零基画布：`RenderEx(videoRect = targetRect = (0,0,W,H),
+  originalVideoSize = (W,H))`。libass/CSRI/legacy 因此共享同一排版空间，字号按
+  画布高度缩放，符合“16:9 母版字幕不随 800 高画面缩小”的目标。
+- 帧发布时构造零基 output（视频尺寸），clip 与位图位置分别减去
+  `videoOutputRect` 原点。这样满足 SubRenderIntf 的同空间约束，同时把黑边内容
+  交给 consumer 1:1 映射到屏幕上。
+- 严格全屏判定：`subtitleTargetRect` 尺寸与显示尺寸相差 ≤5%、包含视频、且严格
+  大于视频。三项都在显示空间比较，窗口模式不会被误判。
+- `RTS::Init()` 清空 `m_last_frame`，避免暂停中切换画幅后复用旧布局帧。
 
-未验证项：外部 consumer 是否严格按 `GetOutputRect` / `GetClipRect` 缩放位图，
-以及 madVR 下 PGS/SUP/DVB 的实际观感，只能由用户手动验收；自动测试覆盖纯布局
-选择、字段回退和缓存失效路径。
+被否方案：用 `fullscreenRect` 画屏幕像素、把 `clip` 设成显示器矩形而 `output`
+仍是视频矩形（两者不同空间）、或直接用固定比例拉伸位图。
+
+PGS/SUP/DVB 本轮不参与。它们把字幕绘进视频尺寸位图，除非 provider 侧整屏重采样，
+否则无法进入黑边；强行用 clip 表达只会被裁掉。强制关闭后行为与本轮之前完全一致。
+
+未验证项：madVR 对 `subtitleTargetRect` 的实际取值只能由用户实机确认；自动测试
+覆盖全屏判定、画布解析与帧几何。madVR 处理位图字幕的具体语义仍无仓库内证据。

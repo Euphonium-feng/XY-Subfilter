@@ -2168,45 +2168,51 @@ void XySubFilter::LogHdrConfiguration(
             m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
         const bool consumer_is_fullscreen =
             m_xy_bool_opt[BOOL_CONSUMER_IS_FULLSCREEN];
-        RECT subtitle_target = m_xy_rect_opt[RECT_SUBTITLE_TARGET];
-        SubtitleDisplayLayout::ResolveInput display_input;
-        display_input.aspect_mode = use_display_area
+        const RECT subtitle_target = m_xy_rect_opt[RECT_SUBTITLE_TARGET];
+
+        SubtitleDisplayLayout::FullscreenGateInput gate_input;
+        gate_input.video_output_rect = video_rect;
+        gate_input.subtitle_target_rect = subtitle_target;
+        gate_input.fullscreen_rect = display_rect;
+        gate_input.has_fullscreen_rect =
+            display_rect.right > display_rect.left
+            && display_rect.bottom > display_rect.top;
+        gate_input.display_mode_size = m_xy_size_opt[SIZE_DISPLAY_MODE];
+        gate_input.has_display_mode_size =
+            gate_input.display_mode_size.cx > 0
+            && gate_input.display_mode_size.cy > 0;
+        const SubtitleDisplayLayout::FullscreenGateResult gate =
+            SubtitleDisplayLayout::EvaluateFullscreenGate(gate_input);
+
+        SubtitleDisplayLayout::CanvasInput canvas_input;
+        canvas_input.enabled = use_display_area;
+        canvas_input.aspect_mode = use_display_area
             ? display_aspect
             : DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
-        display_input.fullscreen =
-            consumer_is_fullscreen;
-        display_input.video_rect = video_rect;
-        if (display_rect.right > display_rect.left
-            && display_rect.bottom > display_rect.top) {
-            display_input.fullscreen_rect = display_rect;
-            display_input.has_fullscreen_rect = true;
-        }
-        const SIZE display_mode =
-            m_xy_size_opt[SIZE_DISPLAY_MODE];
-        if (display_mode.cx > 0 && display_mode.cy > 0) {
-            display_input.display_mode_size = display_mode;
-            display_input.has_display_mode_size = true;
-        }
-        const SubtitleDisplayLayout::ResolveResult display_layout =
-            SubtitleDisplayLayout::ResolveTargetRect(display_input);
-        if (display_layout.uses_display_area) {
-            subtitle_target = display_layout.target_rect;
-        }
+        canvas_input.fullscreen = consumer_is_fullscreen;
+        canvas_input.video_output_rect = video_rect;
+        canvas_input.subtitle_target_rect = subtitle_target;
+        const SubtitleDisplayLayout::CanvasResult canvas =
+            SubtitleDisplayLayout::ResolveCanvas(canvas_input);
+        const RECT canvas_rect = canvas.uses_display_area
+            ? canvas.canvas_rect : video_rect;
+        const SubtitleDisplayLayout::FrameLayout frame_layout =
+            SubtitleDisplayLayout::BuildFrameLayout(video_rect, canvas_rect);
         const bool pgs_1_to_1 =
             video_rect.right > video_rect.left
             && video_rect.bottom > video_rect.top
-            && (subtitle_target.right - subtitle_target.left)
+            && (canvas_rect.right - canvas_rect.left)
                 == (video_rect.right - video_rect.left)
-            && (subtitle_target.bottom - subtitle_target.top)
+            && (canvas_rect.bottom - canvas_rect.top)
                 == (video_rect.bottom - video_rect.top);
         const double bitmap_scale_x =
             video_rect.right > video_rect.left
-            ? double(subtitle_target.right - subtitle_target.left)
+            ? double(canvas_rect.right - canvas_rect.left)
                 / (video_rect.right - video_rect.left)
             : 1.0;
         const double bitmap_scale_y =
             video_rect.bottom > video_rect.top
-            ? double(subtitle_target.bottom - subtitle_target.top)
+            ? double(canvas_rect.bottom - canvas_rect.top)
                 / (video_rect.bottom - video_rect.top)
             : 1.0;
 
@@ -2220,6 +2226,8 @@ void XySubFilter::LogHdrConfiguration(
             L"videoRect=%ld,%ld,%ld,%ld displayRect=%ld,%ld,%ld,%ld "
             L"chosenAspect=%d displayArea=%d fullscreen=%d "
             L"targetRect=%ld,%ld,%ld,%ld "
+            L"canvasMode=%d canvasRect=%ld,%ld,%ld,%ld "
+            L"gateDisplay=%d gateSize=%d gateContains=%d gateLarger=%d "
             L"bitmapScale1to1=%d bitmapScale=%.3f,%.3f fallback=%d\r\n",
             event ? event : L"unknown",
             field,
@@ -2246,9 +2254,16 @@ void XySubFilter::LogHdrConfiguration(
             consumer_is_fullscreen ? 1 : 0,
             subtitle_target.left, subtitle_target.top,
             subtitle_target.right, subtitle_target.bottom,
+            canvas.uses_display_area ? 1 : 0,
+            canvas_rect.left, canvas_rect.top,
+            canvas_rect.right, canvas_rect.bottom,
+            gate.has_display ? 1 : 0,
+            gate.size_matches ? 1 : 0,
+            gate.contains_video ? 1 : 0,
+            gate.larger_than_video ? 1 : 0,
             pgs_1_to_1 ? 1 : 0,
             bitmap_scale_x, bitmap_scale_y,
-            int(display_layout.fallback_reason));
+            int(canvas.fallback_reason));
     }
     AppendHdrDiagnostic(diagnostic);
 }
@@ -2714,11 +2729,8 @@ void XySubFilter::SetSubtitle( ISubStream* pSubStream, bool fApplyDefStyle /*= t
     }
     else if (CComQIPtr<ISubPicProviderEx>(pSubStream))
     {
-        const bool pixel_subtitle_provider =
-            dynamic_cast<CRenderedHdmvSubtitle*>(pSubStream) != NULL;
         m_sub_provider = DEBUG_NEW XySubRenderProviderWrapper(
-            CComQIPtr<ISubPicProviderEx>(pSubStream), NULL,
-            pixel_subtitle_provider);
+            CComQIPtr<ISubPicProviderEx>(pSubStream), NULL);
     }
     else
     {
@@ -2831,19 +2843,20 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
         && displayModeSize.cx > 0
         && displayModeSize.cy > 0;
 
-    // SubRenderIntf has no explicit fullscreen flag. A consumer that supplies
-    // a display rect which differs from the active video rect is asking for
-    // fullscreen drawing; identical or absent fields stay on the video rect.
-    const bool display_rect_is_larger = has_fullscreen_rect
-        && (fullscreenRect.right - fullscreenRect.left
-                > videoOutputRect.right - videoOutputRect.left
-            || fullscreenRect.bottom - fullscreenRect.top
-                > videoOutputRect.bottom - videoOutputRect.top);
-    const bool display_size_is_larger = has_display_mode_size
-        && displayModeSize.cx > videoOutputRect.right - videoOutputRect.left
-        && displayModeSize.cy > videoOutputRect.bottom - videoOutputRect.top;
-    const bool consumer_is_fullscreen =
-        display_rect_is_larger || display_size_is_larger;
+    // SubRenderIntf has no explicit fullscreen flag, so fullscreen is only
+    // accepted when the consumer's subtitle target matches the reported
+    // display size, contains the video and is strictly larger than it. All
+    // three comparisons stay in the consumer's display space.
+    SubtitleDisplayLayout::FullscreenGateInput fullscreen_input;
+    fullscreen_input.video_output_rect = videoOutputRect;
+    fullscreen_input.subtitle_target_rect = subtitleTargetRect;
+    fullscreen_input.fullscreen_rect = fullscreenRect;
+    fullscreen_input.has_fullscreen_rect = has_fullscreen_rect;
+    fullscreen_input.display_mode_size = displayModeSize;
+    fullscreen_input.has_display_mode_size = has_display_mode_size;
+    const SubtitleDisplayLayout::FullscreenGateResult fullscreen_gate =
+        SubtitleDisplayLayout::EvaluateFullscreenGate(fullscreen_input);
+    const bool consumer_is_fullscreen = fullscreen_gate.fullscreen;
 
     LPWSTR str;
     int len;

@@ -12,7 +12,7 @@ class XySubRenderProviderWrapper: public CUnknown, public IXySubRenderProvider
 {
 public:
     XySubRenderProviderWrapper( ISubPicProviderEx *provider
-        , HRESULT* phr/*=NULL*/, bool use_display_area/*=false*/ );
+        , HRESULT* phr/*=NULL*/ );
     virtual ~XySubRenderProviderWrapper() {}
 
     DECLARE_IUNKNOWN;
@@ -34,8 +34,6 @@ private:
     CComPtr<IXySubRenderFrame> m_xy_sub_render_frame;
     CSize m_original_video_size;
     bool m_use_dst_alpha;
-    bool m_use_display_area;
-    SubtitleDisplayLayout::ResolveResult m_display_layout;
 };
 
 class XySubRenderProviderWrapper2: public CUnknown, public IXySubRenderProvider
@@ -61,10 +59,14 @@ private:
     CComPtr<IXySubRenderFrame> m_xy_sub_render_frame;
     REFERENCE_TIME m_start, m_stop;
     CRect m_output_rect, m_subtitle_target_rect;
+    CRect m_render_video_rect, m_render_target_rect;
+    CSize m_render_video_size;
+    bool m_use_display_canvas;
+    SubtitleDisplayLayout::FrameLayout m_frame_layout;
     CSize m_original_video_size;
     bool m_use_dst_alpha;
     bool m_render_to_original_video_size;
-    SubtitleDisplayLayout::ResolveResult m_display_layout;
+    SubtitleDisplayLayout::CanvasResult m_display_canvas;
 
     double m_fps;
 

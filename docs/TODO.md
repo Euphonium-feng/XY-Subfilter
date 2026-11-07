@@ -15,11 +15,42 @@ HDR 亮度、Auto/Off/PQ、seek、五个属性页和连续输入白点均未出�
 Auto；正在增加可保留的运行态诊断，以区分属性页未下发、刷新未应用和实际渲染器
 不匹配三种情况。
 
-2026-11-06 当前活动任务：在分支 `codex/display-area-subtitle-layout` 实现
+2026-11-07 当前活动任务：在分支 `codex/display-area-subtitle-layout` 修复
 “按显示器区域排版字幕”。用户确认的目标是：16:9 显示器全屏播放 21:9 视频时，
 15:9/16:9 母版字幕继续按完整显示区域排版，不随活动画面等比缩小。
 
-当前实现状态（代码与自动化验证已收口）：
+第一版在实机失败：选择“自动/16:9”后字幕全部消失，“关闭”仍正常。
+只读调研结论（三路独立核对，均指向同一根因）：
+
+- 第一版把 consumer 的屏幕显示矩形当成渲染画布，直接传进以源视频像素为基准的
+  文本渲染器；`GetOutputRect`（视频空间）、`GetClipRect`（屏幕空间）与
+  `GetBitmap.position`（画布空间）三者不同域。
+- 按 `include/SubRenderIntf.h` 示例 1（output `(0,0,720,480)`、
+  clip `(0,-80,720,560)`），clip 与 position 必须与 output 同空间，允许超出
+  视频并含负值，但不得使用屏幕/桌面绝对坐标。
+- `RTS.cpp` 的 `cvideo_rect &= subtitle_target_rect` 在目标不能完整包含视频时
+  直接返回 `E_NOTIMPL`，整帧不交付；这也是“字幕全没”的独立触发条件。
+- libass 在“文本未变、仅几何变化”时复用 `m_last_frame`，布局切换后会继续
+  返回旧布局帧。
+
+第二版修复（本轮提交，待云端验证）：
+
+- 画布改为直接取 consumer 的 `subtitleTargetRect`（关闭时字幕就靠它显示在黑边），
+  Auto 用它本身，显式画幅在其内部取最大居中内接画布；不再用 `fullscreenRect`
+  当渲染画布。画布不能完整包含视频时回退。
+- 文本渲染改为整块零基画布：`RenderEx(videoRect=targetRect=(0,0,W,H),
+  originalVideoSize=(W,H))`，libass/CSRI/legacy 共享同一排版空间，字号按画布
+  高度缩放。
+- 帧几何：`GetOutputRect=(0,0,videoW,videoH)`；`GetClipRect` 与
+  `GetBitmap.position` 都减去 `videoOutputRect` 原点，符合 SubRenderIntf 同类空间
+  约束，同时把黑边内容交给 consumer 1:1 映射。
+- 严格全屏判定：`subtitleTargetRect` 尺寸与显示尺寸相差 ≤5%、包含视频、且严格
+  大于视频；三项均在同一显示空间比较，窗口模式不再误判。
+- `RTS::Init()` 清空 `m_last_frame`。
+- PGS/SUP/DVB 本轮强制回到基线行为（`XySubRenderProviderWrapper` 去掉显示区域
+  参数，`HdmvSubtitleProviderImpl` 恢复原实现），列为待办。
+
+历史实现（第一版，已被本轮替换）：
 
 - 已新增纯函数模块 `src/subpic/subtitle_display_layout.{h,cpp}`，定义
   Off/Auto/16:9/16:10/21:9/32:9/4:3 和显示区域内接画布计算。
@@ -257,10 +288,11 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 ### 按显示器区域排版字幕
 
 1. 记录类型 gating、README 与 docs 最终提交的三矩阵 run ID（三矩阵必须全绿）。
-2. 交付用户手动验收 PotPlayer + madVR：16:9 显示器全屏播放 21:9 视频，
-   分别用 ASS 与 PGS/SUP 检查 `关闭` / `自动` / `16:9` 的字幕位置和缩放。
-3. 若外部 consumer 未按 `GetClipRect` 缩放 PGS，记录实际渲染器行为后再决定是否
-   增加 provider 侧重排；本轮不引入额外重采样器。
+2. 交付用户手动验收 PotPlayer + madVR：16:9 显示器全屏播放 1920×800
+   ASS/SSA/SRT，依次检查 `关闭` / `自动` / `16:9`；关闭必须与现状一致，
+   自动与 16:9 字幕应进入上下黑边且字号不缩小；窗口模式无变化。
+3. PGS/SUP/DVB 进入黑边需要 provider 侧整屏重采样，列为后续任务；本轮不引入
+   重采样器，也不得声称位图路径已支持。
 4. 代理不得启动 PotPlayer 或进行自动实机测试，实机结果由用户提供。
 
 ### 深层 Auto HDR

@@ -29,74 +29,96 @@ namespace SubtitleDisplayLayout
         FALLBACK_NO_DISPLAY_RECT,
         FALLBACK_INVALID_DISPLAY_RECT,
         FALLBACK_INVALID_VIDEO_RECT,
-        FALLBACK_INVALID_ASPECT
+        FALLBACK_INVALID_ASPECT,
+        FALLBACK_NO_CONSUMER_TARGET,
+        FALLBACK_CANVAS_DOES_NOT_CONTAIN_VIDEO
     };
 
-    struct ResolveInput
+    struct FullscreenGateInput
     {
-        int aspect_mode;
-        bool fullscreen;
-        RECT video_rect;
+        RECT video_output_rect;
+        RECT subtitle_target_rect;
         RECT fullscreen_rect;
         bool has_fullscreen_rect;
         SIZE display_mode_size;
         bool has_display_mode_size;
 
-        ResolveInput();
+        FullscreenGateInput();
     };
 
-    struct ResolveResult
+    struct FullscreenGateResult
     {
-        RECT target_rect;
-        int resolved_aspect_mode;
-        FallbackReason fallback_reason;
-        bool uses_display_area;
+        bool has_display;
+        bool size_matches;
+        bool contains_video;
+        bool larger_than_video;
+        bool fullscreen;
 
-        ResolveResult();
+        FullscreenGateResult();
     };
 
-    struct BitmapPlacement
-    {
-        RECT output_rect;
-        RECT clip_rect;
-        double scale_x;
-        double scale_y;
-        bool uses_display_area;
-
-        BitmapPlacement();
-    };
-
-    // A valid rect is non-empty and entirely non-negative in display coordinates.
-    bool IsValidRect(const RECT& rect);
-
-    // Returns the largest centered rect with the requested aspect inside bounds.
-    RECT FitAspectRect(const RECT& bounds, int width, int height);
-
-    // Resolves the subtitle target rect without depending on DirectShow.
-    ResolveResult ResolveTargetRect(const ResolveInput& input);
-
-    struct ConsumerInput
+    struct CanvasInput
     {
         bool enabled;
         int aspect_mode;
         bool fullscreen;
-        RECT video_rect;
-        RECT fullscreen_rect;
-        bool has_fullscreen_rect;
-        SIZE display_mode_size;
-        bool has_display_mode_size;
+        RECT video_output_rect;
+        RECT subtitle_target_rect;
 
-        ConsumerInput();
+        CanvasInput();
     };
 
-    ResolveResult ResolveFromConsumerInput(const ConsumerInput& input);
+    struct CanvasResult
+    {
+        RECT canvas_rect;
+        SIZE layout_size;
+        POINT canvas_origin;
+        int resolved_aspect_mode;
+        FallbackReason fallback_reason;
+        bool uses_display_area;
 
-    // Maps a bitmap rendered in video coordinates onto the display target.
-    // The bitmap remains in video coordinates; output/clip express the
-    // transform the consumer must apply.
-    BitmapPlacement ResolveBitmapPlacement(
-        const RECT& video_rect, const RECT& display_target_rect,
-        bool use_display_area);
+        CanvasResult();
+    };
+
+    // Layout of a published frame in the provider's coordinate space:
+    // output is the zero-based video rect, clip may extend into the bars and
+    // bitmap_offset removes the video's on-screen origin.
+    struct FrameLayout
+    {
+        RECT output_rect;
+        RECT clip_rect;
+        POINT bitmap_offset;
+
+        FrameLayout();
+    };
+
+    // A valid rect has non-zero width and height. Origins may be negative on
+    // secondary monitors, so only the size is constrained.
+    bool IsValidRect(const RECT& rect);
+
+    // True when outer fully contains inner.
+    bool ContainsRect(const RECT& outer, const RECT& inner);
+
+    // Returns the largest centered rect with the requested aspect inside bounds.
+    RECT FitAspectRect(const RECT& bounds, int width, int height);
+
+    // Strict fullscreen gate. SubRenderIntf has no fullscreen flag, so the
+    // consumer's target is only accepted as fullscreen when its size matches
+    // the reported display mode (within 5%), it contains the video rect and it
+    // is strictly larger than the video rect.
+    FullscreenGateResult EvaluateFullscreenGate(
+        const FullscreenGateInput& input);
+
+    // Resolves the canvas used to lay out text subtitles. AUTO uses the
+    // consumer target; explicit aspect modes fit inside it. Never returns a
+    // canvas that is outside the target.
+    CanvasResult ResolveCanvas(const CanvasInput& input);
+
+    // Builds the published frame geometry from the consumer's video rect and
+    // the resolved canvas. Bitmap positions are canvas-local and are shifted
+    // by canvas_rect.topLeft.
+    FrameLayout BuildFrameLayout(
+        const RECT& video_output_rect, const RECT& canvas_rect);
 
     // Aspect label metadata for property-page combo boxes.
     inline int AspectWidth(int aspect_mode)

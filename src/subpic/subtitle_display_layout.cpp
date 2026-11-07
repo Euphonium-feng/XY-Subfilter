@@ -7,30 +7,48 @@ namespace
         return rect.right > rect.left && rect.bottom > rect.top;
     }
 
-    RECT MakeDisplayRect(const SubtitleDisplayLayout::ResolveInput& input)
+    LONG RectWidth(const RECT& rect)
     {
-        if (input.has_fullscreen_rect
-            && SubtitleDisplayLayout::IsValidRect(input.fullscreen_rect)) {
-            return input.fullscreen_rect;
+        return rect.right - rect.left;
+    }
+
+    LONG RectHeight(const RECT& rect)
+    {
+        return rect.bottom - rect.top;
+    }
+
+    // Relative tolerance: consumer display fields routinely omit a taskbar or
+    // a few pixels of window decoration. 5% is wide enough for a taskbar and
+    // narrow enough to reject a window that merely happens to be larger.
+    bool SizesMatchWithinTolerance(
+        LONG candidate_width, LONG candidate_height,
+        LONG reference_width, LONG reference_height)
+    {
+        if (candidate_width <= 0 || candidate_height <= 0
+            || reference_width <= 0 || reference_height <= 0) {
+            return false;
         }
-        if (input.has_display_mode_size
-            && input.display_mode_size.cx > 0
-            && input.display_mode_size.cy > 0) {
-            const RECT display = {
-                0, 0, input.display_mode_size.cx, input.display_mode_size.cy
-            };
-            return display;
-        }
-        return RECT();
+
+        const LONG tolerance_x = (reference_width + 19) / 20;
+        const LONG tolerance_y = (reference_height + 19) / 20;
+        return candidate_width >= reference_width - tolerance_x
+            && candidate_width <= reference_width + tolerance_x
+            && candidate_height >= reference_height - tolerance_y
+            && candidate_height <= reference_height + tolerance_y;
+    }
+
+    RECT MakeDisplayModeRect(const SIZE& size)
+    {
+        const RECT rect = { 0, 0, size.cx, size.cy };
+        return rect;
     }
 }
 
 namespace SubtitleDisplayLayout
 {
-    ResolveInput::ResolveInput()
-        : aspect_mode(ASPECT_OFF)
-        , fullscreen(false)
-        , video_rect()
+    FullscreenGateInput::FullscreenGateInput()
+        : video_output_rect()
+        , subtitle_target_rect()
         , fullscreen_rect()
         , has_fullscreen_rect(false)
         , display_mode_size()
@@ -38,50 +56,66 @@ namespace SubtitleDisplayLayout
     {
     }
 
-    ResolveResult::ResolveResult()
-        : target_rect()
-        , resolved_aspect_mode(ASPECT_OFF)
-        , fallback_reason(FALLBACK_DISABLED)
-        , uses_display_area(false)
+    FullscreenGateResult::FullscreenGateResult()
+        : has_display(false)
+        , size_matches(false)
+        , contains_video(false)
+        , larger_than_video(false)
+        , fullscreen(false)
     {
     }
 
-    BitmapPlacement::BitmapPlacement()
-        : output_rect()
-        , clip_rect()
-        , scale_x(1.0)
-        , scale_y(1.0)
-        , uses_display_area(false)
-    {
-    }
-
-    ConsumerInput::ConsumerInput()
+    CanvasInput::CanvasInput()
         : enabled(false)
         , aspect_mode(ASPECT_OFF)
         , fullscreen(false)
-        , video_rect()
-        , fullscreen_rect()
-        , has_fullscreen_rect(false)
-        , display_mode_size()
-        , has_display_mode_size(false)
+        , video_output_rect()
+        , subtitle_target_rect()
     {
+    }
+
+    CanvasResult::CanvasResult()
+        : resolved_aspect_mode(ASPECT_OFF)
+        , fallback_reason(FALLBACK_DISABLED)
+        , uses_display_area(false)
+    {
+        canvas_rect = RECT();
+        layout_size.cx = 0;
+        layout_size.cy = 0;
+        canvas_origin.x = 0;
+        canvas_origin.y = 0;
+    }
+
+    FrameLayout::FrameLayout()
+    {
+        output_rect = RECT();
+        clip_rect = RECT();
+        bitmap_offset.x = 0;
+        bitmap_offset.y = 0;
     }
 
     bool IsValidRect(const RECT& rect)
     {
-        return IsPositiveSize(rect)
-            && rect.left >= 0
-            && rect.top >= 0;
+        return IsPositiveSize(rect);
+    }
+
+    bool ContainsRect(const RECT& outer, const RECT& inner)
+    {
+        return IsPositiveSize(outer)
+            && outer.left <= inner.left
+            && outer.top <= inner.top
+            && outer.right >= inner.right
+            && outer.bottom >= inner.bottom;
     }
 
     RECT FitAspectRect(const RECT& bounds, int width, int height)
     {
-        if (!IsValidRect(bounds) || width <= 0 || height <= 0) {
+        if (!IsPositiveSize(bounds) || width <= 0 || height <= 0) {
             return RECT();
         }
 
-        const __int64 bounds_width = bounds.right - bounds.left;
-        const __int64 bounds_height = bounds.bottom - bounds.top;
+        const __int64 bounds_width = RectWidth(bounds);
+        const __int64 bounds_height = RectHeight(bounds);
         __int64 fitted_width = bounds_width;
         __int64 fitted_height = fitted_width * height / width;
         if (fitted_height > bounds_height) {
@@ -97,122 +131,155 @@ namespace SubtitleDisplayLayout
             + LONG((bounds_width - fitted_width) / 2);
         const LONG top = bounds.top
             + LONG((bounds_height - fitted_height) / 2);
-        RECT result = {
+        const RECT result = {
             left, top, left + LONG(fitted_width), top + LONG(fitted_height)
         };
         return result;
     }
 
-    ResolveResult ResolveTargetRect(const ResolveInput& input)
+    FullscreenGateResult EvaluateFullscreenGate(
+        const FullscreenGateInput& input)
     {
-        ResolveResult result;
-        result.resolved_aspect_mode = input.aspect_mode;
-
-        if (input.aspect_mode == ASPECT_OFF) {
-            result.fallback_reason = FALLBACK_DISABLED;
-            result.target_rect = input.video_rect;
+        FullscreenGateResult result;
+        if (!IsPositiveSize(input.video_output_rect)
+            || !IsPositiveSize(input.subtitle_target_rect)) {
             return result;
         }
-        if (input.aspect_mode < ASPECT_AUTO || input.aspect_mode >= ASPECT_COUNT) {
+
+        RECT display = {};
+        if (input.has_fullscreen_rect
+            && IsPositiveSize(input.fullscreen_rect)) {
+            display = input.fullscreen_rect;
+            result.has_display = true;
+        }
+        else if (input.has_display_mode_size
+            && input.display_mode_size.cx > 0
+            && input.display_mode_size.cy > 0) {
+            display = MakeDisplayModeRect(input.display_mode_size);
+            result.has_display = true;
+        }
+        if (!result.has_display) {
+            return result;
+        }
+
+        // Only the display size is used for matching. The display rect's
+        // origin may be a desktop coordinate and must never leak into the
+        // comparison or into layout.
+        result.size_matches = SizesMatchWithinTolerance(
+            RectWidth(input.subtitle_target_rect),
+            RectHeight(input.subtitle_target_rect),
+            RectWidth(display), RectHeight(display));
+
+        // Both rects are consumer display-space rects, so this comparison is
+        // meaningful. It rejects a window that is not actually fullscreen.
+        result.contains_video = ContainsRect(
+            input.subtitle_target_rect, input.video_output_rect);
+        result.larger_than_video =
+            RectWidth(input.subtitle_target_rect)
+                > RectWidth(input.video_output_rect)
+            || RectHeight(input.subtitle_target_rect)
+                > RectHeight(input.video_output_rect);
+
+        result.fullscreen = result.size_matches
+            && result.contains_video
+            && result.larger_than_video;
+        return result;
+    }
+
+    CanvasResult ResolveCanvas(const CanvasInput& input)
+    {
+        CanvasResult result;
+        result.resolved_aspect_mode = input.aspect_mode;
+
+        if (!input.enabled || input.aspect_mode == ASPECT_OFF) {
+            result.fallback_reason = FALLBACK_DISABLED;
+            result.canvas_rect = input.video_output_rect;
+            return result;
+        }
+        if (input.aspect_mode < ASPECT_AUTO
+            || input.aspect_mode >= ASPECT_COUNT) {
             result.fallback_reason = FALLBACK_INVALID_ASPECT;
-            result.target_rect = input.video_rect;
+            result.canvas_rect = input.video_output_rect;
             return result;
         }
         if (!input.fullscreen) {
             result.fallback_reason = FALLBACK_NOT_FULLSCREEN;
-            result.target_rect = input.video_rect;
+            result.canvas_rect = input.video_output_rect;
             return result;
         }
-        if (!IsValidRect(input.video_rect)) {
+        if (!IsPositiveSize(input.video_output_rect)) {
             result.fallback_reason = FALLBACK_INVALID_VIDEO_RECT;
             return result;
         }
-
-        const RECT display = MakeDisplayRect(input);
-        if (!IsPositiveSize(display) || display.left < 0 || display.top < 0) {
-            result.fallback_reason = FALLBACK_NO_DISPLAY_RECT;
-            result.target_rect = input.video_rect;
+        if (!IsPositiveSize(input.subtitle_target_rect)) {
+            result.fallback_reason = FALLBACK_NO_CONSUMER_TARGET;
+            result.canvas_rect = input.video_output_rect;
             return result;
         }
-        if (!IsValidRect(display)) {
-            result.fallback_reason = FALLBACK_INVALID_DISPLAY_RECT;
-            result.target_rect = input.video_rect;
+        if (!ContainsRect(input.subtitle_target_rect, input.video_output_rect)) {
+            result.fallback_reason = FALLBACK_CANVAS_DOES_NOT_CONTAIN_VIDEO;
+            result.canvas_rect = input.video_output_rect;
             return result;
         }
 
-        if (input.aspect_mode == ASPECT_AUTO) {
-            result.target_rect = display;
-        }
-        else {
-            result.target_rect = FitAspectRect(
-                display, AspectWidth(input.aspect_mode),
+        RECT canvas = input.subtitle_target_rect;
+        if (input.aspect_mode != ASPECT_AUTO) {
+            canvas = FitAspectRect(
+                input.subtitle_target_rect,
+                AspectWidth(input.aspect_mode),
                 AspectHeight(input.aspect_mode));
-            if (!IsPositiveSize(result.target_rect)) {
+            if (!IsPositiveSize(canvas)) {
                 result.fallback_reason = FALLBACK_INVALID_ASPECT;
-                result.target_rect = input.video_rect;
+                result.canvas_rect = input.video_output_rect;
                 return result;
             }
         }
 
+        // RTS::RenderEx rejects a target that does not fully contain the video
+        // rect with E_NOTIMPL, which drops the whole frame. Never propose a
+        // canvas that would trip that guard.
+        if (!ContainsRect(canvas, input.video_output_rect)) {
+            result.fallback_reason = FALLBACK_CANVAS_DOES_NOT_CONTAIN_VIDEO;
+            result.canvas_rect = input.video_output_rect;
+            return result;
+        }
+
+        result.canvas_rect = canvas;
+        result.canvas_origin.x = canvas.left;
+        result.canvas_origin.y = canvas.top;
+        result.layout_size.cx = RectWidth(canvas);
+        result.layout_size.cy = RectHeight(canvas);
         result.uses_display_area = true;
         result.fallback_reason = FALLBACK_NONE;
         return result;
     }
 
-    BitmapPlacement ResolveBitmapPlacement(
-        const RECT& video_rect, const RECT& display_target_rect,
-        bool use_display_area)
+    FrameLayout BuildFrameLayout(
+        const RECT& video_output_rect, const RECT& canvas_rect)
     {
-        BitmapPlacement placement;
-        placement.output_rect = video_rect;
-        placement.clip_rect = video_rect;
-
-        if (!use_display_area
-            || !IsValidRect(video_rect)
-            || !IsValidRect(display_target_rect)) {
-            return placement;
-        }
-
-        const LONG video_width = video_rect.right - video_rect.left;
-        const LONG video_height = video_rect.bottom - video_rect.top;
-        const LONG target_width =
-            display_target_rect.right - display_target_rect.left;
-        const LONG target_height =
-            display_target_rect.bottom - display_target_rect.top;
-
-        // GetOutputRect describes the bitmap's own coordinate space. The
-        // consumer scales that rectangle onto GetClipRect.
-        placement.output_rect = video_rect;
-        placement.clip_rect = display_target_rect;
-        placement.scale_x =
-            static_cast<double>(target_width) / video_width;
-        placement.scale_y =
-            static_cast<double>(target_height) / video_height;
-        placement.uses_display_area = true;
-        return placement;
+        FrameLayout layout;
+        // SubRenderIntf places bitmaps in the output rect's space: the
+        // consumer maps GetOutputRect onto videoOutputRect. Publishing a
+        // zero-based output rect of the video's size keeps that mapping 1:1,
+        // so clip and bitmap positions only need the video origin removed.
+        layout.output_rect = RECT{
+            0, 0,
+            video_output_rect.right - video_output_rect.left,
+            video_output_rect.bottom - video_output_rect.top
+        };
+        layout.clip_rect = RECT{
+            canvas_rect.left - video_output_rect.left,
+            canvas_rect.top - video_output_rect.top,
+            canvas_rect.right - video_output_rect.left,
+            canvas_rect.bottom - video_output_rect.top
+        };
+        // A canvas-local coordinate c sits at screen canvas.left + c. The
+        // consumer places output-space p at screen videoOutput.left + p, so
+        // p = c + (canvas.left - videoOutput.left).
+        layout.bitmap_offset.x =
+            canvas_rect.left - video_output_rect.left;
+        layout.bitmap_offset.y =
+            canvas_rect.top - video_output_rect.top;
+        return layout;
     }
-
-    ResolveResult ResolveFromConsumerInput(const ConsumerInput& input)
-    {
-        ResolveResult result;
-        result.resolved_aspect_mode = input.aspect_mode;
-
-        if (!input.enabled
-            || input.aspect_mode == ASPECT_OFF) {
-            result.fallback_reason = FALLBACK_DISABLED;
-            result.target_rect = input.video_rect;
-            return result;
-        }
-
-        ResolveInput resolve_input;
-        resolve_input.aspect_mode = input.aspect_mode;
-        resolve_input.fullscreen = input.fullscreen;
-        resolve_input.video_rect = input.video_rect;
-        resolve_input.fullscreen_rect = input.fullscreen_rect;
-        resolve_input.has_fullscreen_rect = input.has_fullscreen_rect;
-        resolve_input.display_mode_size = input.display_mode_size;
-        resolve_input.has_display_mode_size = input.has_display_mode_size;
-        return ResolveTargetRect(resolve_input);
-    }
-
 }

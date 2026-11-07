@@ -3,7 +3,6 @@
 #include "DVBSub.h"
 #include "hdmv_subtitle_provider.h"
 #include "../subpic/XySubRenderFrameWrapper.h"
-#include "../subpic/subtitle_display_layout.h"
 #include "IDirectVobSubXy.h"
 
 #if ENABLE_XY_LOG_HDMVSUB
@@ -11,62 +10,6 @@
 #else
 #define TRACE_SUB_PROVIDER(msg)
 #endif
-
-namespace
-{
-bool ResolveSubtitleDisplayLayout(
-    IXyOptions* consumer, const RECT& video_rect,
-    SubtitleDisplayLayout::ResolveResult* result)
-{
-    if (!consumer || !result) {
-        return false;
-    }
-
-    SubtitleDisplayLayout::ConsumerInput input;
-    input.video_rect = video_rect;
-
-    if (FAILED(consumer->XyGetBool(
-            DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
-            &input.enabled))
-        || !input.enabled) {
-        return false;
-    }
-
-    if (FAILED(consumer->XyGetInt(
-            DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
-            &input.aspect_mode))
-        || input.aspect_mode == DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF) {
-        return false;
-    }
-
-    if (FAILED(consumer->XyGetBool(
-            DirectVobSubXyOptions::BOOL_CONSUMER_IS_FULLSCREEN,
-            &input.fullscreen))
-        || !input.fullscreen) {
-        return false;
-    }
-
-    RECT fullscreen_rect = {};
-    if (SUCCEEDED(consumer->XyGetRect(
-            DirectVobSubXyOptions::RECT_FULLSCREEN, &fullscreen_rect))
-        && SubtitleDisplayLayout::IsValidRect(fullscreen_rect)) {
-        input.fullscreen_rect = fullscreen_rect;
-        input.has_fullscreen_rect = true;
-    }
-
-    SIZE display_mode = {};
-    if (SUCCEEDED(consumer->XyGetSize(
-            DirectVobSubXyOptions::SIZE_DISPLAY_MODE, &display_mode))
-        && display_mode.cx > 0
-        && display_mode.cy > 0) {
-        input.display_mode_size = display_mode;
-        input.has_display_mode_size = true;
-    }
-
-    *result = SubtitleDisplayLayout::ResolveFromConsumerInput(input);
-    return result->uses_display_area;
-}
-}
 
 //
 // HdmvSubtitleProviderImpl
@@ -77,8 +20,7 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_consumer(NULL)
     , m_use_dst_alpha(false)
 {
-    m_subtitle_output_rect.SetRectEmpty();
-    m_subtitle_clip_rect.SetRectEmpty();
+
 }
 
 HdmvSubtitleProviderImpl::~HdmvSubtitleProviderImpl( void )
@@ -160,30 +102,6 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         {
             XY_LOG_WARN("Invalid output size "<<m_cur_output_size);
             return S_FALSE;
-        }
-    }
-
-    {
-        const CRect video_rect(CPoint(), m_cur_output_size);
-        SubtitleDisplayLayout::ResolveResult display_layout;
-        const bool use_display_area = ResolveSubtitleDisplayLayout(
-            m_consumer, video_rect, &display_layout);
-        const SubtitleDisplayLayout::BitmapPlacement placement =
-            SubtitleDisplayLayout::ResolveBitmapPlacement(
-                video_rect, display_layout.target_rect, use_display_area);
-        const RECT previous_output_rect = m_subtitle_output_rect;
-        const RECT previous_clip_rect = m_subtitle_clip_rect;
-        m_subtitle_output_rect = placement.output_rect;
-        m_subtitle_clip_rect = placement.clip_rect;
-        if (previous_output_rect.left != m_subtitle_output_rect.left
-            || previous_output_rect.top != m_subtitle_output_rect.top
-            || previous_output_rect.right != m_subtitle_output_rect.right
-            || previous_output_rect.bottom != m_subtitle_output_rect.bottom
-            || previous_clip_rect.left != m_subtitle_clip_rect.left
-            || previous_clip_rect.top != m_subtitle_clip_rect.top
-            || previous_clip_rect.right != m_subtitle_clip_rect.right
-            || previous_clip_rect.bottom != m_subtitle_clip_rect.bottom) {
-            Invalidate(-1);
         }
     }
 
@@ -314,8 +232,8 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     }
     if (hr == S_OK)
     {
-        m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
-            mem_subpic, m_subtitle_output_rect, m_subtitle_clip_rect, now, &hr);
+        CRect video_rect(CPoint(0,0), m_cur_output_size);
+        m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(mem_subpic, video_rect, video_rect, now, &hr);
     }
     else
     {

@@ -132,18 +132,22 @@ fullscreen on a 16:9 monitor, instead of shrinking into the active video rectang
 | Option | Behaviour |
 | :--- | :--- |
 | `Off` (default) | Identical to the previous release; the active video rectangle remains the target |
-| `Auto (display)` | Uses the consumer's full display rectangle and keeps its aspect ratio |
-| `16:9` / `16:10` / `21:9` / `32:9` / `4:3` | Fits the largest centred canvas of that aspect inside the display area |
+| `Auto (display)` | Uses the consumer's `subtitleTargetRect` directly as the subtitle canvas |
+| `16:9` / `16:10` / `21:9` / `32:9` / `4:3` | Fits the largest centred canvas of that aspect inside it |
 
 Scope and fallbacks:
 
-- Active only when the consumer reports fullscreen and supplies a valid
-  `fullscreenRect` or `displayModeSize`; the built-in `XySubFilterConsumer`
-  does not invent a desktop display rectangle.
-- Windowed playback, missing fields, invalid rectangles, or a failed aspect fit
-  fall back to the active video rectangle.
-- Text subtitles keep the existing font size, margins, and alignment logic;
-  only the layout target changes.
+- Active only in strict fullscreen: the consumer's `subtitleTargetRect` matches
+  the reported display size within 5%, fully contains the active video rect and
+  is strictly larger than it. All three checks stay in the consumer display space.
+- Windowed playback, missing fields, invalid rectangles, or a canvas that cannot
+  contain the video fall back to the active video rectangle.
+- This release applies to ASS/SSA/SRT text only. The renderer lays out against
+  the whole display canvas, so font size follows the canvas height and a 16:9
+  master subtitle no longer shrinks with an 800-pixel-tall picture.
+- PGS/SUP/DVB keep the previous behaviour and do not use this option. Moving
+  bitmap subtitles into the bars needs provider-side full-canvas resampling,
+  which is tracked as follow-up work.
 - PGS/SUP/DVB use the existing `GetOutputRect` / `GetClipRect` frame contract,
   leaving any required scaling and clipping to the external consumer. Pixel-exact
   1:1 output is not guaranteed for every resolution, and not every renderer

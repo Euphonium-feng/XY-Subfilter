@@ -195,44 +195,44 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 
 ## 字幕显示区域
 
-`src/subpic/subtitle_display_layout.{h,cpp}` 是不依赖 DirectShow 的布局选择模块。
-它接收活动视频矩形、完整显示矩形和画幅模式，返回子目标矩形、生效模式和回退原因。
-Auto 使用完整显示区域；显式画幅在显示区域内生成最大居中内接画布。
+`src/subpic/subtitle_display_layout.{h,cpp}` 是不依赖 DirectShow 的布局选择模块，
+只提供纯函数：严格全屏判定、画布解析和帧几何构造。
 
-数据流：
+严格全屏判定 `EvaluateFullscreenGate()` 要求三者同时成立：`subtitleTargetRect`
+的尺寸与 `fullscreenRect`（或 `displayModeSize`）相差不超过 5%；它完整包含
+`videoOutputRect`；且面积/边长严格大于视频。三项比较都在 consumer 显示空间内
+完成，不使用桌面绝对坐标。窗口模式、字段缺失或不匹配时 `BOOL_CONSUMER_IS_FULLSCREEN`
+保持 false，功能自动回退。
+
+画布解析 `ResolveCanvas()` 以 consumer 已提供的 `subtitleTargetRect` 为画布：
+Auto 直接使用该矩形；显式画幅在其中取最大居中内接画布；若结果不能完整包含
+`videoOutputRect`（`RTS::RenderEx` 会因此返回 `E_NOTIMPL`）则回退视频矩形。
+
+文本数据流：
 
 ```
 XySubRenderProviderWrapper2
-  → consumer.fullscreenRect / displayModeSize
-  → SubtitleDisplayLayout::ResolveTargetRect()
-  → subtitleTargetRect
-  → CRenderedTextSubtitle::RenderEx()
-
-XySubRenderProviderWrapper (PGS/SUP/DVB)
-  → 同一显示区域解析
-  → GetOutputRect = 活动视频矩形
-  → GetClipRect = 显示区域目标
-  → consumer 按 SubRenderIntf 语义缩放/裁剪
-
-HdmvSubtitleProviderImpl (.sup)
-  → 同一显示区域解析
-  → SubtitleDisplayLayout::ResolveBitmapPlacement()
-  → 源位图保持视频坐标，clip 指向显示区域
+  → ResolveConsumerCanvas()
+  → RenderEx(videoRect = targetRect = (0,0,W,H), originalVideoSize = (W,H))
+       libass/CSRI/legacy 都在同一块零基画布内排版，字号按画布高度缩放
+  → XySubRenderFrameWrapper2::SetFrameGeometry()
+       GetOutputRect = (0,0,videoW,videoH) 视频零基空间
+       GetClipRect  = 画布减去 videoOutputRect 原点（可含负值，进入黑边）
+       GetBitmap.position -= videoOutputRect 原点
 ```
 
-`videoOutputRect` 始终表示活动画面；只有 `subtitleTargetRect` 可选替换。关闭、
-非全屏、字段缺失或矩形无效时回退活动视频矩形。内置 `XySubFilterConsumer`
-不提供真实桌面显示区域，因此该功能只对外部 consumer 生效。
+`BuildFrameLayout()` 遵循 `SubRenderIntf.h` 的示例契约：`GetClipRect`、
+`GetBitmap.position` 与 `GetOutputRect` 属于同一空间；示例 1 的
+`output=(0,0,720,480)`、`clip=(0,-80,720,560)` 即“超视频并含负值”的合法写法。
+consumer 把零基 output 映射到 `videoOutputRect`，因此该布局在屏幕上 1:1 还原。
 
-`XySubRenderProviderWrapper` 也服务 VobSub 与 SSF；构造函数按 provider 类型
-（仅 `CRenderedHdmvSubtitle`）开启显示区域，避免把布局改动扩散到计划外的格式。
-文本 wrapper2 在输出矩形或字幕目标变化时调用 `Invalidate()`；PGS/SUP/DVB 的
-wrapper 与 `HdmvSubtitleProviderImpl` 在 output/clip 矩形变化时同样丢弃旧帧，
-防止同一字幕区间继续返回旧布局的缓存帧。
+关闭、非全屏、字段缺失或矩形无效时完全走原路径，参数逐字节不变。
+`RTS::Init()` 在布局变化时清空 `m_last_frame`，避免 libass 在“文本未变、
+仅几何变化”时复用旧布局帧。
 
-位图路径不新增重采样器：`GetOutputRect` 仍是视频坐标，显示区域只通过
-`GetClipRect` 表达。外部 consumer 是否按该协议缩放/裁剪、以及实际 scale，
-必须由用户实机确认；不能仅凭代码宣称所有渲染器都已生效。
+PGS/SUP/DVB 本轮不参与：它们把字幕绘进视频尺寸位图，要进入黑边必须重采样，
+因此 `XySubRenderProviderWrapper` 去掉显示区域参数、`HdmvSubtitleProviderImpl`
+回到基线行为。该能力列为待办。
 
 ## 界面与本地化
 

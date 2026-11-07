@@ -1899,6 +1899,11 @@ bool CRenderedTextSubtitle::Init( const CRectCoor2& video_rect, const CRectCoor2
     m_target_scale_x = video_rect.Width()  * 1.0 / original_video_size.cx;
     m_target_scale_y = video_rect.Height() * 1.0 / original_video_size.cy;
 
+    // libass returns the previous composed frame when only the visible text is
+    // unchanged. A layout change re-initializes this object, so the cached
+    // frame must not survive it.
+    m_last_frame = NULL;
+
     return(true);
 }
 

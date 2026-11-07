@@ -33,7 +33,7 @@ class XySubRenderFrameWrapper2 : public CUnknown, public IXySubRenderFrame
 public:
     XySubRenderFrameWrapper2(
         IXySubRenderFrame *inner_obj, ULONGLONG context_id,
-        ULONGLONG hdr_generation = 0);
+        ULONGLONG hdr_generation = 0, bool remap_bitmap_ids = true);
     virtual ~XySubRenderFrameWrapper2(){}
 
     DECLARE_IUNKNOWN;
@@ -46,9 +46,21 @@ public:
     STDMETHODIMP GetBitmap(int index, ULONGLONG *id, POINT *position, SIZE *size, LPCVOID *pixels, int *pitch);
     STDMETHODIMP GetBitmapExtra(int index, LPVOID extra_info);
 
+    // Optional frame geometry override. Used when the provider rendered into a
+    // display canvas that is larger than the consumer's video output rect.
+    // All rectangles and the bitmap offset use the inner frame's coordinate
+    // space, matching SubRenderIntf's "same space as GetOutputRect" contract.
+    void SetFrameGeometry(
+        const RECT& output_rect, const RECT& clip_rect, POINT bitmap_offset);
+
 private:
     CComPtr<IXySubRenderFrame> m_inner_obj;
     CAtlArray<ULONGLONG> m_ids;
+    bool m_has_geometry_override;
+    bool m_remap_bitmap_ids;
+    RECT m_output_rect;
+    RECT m_clip_rect;
+    POINT m_bitmap_offset;
 };
 
 #ifdef SUBTITLE_FRAME_DUMP_FILE

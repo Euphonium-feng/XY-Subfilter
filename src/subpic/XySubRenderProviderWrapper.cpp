@@ -12,62 +12,46 @@
 
 namespace
 {
-SubtitleDisplayLayout::ResolveResult ResolveDisplayLayout(
-    IXyOptions* consumer, const RECT& video_rect)
+SubtitleDisplayLayout::CanvasResult ResolveConsumerCanvas(
+    IXyOptions* consumer, const RECT& video_output_rect,
+    const RECT& subtitle_target_rect)
 {
-    SubtitleDisplayLayout::ConsumerInput input;
-    input.video_rect = video_rect;
+    SubtitleDisplayLayout::CanvasInput input;
+    input.video_output_rect = video_output_rect;
+    input.subtitle_target_rect = subtitle_target_rect;
 
     if (!consumer
         || FAILED(consumer->XyGetBool(
             DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
             &input.enabled))
         || !input.enabled) {
-        return SubtitleDisplayLayout::ResolveFromConsumerInput(input);
+        return SubtitleDisplayLayout::ResolveCanvas(input);
     }
 
     if (FAILED(consumer->XyGetInt(
             DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
             &input.aspect_mode))
         || input.aspect_mode == DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF) {
-        return SubtitleDisplayLayout::ResolveFromConsumerInput(input);
+        return SubtitleDisplayLayout::ResolveCanvas(input);
     }
 
     if (FAILED(consumer->XyGetBool(
             DirectVobSubXyOptions::BOOL_CONSUMER_IS_FULLSCREEN,
             &input.fullscreen))
         || !input.fullscreen) {
-        return SubtitleDisplayLayout::ResolveFromConsumerInput(input);
+        return SubtitleDisplayLayout::ResolveCanvas(input);
     }
 
-    RECT fullscreen = {};
-    if (SUCCEEDED(consumer->XyGetRect(
-            DirectVobSubXyOptions::RECT_FULLSCREEN, &fullscreen))
-        && SubtitleDisplayLayout::IsValidRect(fullscreen)) {
-        input.fullscreen_rect = fullscreen;
-        input.has_fullscreen_rect = true;
-    }
-
-    SIZE display_mode = {};
-    if (SUCCEEDED(consumer->XyGetSize(
-            DirectVobSubXyOptions::SIZE_DISPLAY_MODE, &display_mode))
-        && display_mode.cx > 0
-        && display_mode.cy > 0) {
-        input.display_mode_size = display_mode;
-        input.has_display_mode_size = true;
-    }
-
-    return SubtitleDisplayLayout::ResolveFromConsumerInput(input);
+    return SubtitleDisplayLayout::ResolveCanvas(input);
 }
 }
 
 XySubRenderProviderWrapper::XySubRenderProviderWrapper( ISubPicProviderEx *provider
-    , HRESULT* phr/*=NULL*/, bool use_display_area/*=false*/ )
+    , HRESULT* phr/*=NULL*/ )
     : CUnknown(NAME("XySubRenderProviderWrapper"), NULL, phr)
     , m_provider(provider)
     , m_consumer(NULL)
     , m_use_dst_alpha(false)
-    , m_use_display_area(use_display_area)
 {
     HRESULT hr = NOERROR;
     if (!provider)
@@ -126,20 +110,6 @@ STDMETHODIMP XySubRenderProviderWrapper::RequestFrame( IXySubRenderFrame**subRen
     const RECT video_rect = {
         0, 0, original_video_size.cx, original_video_size.cy
     };
-    const SubtitleDisplayLayout::ResolveResult display_layout =
-        m_use_display_area
-        ? ResolveDisplayLayout(m_consumer, video_rect)
-        : SubtitleDisplayLayout::ResolveResult();
-    const SubtitleDisplayLayout::ResolveResult& previous_layout =
-        m_display_layout;
-    if (previous_layout.uses_display_area != display_layout.uses_display_area
-        || previous_layout.target_rect.left != display_layout.target_rect.left
-        || previous_layout.target_rect.top != display_layout.target_rect.top
-        || previous_layout.target_rect.right != display_layout.target_rect.right
-        || previous_layout.target_rect.bottom != display_layout.target_rect.bottom) {
-        Invalidate();
-    }
-    m_display_layout = display_layout;
     hr = m_consumer->XyGetBool(DirectVobSubXyOptions::BOOL_SUB_FRAME_USE_DST_ALPHA, &use_dst_alpha);
 
     if (m_original_video_size!=original_video_size
@@ -275,9 +245,6 @@ HRESULT XySubRenderProviderWrapper::Render( REFERENCE_TIME now, POSITION pos, do
     {
         CRect output_rect(CPoint(0,0), m_original_video_size);
         CRect clip_rect = output_rect;
-        if (m_display_layout.uses_display_area) {
-            clip_rect = m_display_layout.target_rect;
-        }
         m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
             mem_subpic, output_rect, clip_rect, now, &hr);
     }
@@ -397,24 +364,37 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     ASSERT(output_rect.Width()<=subtitle_target_rect.Width() && output_rect.Height()<=subtitle_target_rect.Height());
     hr = m_consumer->XyGetSize(DirectVobSubXyOptions::SIZE_LAYOUT_WITH, &original_video_size);
     ASSERT(SUCCEEDED(hr));
-    const RECT resolved_video_rect = output_rect;
-    m_display_layout = ResolveDisplayLayout(m_consumer, resolved_video_rect);
-    if (m_display_layout.uses_display_area) {
-        subtitle_target_rect = m_display_layout.target_rect;
-    }
-    else if (!m_display_layout.target_rect.right) {
-        m_display_layout.target_rect = subtitle_target_rect;
-    }
+    const SubtitleDisplayLayout::CanvasResult display_canvas =
+        ResolveConsumerCanvas(m_consumer, output_rect, subtitle_target_rect);
     hr = m_consumer->XyGetInt(DirectVobSubXyOptions::INT_MAX_BITMAP_COUNT2, &m_max_bitmap_count2);
     ASSERT(SUCCEEDED(hr));
     hr = m_consumer->XyGetBool(DirectVobSubXyOptions::BOOL_SUB_FRAME_USE_DST_ALPHA, &use_dst_alpha);
     hr = m_consumer->XyGetBool(DirectVobSubXyOptions::BOOL_RENDER_TO_ORIGINAL_VIDEO_SIZE, &render_to_original_video_size);
 
+    bool use_display_canvas = display_canvas.uses_display_area;
+    CRect render_video_rect = output_rect;
+    CRect render_target_rect = subtitle_target_rect;
+    CSize render_video_size = original_video_size;
+    SubtitleDisplayLayout::FrameLayout frame_layout;
+
     if (render_to_original_video_size)
     {
         output_rect = CRect(CPoint(), original_video_size);
         subtitle_target_rect = output_rect;
-        m_display_layout = SubtitleDisplayLayout::ResolveResult();
+        render_video_rect = output_rect;
+        render_target_rect = output_rect;
+        use_display_canvas = false;
+    }
+    else if (use_display_canvas)
+    {
+        // Render into a zero-based canvas the size of the display target:
+        // libass, CSRI and the legacy renderer then share one layout space
+        // and the font scale follows the display height.
+        render_video_rect = CRect(CPoint(0, 0), display_canvas.layout_size);
+        render_target_rect = render_video_rect;
+        render_video_size = display_canvas.layout_size;
+        frame_layout = SubtitleDisplayLayout::BuildFrameLayout(
+            output_rect, display_canvas.canvas_rect);
     }
 
     m_render_to_original_video_size = render_to_original_video_size;
@@ -424,15 +404,27 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     if (m_original_video_size!=original_video_size
         || m_use_dst_alpha!=use_dst_alpha
         || m_output_rect!=output_rect
-        || m_subtitle_target_rect!=subtitle_target_rect)
+        || m_subtitle_target_rect!=subtitle_target_rect
+        || m_render_video_rect!=render_video_rect
+        || m_render_target_rect!=render_target_rect
+        || m_render_video_size!=render_video_size
+        || m_use_display_canvas!=use_display_canvas
+        || m_frame_layout.output_rect!=frame_layout.output_rect
+        || m_frame_layout.clip_rect!=frame_layout.clip_rect)
     {
         should_invalidate = true;
-        should_invalidate_allocator = (m_subtitle_target_rect!=subtitle_target_rect)==TRUE;
+        should_invalidate_allocator =
+            (m_render_target_rect!=render_target_rect)==TRUE;
 
         m_original_video_size  = original_video_size;
         m_use_dst_alpha        = use_dst_alpha;
         m_output_rect          = output_rect;
         m_subtitle_target_rect = subtitle_target_rect;
+        m_render_video_rect    = render_video_rect;
+        m_render_target_rect   = render_target_rect;
+        m_render_video_size    = render_video_size;
+        m_use_display_canvas   = use_display_canvas;
+        m_frame_layout         = frame_layout;
     }
 
     if (m_xy_sub_render_frame)
@@ -448,7 +440,7 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     }
     if (should_invalidate_allocator)
     {
-        CSize max_size(m_subtitle_target_rect.right, m_subtitle_target_rect.bottom);
+        CSize max_size = m_render_target_rect.Size();
 
         m_allocator = DEBUG_NEW CPooledSubPicAllocator(MSP_RGB32, max_size,2);
         ASSERT(m_allocator);
@@ -476,9 +468,23 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     {
         return hr;
     }
-    if (m_xy_sub_render_frame)
+    CComPtr<IXySubRenderFrame> published_frame = m_xy_sub_render_frame;
+    if (m_use_display_canvas && published_frame)
     {
-        *subRenderFrame = m_xy_sub_render_frame;
+        // Wrap exactly once per request. The inner frame is cached across
+        // requests, so applying the geometry there would stack wrappers and
+        // shift bitmaps repeatedly.
+        CComPtr<XySubRenderFrameWrapper2> geometry_frame;
+        geometry_frame.Attach(DEBUG_NEW XySubRenderFrameWrapper2(
+            published_frame, 0, 0, false));
+        geometry_frame->SetFrameGeometry(
+            m_frame_layout.output_rect, m_frame_layout.clip_rect,
+            m_frame_layout.bitmap_offset);
+        published_frame = geometry_frame;
+    }
+    if (published_frame)
+    {
+        *subRenderFrame = published_frame;
         (*subRenderFrame)->AddRef();
     }
     return hr;
@@ -519,8 +525,8 @@ HRESULT XySubRenderProviderWrapper2::Render( REFERENCE_TIME now, POSITION pos )
     if (provider3)
         provider3->SetMaxBitmapCount(m_max_bitmap_count2);
     hr = m_provider->RenderEx(&m_xy_sub_render_frame, spd_type, 
-        m_output_rect, m_subtitle_target_rect,
-        m_original_video_size, now, m_fps);
+        m_render_video_rect, m_render_target_rect,
+        m_render_video_size, now, m_fps);
     ASSERT(SUCCEEDED(hr));
 
     bool should_combine = false;
@@ -607,7 +613,7 @@ HRESULT XySubRenderProviderWrapper2::CombineBitmap(REFERENCE_TIME now)
             dirty_rect |= CRect(pos, size);
             XyBitmap::BltPack(spd, pos, size, pixels, pitch);
         }
-        dirty_rect &= m_subtitle_target_rect;
+        dirty_rect &= m_render_target_rect;
         hr = m_subpic->Unlock(&dirty_rect);
         if (FAILED(hr))
         {
@@ -619,8 +625,9 @@ HRESULT XySubRenderProviderWrapper2::CombineBitmap(REFERENCE_TIME now)
         CMemSubPic * mem_subpic = dynamic_cast<CMemSubPic*>((ISubPicEx *)m_subpic);
         ASSERT(mem_subpic);
 
-        m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(mem_subpic, m_output_rect, m_subtitle_target_rect
-            , s_combined_bitmap_id++, &hr);
+        m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
+            mem_subpic, m_render_video_rect, m_render_target_rect,
+            s_combined_bitmap_id++, &hr);
         return hr;
     }
     return hr;

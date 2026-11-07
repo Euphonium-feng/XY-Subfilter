@@ -172,18 +172,19 @@ scoop install xysubfilter-libass-np -g
 | 选项 | 行为 |
 | :--- | :--- |
 | `关闭`（默认） | 与旧版本完全一致，字幕目标仍是活动视频矩形 |
-| `自动（显示区域）` | 使用 consumer 提供的完整显示矩形；保持显示器自身宽高比 |
-| `16:9` / `16:10` / `21:9` / `32:9` / `4:3` | 在显示区域内生成该比例的最大居中内接画布 |
+| `自动（显示区域）` | 直接使用 consumer 提供的 `subtitleTargetRect` 作为字幕画布 |
+| `16:9` / `16:10` / `21:9` / `32:9` / `4:3` | 在该画布内生成该比例的最大居中内接画布 |
 
 生效条件与边界：
 
-- 仅在 consumer 报告全屏，并提供了有效的 `fullscreenRect` 或
-  `displayModeSize` 时生效；内置 `XySubFilterConsumer` 不伪造桌面显示区域。
-- 窗口模式、字段缺失、矩形无效或内接失败时安全回退活动视频矩形。
-- 文本字幕沿用现有字号、边距和对齐逻辑，只替换排版目标。
-- PGS/SUP/DVB 通过现有 `GetOutputRect` / `GetClipRect` 帧协议映射，由外部
-  consumer 执行必要的缩放和裁剪；不保证所有分辨率都 1:1，也不保证所有渲染器
-  都遵循该协议。实际观感需在 PotPlayer + madVR 等目标环境中确认。
+- 仅在严格全屏时生效：consumer 的 `subtitleTargetRect` 尺寸与
+  `fullscreenRect`（或 `displayModeSize`）相差 ≤5%、完整包含活动视频矩形、
+  且严格大于它。三项都在 consumer 显示空间内比较。
+- 窗口模式、字段缺失、矩形无效、画布不能包含视频时安全回退活动视频矩形。
+- 本轮只对 ASS/SSA/SRT 文本字幕生效：渲染器以整块显示画布排版，字号按画布
+  高度缩放，因此 16:9 母版字幕不会随 800 高画面缩小。
+- PGS/SUP/DVB 本轮保持旧行为（不支持该选项）。位图要进入黑边需要 provider
+  侧整屏重采样，列为后续任务。
 - 诊断日志 `%TEMP%\xy_hdr_diag.txt` 会记录 `videoRect`、`displayRect`、
   `chosenAspect`、`targetRect`、`bitmapScale` 与 `fallback`。
 

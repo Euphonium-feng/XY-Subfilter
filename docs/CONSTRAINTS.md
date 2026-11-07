@@ -102,18 +102,20 @@
   后轮换；disconnect 不得覆盖上次有效证据。打开日志按钮本身不得创建空文件。
 - HLG 当前与 PQ 共用 HDR 证据分类，个人范围不做专用映射或专项验收；文档不得把
   HLG 观感描述为已验证。
-- “按显示器区域排版字幕”默认关闭；关闭时不得改变任何现有输出。仅在 consumer
-  提供有效 `fullscreenRect`（或 `displayModeSize`）且处于全屏时启用。
+- “按显示器区域排版字幕”默认关闭；关闭时不得改变任何现有输出。本轮只对
+  ASS/SSA/SRT 文本字幕生效；PGS/SUP/DVB 必须保持旧行为。
+- 仅在严格全屏时启用：consumer 的 `subtitleTargetRect` 尺寸与
+  `fullscreenRect`（或 `displayModeSize`）相差 ≤5%、完整包含 `videoOutputRect`、
+  且严格大于视频。三项比较只允许在 consumer 显示空间内进行。
 - 不得用活动视频宽高猜显示器宽高，也不得把窗口尺寸当显示器区域。字段缺失、
   窗口模式、无效矩形或内接画布失败时必须回退视频区域。
-- 显式 16:9/16:10/21:9/32:9/4:3 只限制字幕画布的内接比例，不得生成超出显示区域
-  的矩形。
-- PGS/SUP/DVB 继续使用现有缩放链路；1:1 映射不得额外重采样。非 1:1 缩放必须有
-  测试和诊断记录，不得声称所有分辨率都无损。
-- 显示区域改变导致 `GetOutputRect` / `GetClipRect` 变化时，必须丢弃当前字幕
-  区间的缓存帧；仅更新成员矩形而让 `Render()` 提前返回会继续显示旧布局。
-- `XySubRenderProviderWrapper` 同时服务 VobSub 与 SSF。显示区域能力必须按
-  provider 类型开启，只覆盖计划内的 PGS/SUP/DVB，不得顺带改变 VobSub/SSF。
+- 显式 16:9/16:10/21:9/32:9/4:3 只限制字幕画布的内接比例，不得生成超出
+  `subtitleTargetRect` 的矩形，也不得生成不能完整包含 `videoOutputRect` 的画布
+  （`RTS::RenderEx` 会因此返回 `E_NOTIMPL`，整帧不交付）。
+- `GetOutputRect`、`GetClipRect`、`GetBitmap.position` 必须处于同一坐标系；
+  `GetClipRect` 允许超出 output 并含负值，但不得混入屏幕/桌面绝对坐标。
+- 显示区域或画布改变时必须丢弃当前字幕区间的缓存帧：不仅 wrapper 侧
+  `Invalidate()`，`RTS::Init()` 也必须清空 libass 的 `m_last_frame`。
 - 内置 `XySubFilterConsumer` 不掌握真实桌面显示区域，必须保持
   `displayModeSize=(0,0)` 与空 `fullscreenRect`；不得伪造显示器尺寸。
 - 代理不得在功能完成后自行启动 PotPlayer 实机验收；自动验证只认合成单测、

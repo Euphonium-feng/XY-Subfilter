@@ -15,7 +15,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 5. **深层 Auto HDR 探测** —— 沿活动视频路径读取嵌套媒体类型；文件名未提示 HDR 时，
    有界读取本地 MKV 的 Colour/mastering 元数据作为兜底。
 6. **按显示器区域排版字幕** —— 为 21:9 等带黑边视频增加可选布局，
-   默认关闭；开启后使用 consumer 提供的完整显示区域，而不是仅活动视频矩形。
+   默认关闭；开启后文本字幕以 consumer 的 `subtitleTargetRect` 为画布排版，
+   而不是仅活动视频矩形。PGS/SUP/DVB 暂不参与。
 
 ## 需求
 
@@ -36,7 +37,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 - 属性页统一尺寸与横向排版；数字编辑框在即时应用期间不得丢失光标位置。
 - 本地 MKV 头部 HDR 元数据探测；不读取 Cluster 或视频样本。
 - 全屏字幕布局可选项：关闭（默认）、Auto、16:9、16:10、21:9、32:9、4:3。
-  Auto 使用完整显示区域；显式画幅在显示区域内生成最大内接画布。
+  Auto 使用 consumer 的 `subtitleTargetRect`；显式画幅在其内部生成最大内接
+  画布。仅 ASS/SSA/SRT 文本生效；PGS/SUP/DVB 为待办。
 
 排除：
 
@@ -54,8 +56,9 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 5. 新增单元测试与既有回归测试在 GitHub Actions 三矩阵上全绿。
 6. XySubFilter 的“主要 / 更多 / 时间轴 / 路径 / 关于”使用相同页面尺寸；
    白点输入连续键入时不需手动移动插入符。
-7. 字幕显示区域开关默认关闭；关闭时输出与当前版本一致。开启后仅在 consumer
-   提供有效显示区域时生效，无字段、窗口模式或无效矩形必须安全回退。
+7. 字幕显示区域开关默认关闭；关闭时输出与当前版本一致。开启后仅在严格全屏
+   （目标尺寸匹配显示尺寸 ≤5%、包含视频、且严格大于视频）生效；无字段、
+   窗口模式或无效矩形必须安全回退。本轮只覆盖文本字幕。
 
 ## 当前状态
 
@@ -89,9 +92,8 @@ Auto 与手动 PQ 均未呈现预期映射。已排除 CSRI；当前保存的 `t
 `codex/display-area-subtitle-layout`。目标是让 16:9 母版字幕在 21:9 视频全屏播放时
 仍按 2560×1440 等完整显示区域布局，而不是被压缩到 2560×1097 活动画面。
 
-实现已覆盖文本与 PGS/SUP/DVB：布局解析、consumer 字段映射、More 页下拉、注册表
-持久化、诊断字段、合成单测和缓存失效均已完成；VobSub/SSF 按 provider 类型排除。
-缓存失效与 Win32 单测初始化修复提交 run `42255336219` 三矩阵全绿。类型 gating 与
-文档提交的最终功能 run `42259761429` 亦三矩阵全绿（对应远程提交 `4854327`；
-Win32 首轮 yasm 环境失败后重跑通过）。尚无播放器实机验收；PGS 位图是否按外部
-consumer 的 `GetOutputRect` / `GetClipRect` 语义缩放，必须由用户手动确认。
+第一版把屏幕坐标直接当成渲染画布，实机表现为“自动/16:9 后字幕全部消失”。
+第二版改为：画布取 consumer 的 `subtitleTargetRect`，文本按零基整块画布排版，
+帧按 SubRenderIntf 同类空间规则发布（output 零基视频、clip/position 减视频原点），
+并加严格全屏判定与 libass 缓存失效。PGS/SUP/DVB 回到基线行为，整屏重采样列为
+待办。最终以云端正矩阵与用户实机验收为准。
