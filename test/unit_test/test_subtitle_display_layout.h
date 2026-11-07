@@ -182,6 +182,47 @@ TEST(SubtitleDisplayLayoutTest, FrameLayoutShiftsByCanvasOrigin)
     EXPECT_EQ(-187, layout.bitmap_offset.y);
 }
 
+TEST(SubtitleDisplayLayoutTest, BitmapCanvasMatchesDisplayAspect)
+{
+    // PGS design 1920x1080 on a 16:9 display: publish the design canvas as-is.
+    RECT output = {};
+    RECT clip = {};
+    const SIZE design = { 1920, 1080 };
+    EXPECT_TRUE(SubtitleDisplayLayout::ResolveBitmapCanvas(
+        design, 2560, 1440, &output, &clip));
+    ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, output);
+    ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, clip);
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapCanvasRejectsAspectMismatch)
+{
+    // A 4:3 design canvas would be distorted on a 16:9 display.
+    RECT output = {};
+    RECT clip = {};
+    const SIZE design = { 720, 576 };
+    EXPECT_FALSE(SubtitleDisplayLayout::ResolveBitmapCanvas(
+        design, 2560, 1440, &output, &clip));
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapCanvasRejectsMissingDisplaySize)
+{
+    RECT output = {};
+    RECT clip = {};
+    const SIZE design = { 1920, 1080 };
+    EXPECT_FALSE(SubtitleDisplayLayout::ResolveBitmapCanvas(
+        design, 0, 0, &output, &clip));
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapCanvasAcceptsWidescreenDesign)
+{
+    // A 2.39:1 PGS design on a 21:9 display is close enough.
+    RECT output = {};
+    RECT clip = {};
+    const SIZE design = { 1920, 804 };
+    EXPECT_TRUE(SubtitleDisplayLayout::ResolveBitmapCanvas(
+        design, 2560, 1072, &output, &clip));
+}
+
 TEST(SubtitleDisplayLayoutTest, AspectMetadataIsComplete)
 {
     EXPECT_EQ(16, SubtitleDisplayLayout::AspectWidth(

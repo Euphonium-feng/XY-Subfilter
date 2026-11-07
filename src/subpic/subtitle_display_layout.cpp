@@ -278,4 +278,34 @@ namespace SubtitleDisplayLayout
         result.fallback_reason = FALLBACK_NONE;
         return result;
     }
+
+    bool ResolveBitmapCanvas(
+        const SIZE& design_size, int display_width, int display_height,
+        RECT* publish_output, RECT* publish_clip)
+    {
+        if (!publish_output || !publish_clip
+            || design_size.cx <= 0 || design_size.cy <= 0
+            || display_width <= 0 || display_height <= 0) {
+            return false;
+        }
+
+        // The design canvas is only usable as-is when it has the same aspect
+        // as the display; otherwise the picture would be distorted.
+        const __int64 display_scaled =
+            __int64(display_width) * design_size.cy;
+        const __int64 design_scaled =
+            __int64(design_height) * design_size.cx;
+        const __int64 tolerance = design_scaled / 200; // 0.5%
+        const __int64 delta = display_scaled > design_scaled
+            ? display_scaled - design_scaled
+            : design_scaled - display_scaled;
+        if (delta > tolerance) {
+            return false;
+        }
+
+        const RECT canvas = { 0, 0, design_size.cx, design_size.cy };
+        *publish_output = canvas;
+        *publish_clip = canvas;
+        return true;
+    }
 }

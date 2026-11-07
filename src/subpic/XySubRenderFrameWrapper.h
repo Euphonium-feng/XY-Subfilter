@@ -10,7 +10,7 @@ class XySubRenderFrameWrapper : public CUnknown, public IXySubRenderFrame
 public:
     XySubRenderFrameWrapper(CMemSubPic * inner_obj, const CRect& output_rect, const CRect& clip_rect, 
         ULONGLONG id,
-        HRESULT *phr=NULL);
+        HRESULT *phr=NULL, POINT bitmap_offset = POINT());
     virtual ~XySubRenderFrameWrapper(){}
 
     DECLARE_IUNKNOWN;
@@ -26,6 +26,7 @@ private:
     CComPtr<CMemSubPic> m_inner_obj;
     CRect m_output_rect, m_clip_rect;
     ULONGLONG m_id;
+    POINT m_bitmap_offset;
 };
 
 class XySubRenderFrameWrapper2 : public CUnknown, public IXySubRenderFrame

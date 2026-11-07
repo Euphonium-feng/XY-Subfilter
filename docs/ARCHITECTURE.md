@@ -241,9 +241,13 @@ consumer 把零基 output 映射到 `videoOutputRect`，因此该布局在屏幕
 `RTS::Init()` 在布局变化时清空 `m_last_frame`，避免 libass 在“文本未变、
 仅几何变化”时复用旧布局帧。
 
-PGS/SUP/DVB 本轮不参与：它们把字幕绘进视频尺寸位图，要进入黑边必须重采样，
-因此 `XySubRenderProviderWrapper` 去掉显示区域参数、`HdmvSubtitleProviderImpl`
-回到基线行为。该能力列为待办。
+PGS/SUP/DVB 走同一条几何规则，但不需要重采样：它们本来就绘制在流自带的
+设计分辨率（PGS `video_descriptor.nVideoWidth/Height`，通常 1920×1080）里，
+这块画布已经包含画面与黑边。`ResolveBitmapCanvas()` 在设计比例与显示比例一致
+（容差 0.5%）时把设计画布直接作为 `GetOutputRect` 与 `GetClipRect` 发布，
+位图偏移为 0；consumer 把整块画布缩放到屏幕即可。比例不一致时回退原行为。
+
+画布与偏移在 `HdmvSubtitleProviderImpl` 内按设计分辨率缓存，仅在变化时重算。
 
 ## 界面与本地化
 

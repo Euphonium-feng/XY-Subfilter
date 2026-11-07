@@ -8,12 +8,14 @@
 #endif
 
 XySubRenderFrameWrapper::XySubRenderFrameWrapper( CMemSubPic * inner_obj, const CRect& output_rect
-    , const CRect& clip_rect, ULONGLONG id, HRESULT *phr/*=NULL*/ )
+    , const CRect& clip_rect, ULONGLONG id, HRESULT *phr/*=NULL*/
+    , POINT bitmap_offset/*=POINT()*/ )
     : CUnknown(NAME("XySubRenderFrameWrapper"), NULL, phr)
     , m_inner_obj(inner_obj)
     , m_output_rect(output_rect)
     , m_clip_rect(clip_rect)
     , m_id(id)
+    , m_bitmap_offset(bitmap_offset)
 {
     ASSERT(m_inner_obj);
     if (!m_inner_obj && phr)
@@ -97,6 +99,8 @@ STDMETHODIMP XySubRenderFrameWrapper::GetBitmap( int index, ULONGLONG *id, POINT
     if (position)
     {
         *position = dirty_rect.TopLeft();
+        position->x += m_bitmap_offset.x;
+        position->y += m_bitmap_offset.y;
     }
     if (size)
     {

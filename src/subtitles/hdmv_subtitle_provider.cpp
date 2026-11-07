@@ -3,6 +3,7 @@
 #include "DVBSub.h"
 #include "hdmv_subtitle_provider.h"
 #include "../subpic/XySubRenderFrameWrapper.h"
+#include "../subpic/subtitle_display_layout.h"
 #include "IDirectVobSubXy.h"
 
 #if ENABLE_XY_LOG_HDMVSUB
@@ -10,6 +11,94 @@
 #else
 #define TRACE_SUB_PROVIDER(msg)
 #endif
+
+namespace
+{
+bool SameSize(const SIZE& first, const SIZE& second)
+{
+    return first.cx == second.cx && first.cy == second.cy;
+}
+
+// The bitmap subtitle is drawn in the stream's design resolution (PGS
+// video_descriptor, DVB display size). When the option is on and a display
+// size is known, that design canvas is centred on the display area: the canvas
+// keeps its own pixel grid, and the consumer scales the whole block onto the
+// screen. No resampling happens here, so the subtitle keeps its authored size
+// relative to the picture.
+bool ResolveBitmapCanvasLayout(
+    IXyOptions* consumer, const SIZE& design_size,
+    SIZE* publish_video_size, RECT* publish_output, RECT* publish_clip,
+    POINT* bitmap_offset, bool* active)
+{
+    if (!consumer || !publish_video_size || !publish_output || !publish_clip
+        || !bitmap_offset || !active) {
+        return false;
+    }
+
+    *active = false;
+    publish_video_size->cx = design_size.cx;
+    publish_video_size->cy = design_size.cy;
+    *publish_output = RECT{ 0, 0, design_size.cx, design_size.cy };
+    *publish_clip = *publish_output;
+    bitmap_offset->x = 0;
+    bitmap_offset->y = 0;
+
+    bool enabled = false;
+    int aspect_mode = 0;
+    if (FAILED(consumer->XyGetBool(
+            DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
+            &enabled))
+        || !enabled) {
+        return false;
+    }
+    if (FAILED(consumer->XyGetInt(
+            DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
+            &aspect_mode))
+        || aspect_mode == DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF) {
+        return false;
+    }
+
+    SIZE display_area = {};
+    bool has_display_area =
+        SUCCEEDED(consumer->XyGetSize(
+            DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &display_area))
+        && display_area.cx > 0
+        && display_area.cy > 0;
+
+    RECT fullscreen = {};
+    if (!has_display_area
+        && SUCCEEDED(consumer->XyGetRect(
+            DirectVobSubXyOptions::RECT_FULLSCREEN, &fullscreen))
+        && fullscreen.right > fullscreen.left
+        && fullscreen.bottom > fullscreen.top
+        && fullscreen.right - fullscreen.left > design_size.cx
+        && fullscreen.bottom - fullscreen.top > design_size.cy) {
+        display_area.cx = fullscreen.right - fullscreen.left;
+        display_area.cy = fullscreen.bottom - fullscreen.top;
+        has_display_area = true;
+    }
+    if (!has_display_area) {
+        return false;
+    }
+
+    // Nothing is redrawn: the PGS/DVB bitmap already covers the picture plus
+    // its bars in the stream's design resolution. Only the published geometry
+    // changes, exactly like the text path: publishing the design canvas as the
+    // output makes the consumer scale the whole block onto the screen, so the
+    // bars land where the display has them.
+    if (!SubtitleDisplayLayout::ResolveBitmapCanvas(
+            design_size, display_area.cx, display_area.cy,
+            publish_output, publish_clip)) {
+        return false;
+    }
+
+    *publish_video_size = design_size;
+    bitmap_offset->x = 0;
+    bitmap_offset->y = 0;
+    *active = true;
+    return true;
+}
+}
 
 //
 // HdmvSubtitleProviderImpl
@@ -19,8 +108,15 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_cleanOld(cleanOld)
     , m_consumer(NULL)
     , m_use_dst_alpha(false)
+    , m_canvas_cached(false)
+    , m_canvas_active(false)
 {
-
+    m_canvas_design_size.cx = 0;
+    m_canvas_design_size.cy = 0;
+    m_canvas_publish_output = RECT();
+    m_canvas_publish_clip = RECT();
+    m_canvas_bitmap_offset.x = 0;
+    m_canvas_bitmap_offset.y = 0;
 }
 
 HdmvSubtitleProviderImpl::~HdmvSubtitleProviderImpl( void )
@@ -103,6 +199,25 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
             XY_LOG_WARN("Invalid output size "<<m_cur_output_size);
             return S_FALSE;
         }
+    }
+
+    // Resolve the published geometry once per design/display change. The
+    // bitmap itself is always drawn in the design resolution, so only these
+    // few values change and only when an input does.
+    if (!m_canvas_cached
+        || m_canvas_design_size.cx != m_cur_output_size.cx
+        || m_canvas_design_size.cy != m_cur_output_size.cy)
+    {
+        // The published size stays the design size, so it needs no storage.
+        SIZE publish_size = {};
+        bool canvas_active = false;
+        ResolveBitmapCanvasLayout(
+            m_consumer, m_cur_output_size,
+            &publish_size, &m_canvas_publish_output, &m_canvas_publish_clip,
+            &m_canvas_bitmap_offset, &canvas_active);
+        m_canvas_active = canvas_active;
+        m_canvas_design_size = m_cur_output_size;
+        m_canvas_cached = true;
     }
 
     hr = Render( now, pos );
@@ -233,7 +348,17 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     if (hr == S_OK)
     {
         CRect video_rect(CPoint(0,0), m_cur_output_size);
-        m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(mem_subpic, video_rect, video_rect, now, &hr);
+        if (m_canvas_active)
+        {
+            m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
+                mem_subpic, m_canvas_publish_output, m_canvas_publish_clip,
+                now, &hr, m_canvas_bitmap_offset);
+        }
+        else
+        {
+            m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
+                mem_subpic, video_rect, video_rect, now, &hr);
+        }
     }
     else
     {

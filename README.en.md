@@ -147,12 +147,13 @@ Scope and fallbacks:
   performed on the playback thread.
 - Windowed playback, missing fields, invalid rectangles, or a canvas that cannot
   contain the video fall back to the active video rectangle.
-- This release applies to ASS/SSA/SRT text only. The renderer lays out against
-  the whole display canvas, so font size follows the canvas height and a 16:9
-  master subtitle no longer shrinks with an 800-pixel-tall picture.
-- PGS/SUP/DVB keep the previous behaviour and do not use this option. Moving
-  bitmap subtitles into the bars needs provider-side full-canvas resampling,
-  which is tracked as follow-up work.
+- ASS/SSA/SRT: the renderer lays out against the whole display canvas, so font
+  size follows the canvas height and a 16:9 master subtitle no longer shrinks
+  with an 800-pixel-tall picture.
+- PGS/SUP/DVB: bitmap subtitles are authored in their design resolution (usually
+  1920x1080, already including the bars). With the option on, that canvas is
+  handed to the consumer as a whole, so the subtitles reach the bars with **no
+  resampling**; a design aspect that differs from the display falls back.
 - PGS/SUP/DVB use the existing `GetOutputRect` / `GetClipRect` frame contract,
   leaving any required scaling and clipping to the external consumer. Pixel-exact
   1:1 output is not guaranteed for every resolution, and not every renderer

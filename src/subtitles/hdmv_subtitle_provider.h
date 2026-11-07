@@ -26,6 +26,17 @@ private :
     CSize                       m_cur_output_size;
     bool m_use_dst_alpha;
     HdrColor::Config m_applied_hdr_config;
+
+    // Cached canvas geometry. The PGS/DVB bitmap is drawn in the stream's own
+    // design resolution; only the published frame geometry changes when the
+    // display area is used. Recomputed only when an input changes.
+    bool m_canvas_cached;
+    SIZE m_canvas_design_size;
+    RECT m_canvas_publish_output;
+    RECT m_canvas_publish_clip;
+    POINT m_canvas_bitmap_offset;
+    bool m_canvas_active;
+
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;
     CComPtr<IXySubRenderFrame>  m_xy_sub_render_frame;
