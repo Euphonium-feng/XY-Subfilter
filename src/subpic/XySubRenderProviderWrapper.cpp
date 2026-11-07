@@ -409,8 +409,8 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
         || m_render_target_rect!=render_target_rect
         || m_render_video_size!=render_video_size
         || m_use_display_canvas!=use_display_canvas
-        || m_frame_layout.output_rect!=frame_layout.output_rect
-        || m_frame_layout.clip_rect!=frame_layout.clip_rect)
+        || !EqualRect(&m_frame_layout.output_rect, &frame_layout.output_rect)
+        || !EqualRect(&m_frame_layout.clip_rect, &frame_layout.clip_rect))
     {
         should_invalidate = true;
         should_invalidate_allocator =

@@ -178,8 +178,8 @@ XySubRenderFrameWrapper2::XySubRenderFrameWrapper2(
     , m_remap_bitmap_ids(remap_bitmap_ids)
 {
     ASSERT(inner_obj);
-    m_output_rect.SetRectEmpty();
-    m_clip_rect.SetRectEmpty();
+    ::SetRectEmpty(&m_output_rect);
+    ::SetRectEmpty(&m_clip_rect);
     m_bitmap_offset.x = 0;
     m_bitmap_offset.y = 0;
     if (!remap_bitmap_ids)
