@@ -124,6 +124,7 @@ private:
 
     void UpdateLanguageCount();
     SubtitleRenderBackend GetActualSubtitleRenderBackend();
+    SIZE GetConsumerDisplaySize();
 
     CStringW DumpProviderInfo();
     CStringW DumpConsumerInfo();
@@ -188,6 +189,9 @@ private:
     CStringW m_hdr_mkv_cache_path;
     HdrMkvFileProbeResult m_hdr_mkv_cache;
     bool m_hdr_mkv_cache_valid;
+
+    DWORD m_display_area_last_query;
+    SIZE m_display_area_cached;
 
     REFERENCE_TIME m_last_requested;
 

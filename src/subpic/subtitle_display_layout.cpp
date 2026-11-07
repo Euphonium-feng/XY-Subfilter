@@ -17,6 +17,16 @@ namespace
         return rect.bottom - rect.top;
     }
 
+    int Gcd(int first, int second)
+    {
+        while (second != 0) {
+            const int remainder = first % second;
+            first = second;
+            second = remainder;
+        }
+        return first > 0 ? first : 1;
+    }
+
     // Relative tolerance: consumer display fields routinely omit a taskbar or
     // a few pixels of window decoration. 5% is wide enough for a taskbar and
     // narrow enough to reject a window that merely happens to be larger.
@@ -53,6 +63,8 @@ namespace SubtitleDisplayLayout
         , has_fullscreen_rect(false)
         , display_mode_size()
         , has_display_mode_size(false)
+        , display_area_size()
+        , has_display_area_size(false)
     {
     }
 
@@ -156,17 +168,22 @@ namespace SubtitleDisplayLayout
             display = MakeDisplayModeRect(input.display_mode_size);
             result.has_display = true;
         }
-        if (!result.has_display) {
+        if (!result.has_display
+            && !(input.has_display_area_size
+                && input.display_area_size.cx > 0
+                && input.display_area_size.cy > 0)) {
             return result;
         }
 
         // Only the display size is used for matching. The display rect's
         // origin may be a desktop coordinate and must never leak into the
         // comparison or into layout.
-        result.size_matches = SizesMatchWithinTolerance(
-            RectWidth(input.subtitle_target_rect),
-            RectHeight(input.subtitle_target_rect),
-            RectWidth(display), RectHeight(display));
+        if (result.has_display) {
+            result.size_matches = SizesMatchWithinTolerance(
+                RectWidth(input.subtitle_target_rect),
+                RectHeight(input.subtitle_target_rect),
+                RectWidth(display), RectHeight(display));
+        }
 
         // Both rects are consumer display-space rects, so this comparison is
         // meaningful. It rejects a window that is not actually fullscreen.
@@ -178,9 +195,20 @@ namespace SubtitleDisplayLayout
             || RectHeight(input.subtitle_target_rect)
                 > RectHeight(input.video_output_rect);
 
-        result.fullscreen = result.size_matches
+        if (result.size_matches
             && result.contains_video
-            && result.larger_than_video;
+            && result.larger_than_video) {
+            result.fullscreen = true;
+            return result;
+        }
+
+        // Consumers such as madVR report every rect in source video pixels, so
+        // subtitleTargetRect equals videoOutputRect even in fullscreen. There
+        // the display size comes from the player window instead.
+        result.fullscreen = result.has_display_area_size
+            && input.display_area_size.cx > 0
+            && input.display_area_size.cy > 0
+            && result.contains_video;
         return result;
     }
 
@@ -277,5 +305,94 @@ namespace SubtitleDisplayLayout
         layout.bitmap_offset.y =
             canvas_rect.top - video_output_rect.top;
         return layout;
+    }
+
+    CanvasResult ResolveCanvasForAspect(
+        bool enabled, int aspect_mode, bool fullscreen,
+        const RECT& video_rect, int display_width, int display_height)
+    {
+        CanvasResult result;
+        result.resolved_aspect_mode = aspect_mode;
+
+        if (!enabled || aspect_mode == ASPECT_OFF) {
+            result.fallback_reason = FALLBACK_DISABLED;
+            result.canvas_rect = video_rect;
+            return result;
+        }
+        if (aspect_mode < ASPECT_AUTO || aspect_mode >= ASPECT_COUNT) {
+            result.fallback_reason = FALLBACK_INVALID_ASPECT;
+            result.canvas_rect = video_rect;
+            return result;
+        }
+        if (!fullscreen) {
+            result.fallback_reason = FALLBACK_NOT_FULLSCREEN;
+            result.canvas_rect = video_rect;
+            return result;
+        }
+        if (!IsPositiveSize(video_rect)) {
+            result.fallback_reason = FALLBACK_INVALID_VIDEO_RECT;
+            return result;
+        }
+        if (display_width <= 0 || display_height <= 0) {
+            result.fallback_reason = FALLBACK_NO_DISPLAY_RECT;
+            result.canvas_rect = video_rect;
+            return result;
+        }
+
+        int aspect_width = AspectWidth(aspect_mode);
+        int aspect_height = AspectHeight(aspect_mode);
+        if (aspect_mode == ASPECT_AUTO) {
+            // The display's own ratio, reduced to keep the arithmetic small.
+            const int divisor = Gcd(display_width, display_height);
+            aspect_width = display_width / divisor;
+            aspect_height = display_height / divisor;
+        }
+        if (aspect_width <= 0 || aspect_height <= 0) {
+            result.fallback_reason = FALLBACK_INVALID_ASPECT;
+            result.canvas_rect = video_rect;
+            return result;
+        }
+
+        const __int64 video_width = RectWidth(video_rect);
+        const __int64 video_height = RectHeight(video_rect);
+
+        // Smallest canvas of the requested ratio that still contains the
+        // video. A 21:9 request around a 1920x1080 video cannot contain it,
+        // so the ratio is widened to the video's own instead of clipping.
+        __int64 canvas_width = video_width;
+        __int64 canvas_height = canvas_width * aspect_height / aspect_width;
+        if (canvas_height < video_height) {
+            canvas_height = video_height;
+            canvas_width = canvas_height * aspect_width / aspect_height;
+        }
+        if (canvas_width < video_width) {
+            canvas_width = video_width;
+        }
+        if (canvas_width <= 0 || canvas_height <= 0) {
+            result.fallback_reason = FALLBACK_INVALID_ASPECT;
+            result.canvas_rect = video_rect;
+            return result;
+        }
+
+        // Centre on the video rect so the extra space becomes letterbox bars.
+        const LONG left = video_rect.left
+            + LONG((video_width - canvas_width) / 2);
+        const LONG top = video_rect.top
+            + LONG((video_height - canvas_height) / 2);
+        result.canvas_rect = RECT{
+            left, top,
+            left + LONG(canvas_width), top + LONG(canvas_height)
+        };
+        if (!ContainsRect(result.canvas_rect, video_rect)) {
+            result.fallback_reason = FALLBACK_CANVAS_DOES_NOT_CONTAIN_VIDEO;
+            result.canvas_rect = video_rect;
+            return result;
+        }
+
+        result.layout_size.cx = RectWidth(result.canvas_rect);
+        result.layout_size.cy = RectHeight(result.canvas_rect);
+        result.uses_display_area = true;
+        result.fallback_reason = FALLBACK_NONE;
+        return result;
     }
 }

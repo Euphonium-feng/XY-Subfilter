@@ -261,6 +261,109 @@ TEST(SubtitleDisplayLayoutTest, CanvasInvalidAspectFallsBack)
         canvas.fallback_reason);
 }
 
+TEST(SubtitleDisplayLayoutTest, AspectCanvasExtendsVideoToDisplayRatio)
+{
+    // 1920x800 on a 16:9 display: the canvas is 1920x1080, 140px per bar.
+    const RECT video = { 0, 0, 1920, 800 };
+    const SubtitleDisplayLayout::CanvasResult canvas =
+        SubtitleDisplayLayout::ResolveCanvasForAspect(
+            true, SubtitleDisplayLayout::ASPECT_AUTO, true,
+            video, 2560, 1440);
+
+    EXPECT_TRUE(canvas.uses_display_area);
+    EXPECT_EQ(SubtitleDisplayLayout::FALLBACK_NONE, canvas.fallback_reason);
+    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, canvas.canvas_rect);
+    EXPECT_EQ(1920, canvas.layout_size.cx);
+    EXPECT_EQ(1080, canvas.layout_size.cy);
+}
+
+TEST(SubtitleDisplayLayoutTest, AspectCanvasHonoursExplicitAspect)
+{
+    const RECT video = { 0, 0, 1920, 800 };
+    const SubtitleDisplayLayout::CanvasResult canvas =
+        SubtitleDisplayLayout::ResolveCanvasForAspect(
+            true, SubtitleDisplayLayout::ASPECT_4_3, true,
+            video, 2560, 1440);
+
+    // 4:3 around a 1920-wide video is 1920x1440.
+    ExpectRectEquals(RECT{ 0, -320, 1920, 1120 }, canvas.canvas_rect);
+    EXPECT_EQ(1920, canvas.layout_size.cx);
+    EXPECT_EQ(1440, canvas.layout_size.cy);
+}
+
+TEST(SubtitleDisplayLayoutTest, AspectCanvasWideModeCannotClipVideo)
+{
+    const RECT video = { 0, 0, 1920, 1080 };
+    const SubtitleDisplayLayout::CanvasResult canvas =
+        SubtitleDisplayLayout::ResolveCanvasForAspect(
+            true, SubtitleDisplayLayout::ASPECT_21_9, true,
+            video, 2560, 1440);
+
+    // A 21:9 canvas cannot contain 16:9 video; the video's own ratio wins.
+    EXPECT_TRUE(canvas.uses_display_area);
+    ExpectRectEquals(video, canvas.canvas_rect);
+}
+
+TEST(SubtitleDisplayLayoutTest, AspectCanvasRequiresFullscreen)
+{
+    const RECT video = { 0, 0, 1920, 800 };
+    const SubtitleDisplayLayout::CanvasResult canvas =
+        SubtitleDisplayLayout::ResolveCanvasForAspect(
+            true, SubtitleDisplayLayout::ASPECT_AUTO, false,
+            video, 2560, 1440);
+
+    EXPECT_FALSE(canvas.uses_display_area);
+    EXPECT_EQ(
+        SubtitleDisplayLayout::FALLBACK_NOT_FULLSCREEN,
+        canvas.fallback_reason);
+    ExpectRectEquals(video, canvas.canvas_rect);
+}
+
+TEST(SubtitleDisplayLayoutTest, AspectCanvasNeedsDisplaySize)
+{
+    const RECT video = { 0, 0, 1920, 800 };
+    const SubtitleDisplayLayout::CanvasResult canvas =
+        SubtitleDisplayLayout::ResolveCanvasForAspect(
+            true, SubtitleDisplayLayout::ASPECT_AUTO, true,
+            video, 0, 0);
+
+    EXPECT_FALSE(canvas.uses_display_area);
+    EXPECT_EQ(
+        SubtitleDisplayLayout::FALLBACK_NO_DISPLAY_RECT,
+        canvas.fallback_reason);
+    ExpectRectEquals(video, canvas.canvas_rect);
+}
+
+TEST(SubtitleDisplayLayoutTest, FullscreenGateAcceptsSourcePixelConsumer)
+{
+    // madVR reports every rect as 1920x800 even in fullscreen.
+    SubtitleDisplayLayout::FullscreenGateInput input;
+    input.video_output_rect = RECT{ 0, 0, 1920, 800 };
+    input.subtitle_target_rect = RECT{ 0, 0, 1920, 800 };
+    input.has_display_area_size = true;
+    input.display_area_size.cx = 2560;
+    input.display_area_size.cy = 1440;
+
+    const SubtitleDisplayLayout::FullscreenGateResult gate =
+        SubtitleDisplayLayout::EvaluateFullscreenGate(input);
+    EXPECT_FALSE(gate.size_matches);
+    EXPECT_TRUE(gate.contains_video);
+    EXPECT_FALSE(gate.larger_than_video);
+    EXPECT_TRUE(gate.fullscreen);
+}
+
+TEST(SubtitleDisplayLayoutTest, FullscreenGateRejectsWindowedSourcePixels)
+{
+    // No display area means the player does not cover the monitor.
+    SubtitleDisplayLayout::FullscreenGateInput input;
+    input.video_output_rect = RECT{ 0, 0, 1920, 800 };
+    input.subtitle_target_rect = RECT{ 0, 0, 1920, 800 };
+
+    const SubtitleDisplayLayout::FullscreenGateResult gate =
+        SubtitleDisplayLayout::EvaluateFullscreenGate(input);
+    EXPECT_FALSE(gate.fullscreen);
+}
+
 TEST(SubtitleDisplayLayoutTest, FrameLayoutKeepsOutputAndShiftsBitmaps)
 {
     const RECT video = { 0, 187, 2560, 1253 };

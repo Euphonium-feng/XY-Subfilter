@@ -42,6 +42,21 @@ SubtitleDisplayLayout::CanvasResult ResolveConsumerCanvas(
         return SubtitleDisplayLayout::ResolveCanvas(input);
     }
 
+    SIZE display_area = {};
+    const bool has_display_area =
+        SUCCEEDED(consumer->XyGetSize(
+            DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &display_area))
+        && display_area.cx > 0
+        && display_area.cy > 0;
+    if (has_display_area) {
+        // The real display ratio is available, so lay out on a canvas of that
+        // ratio centred on the video instead of trusting consumer rects that
+        // may all be in source pixels.
+        return SubtitleDisplayLayout::ResolveCanvasForAspect(
+            true, input.aspect_mode, true, video_output_rect,
+            display_area.cx, display_area.cy);
+    }
+
     return SubtitleDisplayLayout::ResolveCanvas(input);
 }
 }

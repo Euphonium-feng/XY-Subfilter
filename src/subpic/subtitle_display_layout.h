@@ -42,6 +42,8 @@ namespace SubtitleDisplayLayout
         bool has_fullscreen_rect;
         SIZE display_mode_size;
         bool has_display_mode_size;
+        SIZE display_area_size;
+        bool has_display_area_size;
 
         FullscreenGateInput();
     };
@@ -111,7 +113,18 @@ namespace SubtitleDisplayLayout
     // Resolves the canvas used to lay out text subtitles. AUTO uses the
     // consumer target; explicit aspect modes fit inside it. Never returns a
     // canvas that is outside the target.
+    //
+    // Some consumers (notably madVR) report every consumer rect in source
+    // pixels, so the target is identical to the video even in fullscreen. When
+    // a real display size is supplied, the canvas is therefore built from the
+    // display ratio instead: it stays in video pixel space, contains the video
+    // and is centred on it, e.g. 1920x800 on a 16:9 display becomes 1920x1080
+    // at y=-140.
     CanvasResult ResolveCanvas(const CanvasInput& input);
+
+    CanvasResult ResolveCanvasForAspect(
+        bool enabled, int aspect_mode, bool fullscreen,
+        const RECT& video_rect, int display_width, int display_height);
 
     // Builds the published frame geometry from the consumer's video rect and
     // the resolved canvas. Bitmap positions are canvas-local and are shifted

@@ -164,6 +164,7 @@ namespace DirectVobSubXyOptions
         BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
         INT_SUBTITLE_DISPLAY_ASPECT, //see @SubtitleDisplayAspect
         RECT_FULLSCREEN,             //consumer fullscreen rect, appended for ABI
+        SIZE_DISPLAY_AREA,           //provider -> wrappers: real display size
 
         OPTION_COUNT
     };
@@ -425,6 +426,7 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_VIDEO_OUTPUT},
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_SUBTITLE_TARGET},
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_FULLSCREEN},
+        {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_DISPLAY_AREA},
 
         {XyOptionsImpl::OPTION_TYPE_DOUBLE, XyOptionsImpl::OPTION_MODE_RW, DOUBLE_FPS},
 
@@ -491,6 +493,7 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_VIDEO_OUTPUT},
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_SUBTITLE_TARGET},
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_FULLSCREEN},
+        {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_DISPLAY_AREA},
         {XyOptionsImpl::OPTION_TYPE_ULONGLONG, XyOptionsImpl::OPTION_MODE_READ, ULONGLOG_FRAME_RATE},
 
         {XyOptionsImpl::OPTION_TYPE_DOUBLE, XyOptionsImpl::OPTION_MODE_READ, DOUBLE_REFRESH_RATE},
