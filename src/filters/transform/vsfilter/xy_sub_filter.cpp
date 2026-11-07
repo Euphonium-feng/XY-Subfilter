@@ -721,6 +721,7 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     case INT_TEXT_HDR_MODE:
     case INT_SUBTITLE_DISPLAY_ASPECT:
     case BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES:
+    case SIZE_DISPLAY_AREA:
         {
             bool deferred = false;
             {
@@ -2188,16 +2189,30 @@ void XySubFilter::LogHdrConfiguration(
         const SubtitleDisplayLayout::FullscreenGateResult gate =
             SubtitleDisplayLayout::EvaluateFullscreenGate(gate_input);
 
-        SubtitleDisplayLayout::CanvasInput canvas_input;
-        canvas_input.enabled = use_display_area;
-        canvas_input.aspect_mode = use_display_area
-            ? display_aspect
-            : DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
-        canvas_input.fullscreen = consumer_is_fullscreen;
-        canvas_input.video_output_rect = video_rect;
-        canvas_input.subtitle_target_rect = subtitle_target;
-        const SubtitleDisplayLayout::CanvasResult canvas =
-            SubtitleDisplayLayout::ResolveCanvas(canvas_input);
+        // Mirror the provider's decision exactly: with an injected display
+        // size the canvas comes from the display ratio, otherwise from the
+        // consumer rects. Logging only the latter made the diagnostics
+        // contradict what was actually rendered.
+        SubtitleDisplayLayout::CanvasResult canvas;
+        if (gate_input.has_display_area_size
+            && consumer_is_fullscreen
+            && use_display_area) {
+            canvas = SubtitleDisplayLayout::ResolveCanvasForAspect(
+                true, display_aspect, true, video_rect,
+                gate_input.display_area_size.cx,
+                gate_input.display_area_size.cy);
+        }
+        else {
+            SubtitleDisplayLayout::CanvasInput canvas_input;
+            canvas_input.enabled = use_display_area;
+            canvas_input.aspect_mode = use_display_area
+                ? display_aspect
+                : DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
+            canvas_input.fullscreen = consumer_is_fullscreen;
+            canvas_input.video_output_rect = video_rect;
+            canvas_input.subtitle_target_rect = subtitle_target;
+            canvas = SubtitleDisplayLayout::ResolveCanvas(canvas_input);
+        }
         const RECT canvas_rect = canvas.uses_display_area
             ? canvas.canvas_rect : video_rect;
         const SubtitleDisplayLayout::FrameLayout frame_layout =

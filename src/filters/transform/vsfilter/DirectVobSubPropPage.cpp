@@ -2348,18 +2348,11 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
 
         const bool use_display_area =
             m_subtitle_display_aspect != DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
-        hr = m_pDirectVobSubXy->XySetBool(
-            DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
-            use_display_area);
-        CHECK_N_LOG(hr, "Failed to set option");
-        hr = m_pDirectVobSubXy->XySetInt(
-            DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
-            m_subtitle_display_aspect);
-        CHECK_N_LOG(hr, "Failed to set option");
 
         // The playback thread must not query windows or monitors: one hung
         // process can block it. Resolve the primary display size here, on the
-        // UI thread, and hand it to the provider as a plain value.
+        // UI thread, and store it before the option is enabled so the very
+        // first refresh already has the value.
         if (use_display_area) {
             const int display_width = GetSystemMetrics(SM_CXSCREEN);
             const int display_height = GetSystemMetrics(SM_CYSCREEN);
@@ -2370,6 +2363,15 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
                 CHECK_N_LOG(hr, "Failed to set option");
             }
         }
+
+        hr = m_pDirectVobSubXy->XySetBool(
+            DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
+            use_display_area);
+        CHECK_N_LOG(hr, "Failed to set option");
+        hr = m_pDirectVobSubXy->XySetInt(
+            DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
+            m_subtitle_display_aspect);
+        CHECK_N_LOG(hr, "Failed to set option");
 
         if (dvs_impl) {
             dvs_impl->EndHdrOptionBatch();
