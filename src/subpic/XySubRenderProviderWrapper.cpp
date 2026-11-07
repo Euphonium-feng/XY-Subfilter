@@ -315,7 +315,13 @@ XySubRenderProviderWrapper2::XySubRenderProviderWrapper2( ISubPicProviderEx2 *pr
     , m_max_bitmap_count2(0)
     , m_use_dst_alpha(0)
     , m_render_to_original_video_size(0)
+    , m_use_display_canvas(false)
+    , m_canvas_cached(false)
 {
+    m_canvas_video_rect = RECT();
+    m_canvas_target_rect = RECT();
+    m_canvas_video_size.cx = 0;
+    m_canvas_video_size.cy = 0;
     HRESULT hr = NOERROR;
     if (!provider)
     {
@@ -379,8 +385,23 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     ASSERT(output_rect.Width()<=subtitle_target_rect.Width() && output_rect.Height()<=subtitle_target_rect.Height());
     hr = m_consumer->XyGetSize(DirectVobSubXyOptions::SIZE_LAYOUT_WITH, &original_video_size);
     ASSERT(SUCCEEDED(hr));
-    const SubtitleDisplayLayout::CanvasResult display_canvas =
-        ResolveConsumerCanvas(m_consumer, output_rect, subtitle_target_rect);
+    // The canvas only depends on the video rect, the consumer target and the
+    // injected display size. All three are stable for a whole playback
+    // session, so resolve once instead of on every frame request.
+    const bool canvas_inputs_changed =
+        !m_canvas_cached
+        || !EqualRect(&m_canvas_video_rect, &output_rect)
+        || !EqualRect(&m_canvas_target_rect, &subtitle_target_rect);
+    if (canvas_inputs_changed)
+    {
+        m_canvas_value = ResolveConsumerCanvas(
+            m_consumer, output_rect, subtitle_target_rect);
+        m_canvas_video_rect = output_rect;
+        m_canvas_target_rect = subtitle_target_rect;
+        m_canvas_cached = true;
+    }
+    const SubtitleDisplayLayout::CanvasResult& display_canvas =
+        m_canvas_value;
     hr = m_consumer->XyGetInt(DirectVobSubXyOptions::INT_MAX_BITMAP_COUNT2, &m_max_bitmap_count2);
     ASSERT(SUCCEEDED(hr));
     hr = m_consumer->XyGetBool(DirectVobSubXyOptions::BOOL_SUB_FRAME_USE_DST_ALPHA, &use_dst_alpha);
@@ -484,19 +505,6 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
         return hr;
     }
     CComPtr<IXySubRenderFrame> published_frame = m_xy_sub_render_frame;
-    if (m_use_display_canvas && published_frame)
-    {
-        // Wrap exactly once per request. The inner frame is cached across
-        // requests, so applying the geometry there would stack wrappers and
-        // shift bitmaps repeatedly.
-        CComPtr<XySubRenderFrameWrapper2> geometry_frame;
-        geometry_frame.Attach(DEBUG_NEW XySubRenderFrameWrapper2(
-            published_frame, 0, 0, false));
-        geometry_frame->SetFrameGeometry(
-            m_frame_layout.output_rect, m_frame_layout.clip_rect,
-            m_frame_layout.bitmap_offset);
-        published_frame = geometry_frame;
-    }
     if (published_frame)
     {
         *subRenderFrame = published_frame;
@@ -543,6 +551,22 @@ HRESULT XySubRenderProviderWrapper2::Render( REFERENCE_TIME now, POSITION pos )
         m_render_video_rect, m_render_target_rect,
         m_render_video_size, now, m_fps);
     ASSERT(SUCCEEDED(hr));
+
+    if (m_use_display_canvas && m_xy_sub_render_frame)
+    {
+        // Write the published geometry straight into the rendered frame. A
+        // per-frame wrapper allocation was the source of the fullscreen
+        // stutter and crashes.
+        XySubRenderFrame* xy_frame =
+            dynamic_cast<XySubRenderFrame*>(m_xy_sub_render_frame.p);
+        if (xy_frame)
+        {
+            xy_frame->m_output_rect = m_frame_layout.output_rect;
+            xy_frame->m_clip_rect = m_frame_layout.clip_rect;
+            xy_frame->m_bitmap_offset_x = m_frame_layout.bitmap_offset.x;
+            xy_frame->m_bitmap_offset_y = m_frame_layout.bitmap_offset.y;
+        }
+    }
 
     bool should_combine = false;
     if (m_xy_sub_render_frame)

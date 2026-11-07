@@ -65,6 +65,9 @@ public:
     XyColorSpace m_xy_color_space;
 
     int m_left, m_top;
+    // Added to every bitmap position. GetOutputRect()/GetClipRect() stay in
+    // the frame's own space; this shifts canvas-local bitmaps into it.
+    int m_bitmap_offset_x, m_bitmap_offset_y;
 };
 
 typedef ::boost::shared_ptr<XySubRenderFrame> SharedPtrXySubRenderFrame;

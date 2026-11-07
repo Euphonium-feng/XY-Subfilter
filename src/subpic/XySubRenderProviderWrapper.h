@@ -63,6 +63,11 @@ private:
     CSize m_render_video_size;
     bool m_use_display_canvas;
     SubtitleDisplayLayout::FrameLayout m_frame_layout;
+    bool m_canvas_cached;
+    RECT m_canvas_video_rect;
+    RECT m_canvas_target_rect;
+    CSize m_canvas_video_size;
+    SubtitleDisplayLayout::CanvasResult m_canvas_value;
     CSize m_original_video_size;
     bool m_use_dst_alpha;
     bool m_render_to_original_video_size;

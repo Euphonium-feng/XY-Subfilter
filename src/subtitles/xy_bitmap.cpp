@@ -251,6 +251,8 @@ void XyBitmap::BltPack( SubPicDesc& spd, POINT pos, SIZE size, LPCVOID pixels, i
 
 XySubRenderFrame::XySubRenderFrame()
     : CUnknown(NAME("XySubRenderFrameWrapper"), NULL)
+    , m_bitmap_offset_x(0)
+    , m_bitmap_offset_y(0)
 {
 
 }
@@ -323,8 +325,8 @@ STDMETHODIMP XySubRenderFrame::GetBitmap( int index, ULONGLONG *id, POINT *posit
     const XyBitmap& bitmap = *(m_bitmaps.GetAt(index));
     if (position)
     {
-        position->x = bitmap.x + m_output_rect.left;
-        position->y = bitmap.y + m_output_rect.top;
+        position->x = bitmap.x + m_output_rect.left + m_bitmap_offset_x;
+        position->y = bitmap.y + m_output_rect.top + m_bitmap_offset_y;
     }
     if (size)
     {
