@@ -154,8 +154,6 @@ TEST(SubtitleDisplayLayoutTest, CanvasAutoUsesConsumerTarget)
     ExpectRectEquals(target, canvas.canvas_rect);
     EXPECT_EQ(2560, canvas.layout_size.cx);
     EXPECT_EQ(1440, canvas.layout_size.cy);
-    EXPECT_EQ(0, canvas.canvas_origin.x);
-    EXPECT_EQ(0, canvas.canvas_origin.y);
 }
 
 TEST(SubtitleDisplayLayoutTest, CanvasAutoKeepsNonZeroOrigin)
@@ -168,8 +166,8 @@ TEST(SubtitleDisplayLayoutTest, CanvasAutoKeepsNonZeroOrigin)
 
     EXPECT_TRUE(canvas.uses_display_area);
     ExpectRectEquals(target, canvas.canvas_rect);
-    EXPECT_EQ(2560, canvas.canvas_origin.x);
-    EXPECT_EQ(0, canvas.canvas_origin.y);
+    EXPECT_EQ(2560, canvas.layout_size.cx);
+    EXPECT_EQ(1440, canvas.layout_size.cy);
 }
 
 TEST(SubtitleDisplayLayoutTest, Canvas16x9FitsInsideTarget)

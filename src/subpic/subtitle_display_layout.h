@@ -72,7 +72,6 @@ namespace SubtitleDisplayLayout
     {
         RECT canvas_rect;
         SIZE layout_size;
-        POINT canvas_origin;
         int resolved_aspect_mode;
         FallbackReason fallback_reason;
         bool uses_display_area;

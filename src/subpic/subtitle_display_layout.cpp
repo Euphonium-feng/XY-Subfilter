@@ -82,8 +82,6 @@ namespace SubtitleDisplayLayout
         canvas_rect = RECT();
         layout_size.cx = 0;
         layout_size.cy = 0;
-        canvas_origin.x = 0;
-        canvas_origin.y = 0;
     }
 
     FrameLayout::FrameLayout()
@@ -245,8 +243,6 @@ namespace SubtitleDisplayLayout
         }
 
         result.canvas_rect = canvas;
-        result.canvas_origin.x = canvas.left;
-        result.canvas_origin.y = canvas.top;
         result.layout_size.cx = RectWidth(canvas);
         result.layout_size.cy = RectHeight(canvas);
         result.uses_display_area = true;
