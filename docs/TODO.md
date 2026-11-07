@@ -50,6 +50,10 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 - PGS/SUP/DVB 本轮强制回到基线行为（`XySubRenderProviderWrapper` 去掉显示区域
   参数，`HdmvSubtitleProviderImpl` 恢复原实现），列为待办。
 
+第二版云端验证：提交 `87480be` 的 run `42371393326` 三矩阵全绿
+（`regression-release-win32`、`regression-release-x64`、`regression-debug-x64`）。
+本轮尚未做播放器实机验收，结果由用户提供。
+
 历史实现（第一版，已被本轮替换）：
 
 - 已新增纯函数模块 `src/subpic/subtitle_display_layout.{h,cpp}`，定义
