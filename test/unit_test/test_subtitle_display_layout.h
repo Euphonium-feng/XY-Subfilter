@@ -299,9 +299,10 @@ TEST(SubtitleDisplayLayoutTest, AspectCanvasWideModeCannotClipVideo)
             true, SubtitleDisplayLayout::ASPECT_21_9, true,
             video, 2560, 1440);
 
-    // A 21:9 canvas cannot contain 16:9 video; the video's own ratio wins.
+    // 21:9 is wider than 16:9, so the canvas grows to 2520x1080 to contain the
+    // video: 300 px of side bars instead of clipping the picture.
     EXPECT_TRUE(canvas.uses_display_area);
-    ExpectRectEquals(video, canvas.canvas_rect);
+    ExpectRectEquals(RECT{ -300, 0, 2220, 1080 }, canvas.canvas_rect);
 }
 
 TEST(SubtitleDisplayLayoutTest, AspectCanvasRequiresFullscreen)
