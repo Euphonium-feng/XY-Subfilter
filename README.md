@@ -177,9 +177,12 @@ scoop install xysubfilter-libass-np -g
 
 生效条件与边界：
 
-- 仅在严格全屏时生效：consumer 的 `subtitleTargetRect` 尺寸与
-  `fullscreenRect`（或 `displayModeSize`）相差 ≤5%、完整包含活动视频矩形、
-  且严格大于它。三项都在 consumer 显示空间内比较。
+- 仅在严格全屏时生效。若 consumer 的矩形位于显示空间，要求
+  `subtitleTargetRect` 尺寸与 `fullscreenRect`（或 `displayModeSize`）相差 ≤5%、
+  完整包含活动视频矩形且严格大于它。
+- madVR 会把全部矩形按源视频像素上报；此时改为读取播放器窗口所在显示器的
+  实际尺寸，并要求窗口覆盖该显示器（±5%）。画布按显示宽高比在视频像素空间
+  构造，例如 1920×800 在 16:9 显示器上得到 1920×1080（上下各 140）。
 - 窗口模式、字段缺失、矩形无效、画布不能包含视频时安全回退活动视频矩形。
 - 本轮只对 ASS/SSA/SRT 文本字幕生效：渲染器以整块显示画布排版，字号按画布
   高度缩放，因此 16:9 母版字幕不会随 800 高画面缩小。

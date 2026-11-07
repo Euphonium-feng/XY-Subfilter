@@ -198,15 +198,26 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 `src/subpic/subtitle_display_layout.{h,cpp}` 是不依赖 DirectShow 的布局选择模块，
 只提供纯函数：严格全屏判定、画布解析和帧几何构造。
 
-严格全屏判定 `EvaluateFullscreenGate()` 要求三者同时成立：`subtitleTargetRect`
-的尺寸与 `fullscreenRect`（或 `displayModeSize`）相差不超过 5%；它完整包含
-`videoOutputRect`；且面积/边长严格大于视频。三项比较都在 consumer 显示空间内
-完成，不使用桌面绝对坐标。窗口模式、字段缺失或不匹配时 `BOOL_CONSUMER_IS_FULLSCREEN`
-保持 false，功能自动回退。
+严格全屏判定 `EvaluateFullscreenGate()` 有两种通过路径：
 
-画布解析 `ResolveCanvas()` 以 consumer 已提供的 `subtitleTargetRect` 为画布：
-Auto 直接使用该矩形；显式画幅在其中取最大居中内接画布；若结果不能完整包含
-`videoOutputRect`（`RTS::RenderEx` 会因此返回 `E_NOTIMPL`）则回退视频矩形。
+- consumer 的矩形确实在显示空间：`subtitleTargetRect` 尺寸与 `fullscreenRect`
+  （或 `displayModeSize`）相差不超过 5%，完整包含 `videoOutputRect`，且严格大于视频。
+- consumer 的矩形全是源视频像素（madVR 即如此）：此时滤镜从播放器窗口取
+  `SIZE_DISPLAY_AREA`（`GetMonitorInfo().rcMonitor`，要求窗口覆盖显示器 ±5%，
+  500 ms 缓存），只要 `subtitleTargetRect` 包含视频即视为全屏。
+
+窗口模式、字段缺失或不匹配时 `BOOL_CONSUMER_IS_FULLSCREEN` 保持 false，功能回退。
+
+画布解析有两条路径：
+
+- `ResolveCanvasForAspect()`：已知真实显示尺寸时（madVR 场景），按显示宽高比在
+  **视频源像素空间**构造画布，居中并保证包含视频。1920×800 在 16:9 显示器上得到
+  1920×1080（y=-140）；21:9 对 16:9 视频得到 2520×1080（左右各 300）。
+- `ResolveCanvas()`：consumer 矩形可用时，Auto 直接用 `subtitleTargetRect`，
+  显式画幅在其内部取内接画布。
+
+两条路径都要求画布完整包含 `videoOutputRect`；否则回退视频矩形，因为
+`RTS::RenderEx` 会以 `E_NOTIMPL` 丢弃整帧。
 
 文本数据流：
 

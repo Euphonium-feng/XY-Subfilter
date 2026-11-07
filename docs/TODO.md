@@ -54,6 +54,21 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 （`regression-release-win32`、`regression-release-x64`、`regression-debug-x64`）。
 本轮尚未做播放器实机验收，结果由用户提供。
 
+2026-11-07 实机反馈：四个选项效果都等于关闭，日志显示
+`videoRect=displayRect=targetRect=0,0,1920,800`、`fullscreenRect` 同为该矩形、
+`gateLarger=0`、`fallback=2`。即 PotPlayer + madVR 把 consumer 的全部矩形都按
+**源视频像素**上报，不提供屏幕尺寸，"严格全屏"判据永远不成立。
+
+第三版修复（提交 `947bb5e`，run `42375746794` 三矩阵全绿）：
+
+- 新增只读字段 `SIZE_DISPLAY_AREA`（追加在选项枚举末尾）。
+- 滤镜侧从播放器窗口取显示器尺寸：取本进程最大的可见顶层窗口，`GetMonitorInfo`
+  得到 `rcMonitor`，并要求窗口矩形覆盖显示器（±5%）才算全屏，按 500 ms 缓存。
+- 全屏判定放宽为：consumer 提供显示尺寸时，只要求 `subtitleTargetRect` 包含视频；
+  否则仍走原来的严格尺寸匹配。
+- 画布改为按**显示宽高比**在源像素空间构造：1920×800 在 16:9 显示器上得到
+  1920×1080 画布（上下各 140）；显式画幅按同一规则扩展，绝不裁剪视频。
+
 历史实现（第一版，已被本轮替换）：
 
 - 已新增纯函数模块 `src/subpic/subtitle_display_layout.{h,cpp}`，定义

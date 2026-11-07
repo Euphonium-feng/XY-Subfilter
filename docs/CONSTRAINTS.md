@@ -104,9 +104,13 @@
   HLG 观感描述为已验证。
 - “按显示器区域排版字幕”默认关闭；关闭时不得改变任何现有输出。本轮只对
   ASS/SSA/SRT 文本字幕生效；PGS/SUP/DVB 必须保持旧行为。
-- 仅在严格全屏时启用：consumer 的 `subtitleTargetRect` 尺寸与
-  `fullscreenRect`（或 `displayModeSize`）相差 ≤5%、完整包含 `videoOutputRect`、
-  且严格大于视频。三项比较只允许在 consumer 显示空间内进行。
+- 仅在严格全屏时启用。consumer 矩形位于显示空间时，要求
+  `subtitleTargetRect` 尺寸与 `fullscreenRect`（或 `displayModeSize`）相差 ≤5%、
+  完整包含 `videoOutputRect`、且严格大于视频。
+- madVR 把全部矩形按源视频像素上报，此时必须改用滤镜侧取得的
+  `SIZE_DISPLAY_AREA`：取本进程最大可见顶层窗口所在显示器的 `rcMonitor`，
+  且窗口需覆盖显示器（±5%）。不得把视频矩形当作显示器矩形。
+- 显示尺寸查询最多每 500 ms 一次，禁止逐帧 `EnumWindows`。
 - 不得用活动视频宽高猜显示器宽高，也不得把窗口尺寸当显示器区域。字段缺失、
   窗口模式、无效矩形或内接画布失败时必须回退视频区域。
 - 显式 16:9/16:10/21:9/32:9/4:3 只限制字幕画布的内接比例，不得生成超出

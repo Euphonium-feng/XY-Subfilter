@@ -137,9 +137,13 @@ fullscreen on a 16:9 monitor, instead of shrinking into the active video rectang
 
 Scope and fallbacks:
 
-- Active only in strict fullscreen: the consumer's `subtitleTargetRect` matches
-  the reported display size within 5%, fully contains the active video rect and
-  is strictly larger than it. All three checks stay in the consumer display space.
+- Active only in strict fullscreen. When the consumer's rects are in display
+  space, `subtitleTargetRect` must match the reported display size within 5%,
+  fully contain the active video rect and be strictly larger than it.
+- madVR reports every rect in source video pixels. In that case the option reads
+  the real size of the monitor behind the player window and requires the window
+  to cover it (±5%). The canvas is then built at the display ratio in video
+  pixel space: 1920x800 on a 16:9 display becomes 1920x1080 (140 px per bar).
 - Windowed playback, missing fields, invalid rectangles, or a canvas that cannot
   contain the video fall back to the active video rectangle.
 - This release applies to ASS/SSA/SRT text only. The renderer lays out against
