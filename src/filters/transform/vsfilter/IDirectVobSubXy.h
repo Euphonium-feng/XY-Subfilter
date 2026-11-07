@@ -426,7 +426,7 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_VIDEO_OUTPUT},
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_SUBTITLE_TARGET},
         {XyOptionsImpl::OPTION_TYPE_RECT  , XyOptionsImpl::OPTION_MODE_READ, RECT_FULLSCREEN},
-        {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_DISPLAY_AREA},
+        {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_RW, SIZE_DISPLAY_AREA},
 
         {XyOptionsImpl::OPTION_TYPE_DOUBLE, XyOptionsImpl::OPTION_MODE_RW, DOUBLE_FPS},
 

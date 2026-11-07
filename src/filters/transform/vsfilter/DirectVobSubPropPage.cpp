@@ -2357,6 +2357,20 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
             m_subtitle_display_aspect);
         CHECK_N_LOG(hr, "Failed to set option");
 
+        // The playback thread must not query windows or monitors: one hung
+        // process can block it. Resolve the primary display size here, on the
+        // UI thread, and hand it to the provider as a plain value.
+        if (use_display_area) {
+            const int display_width = GetSystemMetrics(SM_CXSCREEN);
+            const int display_height = GetSystemMetrics(SM_CYSCREEN);
+            if (display_width > 0 && display_height > 0) {
+                SIZE display_area = { display_width, display_height };
+                hr = m_pDirectVobSubXy->XySetSize(
+                    DirectVobSubXyOptions::SIZE_DISPLAY_AREA, display_area);
+                CHECK_N_LOG(hr, "Failed to set option");
+            }
+        }
+
         if (dvs_impl) {
             dvs_impl->EndHdrOptionBatch();
         }

@@ -264,14 +264,11 @@ XySubFilter::XySubFilter( LPUNKNOWN punk,
     , m_hdr_probe_pending(0)
     , m_hdr_probe_completed(false)
     , m_hdr_mkv_cache_valid(false)
-    , m_display_area_last_query(0)
     , m_last_requested(-1)
     , m_workaround_mpc_hc(false)
     , m_disconnect_entered(false)
 {
     AFX_MANAGE_STATE(AfxGetStaticModuleState());
-    m_display_area_cached.cx = 0;
-    m_display_area_cached.cy = 0;
 
     XY_LOG_INFO(XY_LOG_VAR_2_STR(this));
     m_xy_str_opt[STRING_NAME] = L"XySubFilter with libass";
@@ -915,93 +912,6 @@ SubtitleRenderBackend XySubFilter::GetActualSubtitleRenderBackend()
     }
 
     return SUBTITLE_RENDER_BACKEND_VSFILTER;
-}
-
-SIZE XySubFilter::GetConsumerDisplaySize()
-{
-    SIZE size = {};
-
-    // The window/monitor lookup walks all top-level windows, so it is sampled
-    // at most a few times per second instead of on every frame request.
-    const DWORD now = GetTickCount();
-    if (m_display_area_last_query != 0
-        && now - m_display_area_last_query < 500) {
-        return m_display_area_cached;
-    }
-    m_display_area_last_query = now;
-    m_display_area_cached.cx = 0;
-    m_display_area_cached.cy = 0;
-
-    // Some consumers (notably madVR) report videoOutputRect, subtitleTargetRect
-    // and fullscreenRect all in source video pixels, so the real display size
-    // has to come from the window the player draws into.
-    struct WindowSearch {
-        HWND best;
-        LONG area;
-        DWORD process_id;
-    };
-    const DWORD process_id = GetCurrentProcessId();
-
-    struct Finder {
-        static BOOL CALLBACK EnumProc(HWND hwnd, LPARAM param) {
-            WindowSearch* search = reinterpret_cast<WindowSearch*>(param);
-            if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != NULL) {
-                return TRUE;
-            }
-            DWORD window_process = 0;
-            GetWindowThreadProcessId(hwnd, &window_process);
-            if (window_process != search->process_id) {
-                return TRUE;
-            }
-            RECT frame = {};
-            if (!GetWindowRect(hwnd, &frame)) {
-                return TRUE;
-            }
-            const LONG area =
-                (frame.right - frame.left) * (frame.bottom - frame.top);
-            if (area > search->area) {
-                search->best = hwnd;
-                search->area = area;
-            }
-            return TRUE;
-        }
-    };
-
-    WindowSearch search = { NULL, 0, process_id };
-    EnumWindows(Finder::EnumProc, reinterpret_cast<LPARAM>(&search));
-    if (!search.best) {
-        return m_display_area_cached;
-    }
-
-    HMONITOR monitor = MonitorFromWindow(search.best, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO info = { sizeof(info) };
-    if (!GetMonitorInfo(monitor, &info)) {
-        return m_display_area_cached;
-    }
-
-    // The display area is only a valid layout source when the player really
-    // covers the monitor; otherwise a windowed player would enable the option.
-    RECT frame = {};
-    if (!GetWindowRect(search.best, &frame)) {
-        return m_display_area_cached;
-    }
-    const LONG tolerance_x =
-        (info.rcMonitor.right - info.rcMonitor.left + 19) / 20;
-    const LONG tolerance_y =
-        (info.rcMonitor.bottom - info.rcMonitor.top + 19) / 20;
-    const bool covers_monitor =
-        frame.left <= info.rcMonitor.left + tolerance_x
-        && frame.top <= info.rcMonitor.top + tolerance_y
-        && frame.right >= info.rcMonitor.right - tolerance_x
-        && frame.bottom >= info.rcMonitor.bottom - tolerance_y;
-    if (!covers_monitor) {
-        return m_display_area_cached;
-    }
-
-    size.cx = info.rcMonitor.right - info.rcMonitor.left;
-    size.cy = info.rcMonitor.bottom - info.rcMonitor.top;
-    m_display_area_cached = size;
-    return size;
 }
 
 //
@@ -3044,14 +2954,6 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
         update_subtitle = true;
     }
 
-    const SIZE display_area = GetConsumerDisplaySize();
-    if (m_xy_size_opt[SIZE_DISPLAY_AREA] != display_area)
-    {
-        XY_LOG_INFO("Display area size changed from "
-            << m_xy_size_opt[SIZE_DISPLAY_AREA] << " to " << display_area);
-        m_xy_size_opt[SIZE_DISPLAY_AREA] = display_area;
-        update_subtitle = true;
-    }
     if (m_xy_double_opt[DOUBLE_FPS]!=fps)
     {
         XY_LOG_INFO("FPS changed from "<<m_xy_double_opt[DOUBLE_FPS]

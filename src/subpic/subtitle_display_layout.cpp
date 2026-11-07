@@ -203,8 +203,10 @@ namespace SubtitleDisplayLayout
         }
 
         // Consumers such as madVR report every rect in source video pixels, so
-        // subtitleTargetRect equals videoOutputRect even in fullscreen. There
-        // the display size comes from the player window instead.
+        // subtitleTargetRect equals videoOutputRect even in fullscreen. The
+        // display size then comes from the property page, which is the only
+        // place allowed to query the monitor. The user enables the option only
+        // while playing fullscreen, so a stored display size is the signal.
         result.fullscreen = input.has_display_area_size
             && input.display_area_size.cx > 0
             && input.display_area_size.cy > 0
