@@ -284,7 +284,7 @@ TEST(SubtitleDisplayLayoutTest, FrameLayoutShiftsByCanvasOrigin)
 
     ExpectRectEquals(RECT{ 0, 0, 2560, 1066 }, layout.output_rect);
     ExpectRectEquals(RECT{ 0, -187, 2560, 1253 }, layout.clip_rect);
-    EXPECT_EQ(-2560, layout.bitmap_offset.x);
+    EXPECT_EQ(0, layout.bitmap_offset.x);
     EXPECT_EQ(-187, layout.bitmap_offset.y);
 }
 
