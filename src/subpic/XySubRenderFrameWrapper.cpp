@@ -170,22 +170,11 @@ typedef XyFlyWeight<ContextedBitmapId, 1024, ContextedBitmapIdTraits> XyFwContex
 //
 
 XySubRenderFrameWrapper2::XySubRenderFrameWrapper2(
-    IXySubRenderFrame *inner_obj, ULONGLONG context_id, ULONGLONG hdr_generation,
-    bool remap_bitmap_ids)
+    IXySubRenderFrame *inner_obj, ULONGLONG context_id, ULONGLONG hdr_generation)
     : CUnknown(NAME("XySubRenderFrameWrapper"), NULL)
     , m_inner_obj(inner_obj)
-    , m_has_geometry_override(false)
-    , m_remap_bitmap_ids(remap_bitmap_ids)
 {
     ASSERT(inner_obj);
-    ::SetRectEmpty(&m_output_rect);
-    ::SetRectEmpty(&m_clip_rect);
-    m_bitmap_offset.x = 0;
-    m_bitmap_offset.y = 0;
-    if (!remap_bitmap_ids)
-    {
-        return;
-    }
     int count = 0;
     HRESULT hr = inner_obj->GetBitmapCount(&count);
     ASSERT(SUCCEEDED(hr) && count>=0);
@@ -212,29 +201,11 @@ STDMETHODIMP XySubRenderFrameWrapper2::NonDelegatingQueryInterface( REFIID riid,
 
 STDMETHODIMP XySubRenderFrameWrapper2::GetOutputRect( RECT *outputRect )
 {
-    if (m_has_geometry_override)
-    {
-        if (!outputRect)
-        {
-            return E_POINTER;
-        }
-        *outputRect = m_output_rect;
-        return S_OK;
-    }
     return m_inner_obj->GetOutputRect(outputRect);
 }
 
 STDMETHODIMP XySubRenderFrameWrapper2::GetClipRect( RECT *clipRect )
 {
-    if (m_has_geometry_override)
-    {
-        if (!clipRect)
-        {
-            return E_POINTER;
-        }
-        *clipRect = m_clip_rect;
-        return S_OK;
-    }
     return m_inner_obj->GetClipRect(clipRect);
 }
 
@@ -251,37 +222,18 @@ STDMETHODIMP XySubRenderFrameWrapper2::GetBitmapCount( int *count )
 STDMETHODIMP XySubRenderFrameWrapper2::GetBitmap( int index, ULONGLONG *id, POINT *position, SIZE *size
     , LPCVOID *pixels, int *pitch )
 {
-    const bool shift_position = m_has_geometry_override && position != NULL
-        && (m_bitmap_offset.x != 0 || m_bitmap_offset.y != 0);
-    POINT shifted_position = {};
-    POINT *inner_position = shift_position ? &shifted_position : position;
-    HRESULT hr = m_inner_obj->GetBitmap(index, id, inner_position, size, pixels, pitch);
+    HRESULT hr = m_inner_obj->GetBitmap(index, id, position, size, pixels, pitch);
     if (FAILED(hr))
     {
         return hr;
     }
-    if (shift_position)
-    {
-        shifted_position.x += m_bitmap_offset.x;
-        shifted_position.y += m_bitmap_offset.y;
-        *position = shifted_position;
-    }
-    if (id && m_remap_bitmap_ids)
+    if (id)
     {
         ASSERT(index>=0 && index<m_ids.GetCount());
         *id = m_ids.GetAt(index);
         TRACE_SUB_RENDER_FRAME(index<<" contexted id:"<<*id);
     }
     return hr;
-}
-
-void XySubRenderFrameWrapper2::SetFrameGeometry(
-    const RECT& output_rect, const RECT& clip_rect, POINT bitmap_offset)
-{
-    m_output_rect = output_rect;
-    m_clip_rect = clip_rect;
-    m_bitmap_offset = bitmap_offset;
-    m_has_geometry_override = true;
 }
 
 STDMETHODIMP XySubRenderFrameWrapper2::GetBitmapExtra( int index, LPVOID extra_info )

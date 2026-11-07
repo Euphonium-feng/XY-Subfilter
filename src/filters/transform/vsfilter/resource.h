@@ -265,6 +265,8 @@
 #define IDS_RG_TEXT_HDR_MODE            1082
 #define IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES 1136
 #define IDS_RG_SUBTITLE_DISPLAY_ASPECT  1137
+#define IDS_RG_DISPLAY_AREA_WIDTH       1138
+#define IDS_RG_DISPLAY_AREA_HEIGHT      1139
 #define IDS_XY_UI_AUTO                  1083
 #define IDS_XY_UI_TV                    1084
 #define IDS_XY_UI_PC                    1085

@@ -856,6 +856,8 @@ BEGIN
     IDS_RG_TEXT_HDR_MODE                "text_hdr_mode"
     IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES "use_display_area_for_subtitles"
     IDS_RG_SUBTITLE_DISPLAY_ASPECT      "subtitle_display_aspect"
+    IDS_RG_DISPLAY_AREA_WIDTH           "display_area_width"
+    IDS_RG_DISPLAY_AREA_HEIGHT          "display_area_height"
     IDS_RG_SUPPORTED_VERSION "supported_version"
     IDS_RG_VERSION          "version"
 #else
@@ -905,6 +907,8 @@ BEGIN
     IDS_RG_TEXT_HDR_MODE                "TEXT_HDR_MODE"
     IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES "USE_DISPLAY_AREA_FOR_SUBTITLES"
     IDS_RG_SUBTITLE_DISPLAY_ASPECT      "SUBTITLE_DISPLAY_ASPECT"
+    IDS_RG_DISPLAY_AREA_WIDTH           "DISPLAY_AREA_WIDTH"
+    IDS_RG_DISPLAY_AREA_HEIGHT          "DISPLAY_AREA_HEIGHT"
     IDS_RG_SUPPORTED_VERSION "Supported Version"
     IDS_RG_VERSION          "Version"
 #endif
@@ -1791,6 +1795,8 @@ BEGIN
     IDS_RG_TEXT_HDR_MODE                "text_hdr_mode"
     IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES "use_display_area_for_subtitles"
     IDS_RG_SUBTITLE_DISPLAY_ASPECT      "subtitle_display_aspect"
+    IDS_RG_DISPLAY_AREA_WIDTH           "display_area_width"
+    IDS_RG_DISPLAY_AREA_HEIGHT          "display_area_height"
     IDS_RG_SUPPORTED_VERSION "supported_version"
     IDS_RG_VERSION          "version"
 #else
@@ -1840,6 +1846,8 @@ BEGIN
     IDS_RG_TEXT_HDR_MODE                "TEXT_HDR_MODE"
     IDS_RG_USE_DISPLAY_AREA_FOR_SUBTITLES "USE_DISPLAY_AREA_FOR_SUBTITLES"
     IDS_RG_SUBTITLE_DISPLAY_ASPECT      "SUBTITLE_DISPLAY_ASPECT"
+    IDS_RG_DISPLAY_AREA_WIDTH           "DISPLAY_AREA_WIDTH"
+    IDS_RG_DISPLAY_AREA_HEIGHT          "DISPLAY_AREA_HEIGHT"
     IDS_RG_SUPPORTED_VERSION "Supported Version"
     IDS_RG_VERSION          "Version"
 #endif

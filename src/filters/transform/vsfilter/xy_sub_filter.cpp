@@ -269,7 +269,6 @@ XySubFilter::XySubFilter( LPUNKNOWN punk,
     , m_disconnect_entered(false)
 {
     AFX_MANAGE_STATE(AfxGetStaticModuleState());
-
     XY_LOG_INFO(XY_LOG_VAR_2_STR(this));
     m_xy_str_opt[STRING_NAME] = L"XySubFilter with libass";
     m_xy_str_opt[STRING_OUTPUT_LEVELS] = L"PC";
@@ -2167,40 +2166,38 @@ void XySubFilter::LogHdrConfiguration(
         const int display_aspect = m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT];
         const bool use_display_area =
             m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
-        const bool consumer_is_fullscreen =
-            m_xy_bool_opt[BOOL_CONSUMER_IS_FULLSCREEN];
         const RECT subtitle_target = m_xy_rect_opt[RECT_SUBTITLE_TARGET];
-
-        SubtitleDisplayLayout::FullscreenGateInput gate_input;
-        gate_input.video_output_rect = video_rect;
-        gate_input.subtitle_target_rect = subtitle_target;
-        gate_input.fullscreen_rect = display_rect;
-        gate_input.has_fullscreen_rect =
+        const SIZE display_area = m_xy_size_opt[SIZE_DISPLAY_AREA];
+        const bool has_display_area =
+            display_area.cx > 0 && display_area.cy > 0;
+        const bool display_rect_valid =
             display_rect.right > display_rect.left
             && display_rect.bottom > display_rect.top;
-        gate_input.display_mode_size = m_xy_size_opt[SIZE_DISPLAY_MODE];
-        gate_input.has_display_mode_size =
-            gate_input.display_mode_size.cx > 0
-            && gate_input.display_mode_size.cy > 0;
-        gate_input.display_area_size = m_xy_size_opt[SIZE_DISPLAY_AREA];
-        gate_input.has_display_area_size =
-            gate_input.display_area_size.cx > 0
-            && gate_input.display_area_size.cy > 0;
-        const SubtitleDisplayLayout::FullscreenGateResult gate =
-            SubtitleDisplayLayout::EvaluateFullscreenGate(gate_input);
+        const bool consumer_is_fullscreen =
+            display_rect_valid
+            && display_rect.left <= video_rect.left
+            && display_rect.top <= video_rect.top
+            && display_rect.right >= video_rect.right
+            && display_rect.bottom >= video_rect.bottom
+            && (display_rect.right - display_rect.left
+                    > video_rect.right - video_rect.left
+                || display_rect.bottom - display_rect.top
+                    > video_rect.bottom - video_rect.top);
 
-        // Mirror the provider's decision exactly: with an injected display
-        // size the canvas comes from the display ratio, otherwise from the
-        // consumer rects. Logging only the latter made the diagnostics
-        // contradict what was actually rendered.
+        // Mirror the provider's decision exactly: with a known display size
+        // the canvas comes from the display ratio, otherwise from the consumer
+        // rects.
         SubtitleDisplayLayout::CanvasResult canvas;
-        if (gate_input.has_display_area_size
-            && consumer_is_fullscreen
-            && use_display_area) {
+        if (use_display_area && has_display_area) {
             canvas = SubtitleDisplayLayout::ResolveCanvasForAspect(
                 true, display_aspect, true, video_rect,
-                gate_input.display_area_size.cx,
-                gate_input.display_area_size.cy);
+                display_area.cx, display_area.cy);
+        }
+        else if (use_display_area && consumer_is_fullscreen) {
+            canvas = SubtitleDisplayLayout::ResolveCanvasForAspect(
+                true, display_aspect, true, video_rect,
+                display_rect.right - display_rect.left,
+                display_rect.bottom - display_rect.top);
         }
         else {
             SubtitleDisplayLayout::CanvasInput canvas_input;
@@ -2208,7 +2205,6 @@ void XySubFilter::LogHdrConfiguration(
             canvas_input.aspect_mode = use_display_area
                 ? display_aspect
                 : DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
-            canvas_input.fullscreen = consumer_is_fullscreen;
             canvas_input.video_output_rect = video_rect;
             canvas_input.subtitle_target_rect = subtitle_target;
             canvas = SubtitleDisplayLayout::ResolveCanvas(canvas_input);
@@ -2247,7 +2243,6 @@ void XySubFilter::LogHdrConfiguration(
             L"targetRect=%ld,%ld,%ld,%ld "
             L"canvasMode=%d canvasRect=%ld,%ld,%ld,%ld "
             L"displayAreaSize=%ld,%ld "
-            L"gateDisplay=%d gateSize=%d gateContains=%d gateLarger=%d "
             L"bitmapScale1to1=%d bitmapScale=%.3f,%.3f fallback=%d\r\n",
             event ? event : L"unknown",
             field,
@@ -2279,10 +2274,6 @@ void XySubFilter::LogHdrConfiguration(
             canvas_rect.right, canvas_rect.bottom,
             m_xy_size_opt[SIZE_DISPLAY_AREA].cx,
             m_xy_size_opt[SIZE_DISPLAY_AREA].cy,
-            gate.has_display ? 1 : 0,
-            gate.size_matches ? 1 : 0,
-            gate.contains_video ? 1 : 0,
-            gate.larger_than_video ? 1 : 0,
             pgs_1_to_1 ? 1 : 0,
             bitmap_scale_x, bitmap_scale_y,
             int(canvas.fallback_reason));
@@ -2851,38 +2842,10 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
     }
 
     RECT fullscreenRect = {};
-    const HRESULT fullscreen_hr =
-        m_consumer->GetRect("fullscreenRect", &fullscreenRect);
-    const bool has_fullscreen_rect =
-        SUCCEEDED(fullscreen_hr)
-        && SubtitleDisplayLayout::IsValidRect(fullscreenRect);
+    m_consumer->GetRect("fullscreenRect", &fullscreenRect);
 
     SIZE displayModeSize = {};
-    const HRESULT display_mode_hr =
-        m_consumer->GetSize("displayModeSize", &displayModeSize);
-    const bool has_display_mode_size =
-        SUCCEEDED(display_mode_hr)
-        && displayModeSize.cx > 0
-        && displayModeSize.cy > 0;
-
-    // SubRenderIntf has no explicit fullscreen flag, so fullscreen is only
-    // accepted when the consumer's subtitle target matches the reported
-    // display size, contains the video and is strictly larger than it. All
-    // three comparisons stay in the consumer's display space.
-    SubtitleDisplayLayout::FullscreenGateInput fullscreen_input;
-    fullscreen_input.video_output_rect = videoOutputRect;
-    fullscreen_input.subtitle_target_rect = subtitleTargetRect;
-    fullscreen_input.fullscreen_rect = fullscreenRect;
-    fullscreen_input.has_fullscreen_rect = has_fullscreen_rect;
-    fullscreen_input.display_mode_size = displayModeSize;
-    fullscreen_input.has_display_mode_size = has_display_mode_size;
-    fullscreen_input.display_area_size = m_xy_size_opt[SIZE_DISPLAY_AREA];
-    fullscreen_input.has_display_area_size =
-        fullscreen_input.display_area_size.cx > 0
-        && fullscreen_input.display_area_size.cy > 0;
-    const SubtitleDisplayLayout::FullscreenGateResult fullscreen_gate =
-        SubtitleDisplayLayout::EvaluateFullscreenGate(fullscreen_input);
-    const bool consumer_is_fullscreen = fullscreen_gate.fullscreen;
+    m_consumer->GetSize("displayModeSize", &displayModeSize);
 
     LPWSTR str;
     int len;
@@ -2963,12 +2926,6 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
         m_xy_size_opt[SIZE_DISPLAY_MODE] = displayModeSize;
         update_subtitle = true;
     }
-    if (m_xy_bool_opt[BOOL_CONSUMER_IS_FULLSCREEN] != consumer_is_fullscreen)
-    {
-        m_xy_bool_opt[BOOL_CONSUMER_IS_FULLSCREEN] = consumer_is_fullscreen;
-        update_subtitle = true;
-    }
-
     if (m_xy_double_opt[DOUBLE_FPS]!=fps)
     {
         XY_LOG_INFO("FPS changed from "<<m_xy_double_opt[DOUBLE_FPS]

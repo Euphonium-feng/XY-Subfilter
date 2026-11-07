@@ -1485,6 +1485,19 @@ CDirectVobSub::CDirectVobSub( const Option *options, CCritSec * pLock )
         m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT] =
             DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
     }
+    // The display size is a machine constant, so it is captured once by the
+    // property page and reused by every later playback. Without this the
+    // option looked like it did nothing until it was re-applied.
+    {
+        const int display_width = theApp.GetProfileInt(
+            ResStr(IDS_R_GENERAL), ResStr(IDS_RG_DISPLAY_AREA_WIDTH), 0);
+        const int display_height = theApp.GetProfileInt(
+            ResStr(IDS_R_GENERAL), ResStr(IDS_RG_DISPLAY_AREA_HEIGHT), 0);
+        m_xy_size_opt[SIZE_DISPLAY_AREA].cx =
+            display_width > 0 ? display_width : 0;
+        m_xy_size_opt[SIZE_DISPLAY_AREA].cy =
+            display_height > 0 ? display_height : 0;
+    }
     ApplyUiLanguage(m_xy_int_opt[INT_UI_LANGUAGE]);
     s_active_ui_language = m_xy_int_opt[INT_UI_LANGUAGE];
 
@@ -1625,6 +1638,12 @@ STDMETHODIMP CDirectVobSub::UpdateRegistry()
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
         ResStr(IDS_RG_SUBTITLE_DISPLAY_ASPECT),
         m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_DISPLAY_AREA_WIDTH),
+        m_xy_size_opt[SIZE_DISPLAY_AREA].cx);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_DISPLAY_AREA_HEIGHT),
+        m_xy_size_opt[SIZE_DISPLAY_AREA].cy);
 
     //save output color config
     {
@@ -1901,6 +1920,16 @@ CDVS4XySubFilter::CDVS4XySubFilter( const Option *options, CCritSec * pLock )
         m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT] =
             DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
     }
+    {
+        const int display_width = theApp.GetProfileInt(
+            ResStr(IDS_R_GENERAL), ResStr(IDS_RG_DISPLAY_AREA_WIDTH), 0);
+        const int display_height = theApp.GetProfileInt(
+            ResStr(IDS_R_GENERAL), ResStr(IDS_RG_DISPLAY_AREA_HEIGHT), 0);
+        m_xy_size_opt[SIZE_DISPLAY_AREA].cx =
+            display_width > 0 ? display_width : 0;
+        m_xy_size_opt[SIZE_DISPLAY_AREA].cy =
+            display_height > 0 ? display_height : 0;
+    }
     ApplyUiLanguage(m_xy_int_opt[INT_UI_LANGUAGE]);
     s_active_ui_language = m_xy_int_opt[INT_UI_LANGUAGE];
 
@@ -2081,6 +2110,13 @@ STDMETHODIMP CDVS4XySubFilter::UpdateRegistry()
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
         ResStr(IDS_RG_SUBTITLE_DISPLAY_ASPECT),
         m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]);
+
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_DISPLAY_AREA_WIDTH),
+        m_xy_size_opt[SIZE_DISPLAY_AREA].cx);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_DISPLAY_AREA_HEIGHT),
+        m_xy_size_opt[SIZE_DISPLAY_AREA].cy);
 
     CString str_load_level;
     switch(m_xy_int_opt[INT_LOAD_SETTINGS_LEVEL])

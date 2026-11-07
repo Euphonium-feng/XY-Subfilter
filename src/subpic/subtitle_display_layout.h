@@ -34,36 +34,10 @@ namespace SubtitleDisplayLayout
         FALLBACK_CANVAS_DOES_NOT_CONTAIN_VIDEO
     };
 
-    struct FullscreenGateInput
-    {
-        RECT video_output_rect;
-        RECT subtitle_target_rect;
-        RECT fullscreen_rect;
-        bool has_fullscreen_rect;
-        SIZE display_mode_size;
-        bool has_display_mode_size;
-        SIZE display_area_size;
-        bool has_display_area_size;
-
-        FullscreenGateInput();
-    };
-
-    struct FullscreenGateResult
-    {
-        bool has_display;
-        bool size_matches;
-        bool contains_video;
-        bool larger_than_video;
-        bool fullscreen;
-
-        FullscreenGateResult();
-    };
-
     struct CanvasInput
     {
         bool enabled;
         int aspect_mode;
-        bool fullscreen;
         RECT video_output_rect;
         RECT subtitle_target_rect;
 
@@ -102,13 +76,6 @@ namespace SubtitleDisplayLayout
 
     // Returns the largest centered rect with the requested aspect inside bounds.
     RECT FitAspectRect(const RECT& bounds, int width, int height);
-
-    // Strict fullscreen gate. SubRenderIntf has no fullscreen flag, so the
-    // consumer's target is only accepted as fullscreen when its size matches
-    // the reported display mode (within 5%), it contains the video rect and it
-    // is strictly larger than the video rect.
-    FullscreenGateResult EvaluateFullscreenGate(
-        const FullscreenGateInput& input);
 
     // Resolves the canvas used to lay out text subtitles. AUTO uses the
     // consumer target; explicit aspect modes fit inside it. Never returns a

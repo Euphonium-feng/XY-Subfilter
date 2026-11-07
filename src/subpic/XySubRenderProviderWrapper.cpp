@@ -35,29 +35,44 @@ SubtitleDisplayLayout::CanvasResult ResolveConsumerCanvas(
         return SubtitleDisplayLayout::ResolveCanvas(input);
     }
 
-    if (FAILED(consumer->XyGetBool(
-            DirectVobSubXyOptions::BOOL_CONSUMER_IS_FULLSCREEN,
-            &input.fullscreen))
-        || !input.fullscreen) {
-        return SubtitleDisplayLayout::ResolveCanvas(input);
-    }
-
+    // Exactly one decision: the display size. madVR publishes the real monitor
+    // rect in fullscreenRect; MPC VR and windowed playback fall back to the
+    // size persisted by the property page. No window or monitor query happens
+    // here, so this is safe on the playback thread.
     SIZE display_area = {};
-    const bool has_display_area =
+    bool has_display_area =
         SUCCEEDED(consumer->XyGetSize(
             DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &display_area))
         && display_area.cx > 0
         && display_area.cy > 0;
-    if (has_display_area) {
-        // The display size captured by the property page is available, so lay
-        // out on a canvas of that ratio centred on the video instead of
-        // trusting consumer rects that may all be in source pixels.
-        return SubtitleDisplayLayout::ResolveCanvasForAspect(
-            true, input.aspect_mode, true, video_output_rect,
-            display_area.cx, display_area.cy);
+
+    if (!has_display_area) {
+        RECT fullscreen = {};
+        if (SUCCEEDED(consumer->XyGetRect(
+                DirectVobSubXyOptions::RECT_FULLSCREEN, &fullscreen))
+            && SubtitleDisplayLayout::IsValidRect(fullscreen)
+            && SubtitleDisplayLayout::ContainsRect(
+                fullscreen, video_output_rect)
+            && (fullscreen.right - fullscreen.left
+                    > video_output_rect.right - video_output_rect.left
+                || fullscreen.bottom - fullscreen.top
+                    > video_output_rect.bottom - video_output_rect.top)) {
+            display_area.cx = fullscreen.right - fullscreen.left;
+            display_area.cy = fullscreen.bottom - fullscreen.top;
+            has_display_area = true;
+        }
     }
 
-    return SubtitleDisplayLayout::ResolveCanvas(input);
+    if (!has_display_area) {
+        return SubtitleDisplayLayout::ResolveCanvas(input);
+    }
+
+    // A display size is known, so lay out on a canvas of its ratio centred on
+    // the video instead of trusting consumer rects that may all be source
+    // pixels.
+    return SubtitleDisplayLayout::ResolveCanvasForAspect(
+        true, input.aspect_mode, true, video_output_rect,
+        display_area.cx, display_area.cy);
 }
 }
 

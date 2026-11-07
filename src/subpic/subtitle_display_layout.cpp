@@ -27,60 +27,13 @@ namespace
         return first > 0 ? first : 1;
     }
 
-    // Relative tolerance: consumer display fields routinely omit a taskbar or
-    // a few pixels of window decoration. 5% is wide enough for a taskbar and
-    // narrow enough to reject a window that merely happens to be larger.
-    bool SizesMatchWithinTolerance(
-        LONG candidate_width, LONG candidate_height,
-        LONG reference_width, LONG reference_height)
-    {
-        if (candidate_width <= 0 || candidate_height <= 0
-            || reference_width <= 0 || reference_height <= 0) {
-            return false;
-        }
-
-        const LONG tolerance_x = (reference_width + 19) / 20;
-        const LONG tolerance_y = (reference_height + 19) / 20;
-        return candidate_width >= reference_width - tolerance_x
-            && candidate_width <= reference_width + tolerance_x
-            && candidate_height >= reference_height - tolerance_y
-            && candidate_height <= reference_height + tolerance_y;
-    }
-
-    RECT MakeDisplayModeRect(const SIZE& size)
-    {
-        const RECT rect = { 0, 0, size.cx, size.cy };
-        return rect;
-    }
 }
 
 namespace SubtitleDisplayLayout
 {
-    FullscreenGateInput::FullscreenGateInput()
-        : video_output_rect()
-        , subtitle_target_rect()
-        , fullscreen_rect()
-        , has_fullscreen_rect(false)
-        , display_mode_size()
-        , has_display_mode_size(false)
-        , display_area_size()
-        , has_display_area_size(false)
-    {
-    }
-
-    FullscreenGateResult::FullscreenGateResult()
-        : has_display(false)
-        , size_matches(false)
-        , contains_video(false)
-        , larger_than_video(false)
-        , fullscreen(false)
-    {
-    }
-
     CanvasInput::CanvasInput()
         : enabled(false)
         , aspect_mode(ASPECT_OFF)
-        , fullscreen(false)
         , video_output_rect()
         , subtitle_target_rect()
     {
@@ -147,73 +100,6 @@ namespace SubtitleDisplayLayout
         return result;
     }
 
-    FullscreenGateResult EvaluateFullscreenGate(
-        const FullscreenGateInput& input)
-    {
-        FullscreenGateResult result;
-        if (!IsPositiveSize(input.video_output_rect)
-            || !IsPositiveSize(input.subtitle_target_rect)) {
-            return result;
-        }
-
-        RECT display = {};
-        if (input.has_fullscreen_rect
-            && IsPositiveSize(input.fullscreen_rect)) {
-            display = input.fullscreen_rect;
-            result.has_display = true;
-        }
-        else if (input.has_display_mode_size
-            && input.display_mode_size.cx > 0
-            && input.display_mode_size.cy > 0) {
-            display = MakeDisplayModeRect(input.display_mode_size);
-            result.has_display = true;
-        }
-        if (!result.has_display
-            && !(input.has_display_area_size
-                && input.display_area_size.cx > 0
-                && input.display_area_size.cy > 0)) {
-            return result;
-        }
-
-        // Only the display size is used for matching. The display rect's
-        // origin may be a desktop coordinate and must never leak into the
-        // comparison or into layout.
-        if (result.has_display) {
-            result.size_matches = SizesMatchWithinTolerance(
-                RectWidth(input.subtitle_target_rect),
-                RectHeight(input.subtitle_target_rect),
-                RectWidth(display), RectHeight(display));
-        }
-
-        // Both rects are consumer display-space rects, so this comparison is
-        // meaningful. It rejects a window that is not actually fullscreen.
-        result.contains_video = ContainsRect(
-            input.subtitle_target_rect, input.video_output_rect);
-        result.larger_than_video =
-            RectWidth(input.subtitle_target_rect)
-                > RectWidth(input.video_output_rect)
-            || RectHeight(input.subtitle_target_rect)
-                > RectHeight(input.video_output_rect);
-
-        if (result.size_matches
-            && result.contains_video
-            && result.larger_than_video) {
-            result.fullscreen = true;
-            return result;
-        }
-
-        // Consumers such as madVR report every rect in source video pixels, so
-        // subtitleTargetRect equals videoOutputRect even in fullscreen. The
-        // display size then comes from the property page, which is the only
-        // place allowed to query the monitor. The user enables the option only
-        // while playing fullscreen, so a stored display size is the signal.
-        result.fullscreen = input.has_display_area_size
-            && input.display_area_size.cx > 0
-            && input.display_area_size.cy > 0
-            && result.contains_video;
-        return result;
-    }
-
     CanvasResult ResolveCanvas(const CanvasInput& input)
     {
         CanvasResult result;
@@ -227,11 +113,6 @@ namespace SubtitleDisplayLayout
         if (input.aspect_mode < ASPECT_AUTO
             || input.aspect_mode >= ASPECT_COUNT) {
             result.fallback_reason = FALLBACK_INVALID_ASPECT;
-            result.canvas_rect = input.video_output_rect;
-            return result;
-        }
-        if (!input.fullscreen) {
-            result.fallback_reason = FALLBACK_NOT_FULLSCREEN;
             result.canvas_rect = input.video_output_rect;
             return result;
         }

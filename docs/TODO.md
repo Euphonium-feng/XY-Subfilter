@@ -69,6 +69,18 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 - 画布改为按**显示宽高比**在源像素空间构造：1920×800 在 16:9 显示器上得到
   1920×1080 画布（上下各 140）；显式画幅按同一规则扩展，绝不裁剪视频。
 
+第四版（简化收口）：实机反馈"每次播放都要重新切换设置才生效"，且此前
+`EnumWindows` 在播放线程上阻塞导致全屏卡死/闪退。
+
+- 显示尺寸改为**持久化**：属性页在 UI 线程用 `GetSystemMetrics` 读取并写入
+  `General\display_area_width/height`，启动即加载，新开播放立刻生效。
+- 删除整套 consumer 全屏推断（`EvaluateFullscreenGate` 及 4 个标志位）、
+  `RefreshDisplayArea()`、窗口枚举/监视器查询，以及已无调用者的
+  `SetFrameGeometry`。净删约 400 行。
+- 显示尺寸有两个来源：`SIZE_DISPLAY_AREA`（持久化）优先，其次 consumer 的
+  `fullscreenRect`。两者都无则回退原行为。
+- 播放线程零窗口调用；画布解析结果按输入缓存，几何直接写入渲染帧，无每帧分配。
+
 历史实现（第一版，已被本轮替换）：
 
 - 已新增纯函数模块 `src/subpic/subtitle_display_layout.{h,cpp}`，定义

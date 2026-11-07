@@ -2353,7 +2353,7 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
         // process can block it. Resolve the primary display size here, on the
         // UI thread, and store it before the option is enabled so the very
         // first refresh already has the value.
-        if (use_display_area) {
+        {
             const int display_width = GetSystemMetrics(SM_CXSCREEN);
             const int display_height = GetSystemMetrics(SM_CYSCREEN);
             if (display_width > 0 && display_height > 0) {
