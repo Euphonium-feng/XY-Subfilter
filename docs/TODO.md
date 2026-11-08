@@ -103,6 +103,11 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 - 同时修复位图画布缓存只在设计分辨率变化时重算的问题：`Invalidate()` 现在
   会清掉 `m_canvas_cached`，布局选项或显示尺寸变化后不会继续发布旧几何。
 - 以上修改尚未经过云端验证；三矩阵全绿后才能把本条标记为完成。
+- run `42470777553`（提交 `3acfdb5`）在 `Install VSNASM` / `Install VSYASM`
+  阶段失败：安装脚本从 `github.com/Microsoft/vswhere/releases` 下载
+  `vswhere.exe` 解析失败，重跑仍复现。工作流现在先复制 runner 自带的
+  `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe` 到两个
+  安装脚本目录，避免该下载依赖。
 
 历史实现（第一版，已被本轮替换）：
 

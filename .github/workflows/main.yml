@@ -41,6 +41,17 @@ jobs:
           fetch-depth: 1
           submodules: recursive
 
+      - name: Provide vswhere for VSNASM and VSYASM
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (-not (Test-Path -LiteralPath $vswhere)) {
+            throw "vswhere.exe was not found at $vswhere"
+          }
+          New-Item -ItemType Directory -Force -Path VSNASM, VSYASM | Out-Null
+          Copy-Item -LiteralPath $vswhere -Destination VSNASM\vswhere.exe
+          Copy-Item -LiteralPath $vswhere -Destination VSYASM\vswhere.exe
+
       - name: Install VSNASM
         shell: cmd
         run: |
