@@ -288,7 +288,10 @@ namespace SubtitleDisplayLayout
     }
 
     BitmapFrameResult::BitmapFrameResult()
+        : canvas_active(false)
     {
+        buffer_size.cx = 0;
+        buffer_size.cy = 0;
     }
 
     BitmapFrameResult ResolveBitmapFrame(const BitmapFrameInput& input)
@@ -304,6 +307,9 @@ namespace SubtitleDisplayLayout
         const RECT canvas = result.canvas.uses_display_area
             ? result.canvas.canvas_rect : input.video_rect;
         result.frame = BuildFrameLayout(input.video_rect, canvas);
+        result.buffer_size.cx = canvas.right - canvas.left;
+        result.buffer_size.cy = canvas.bottom - canvas.top;
+        result.canvas_active = result.canvas.uses_display_area;
         return result;
     }
 }

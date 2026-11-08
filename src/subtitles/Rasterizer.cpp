@@ -2120,6 +2120,25 @@ void Rasterizer::Draw(XyBitmap* bitmap, SharedPtrOverlay overlay, const CRect& c
 
 void Rasterizer::FillSolidRect(SubPicDesc& spd, int x, int y, int nWidth, int nHeight, DWORD argb)
 {
+    // The bitmap canvas can be smaller than the stream's design canvas. Clip
+    // every solid run to the actual destination buffer; the PGS/DVB RLE
+    // decoders must not write outside it.
+    int left = x;
+    int top = y;
+    int right = x + nWidth;
+    int bottom = y + nHeight;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (right > spd.w) right = spd.w;
+    if (bottom > spd.h) bottom = spd.h;
+    if (right <= left || bottom <= top) {
+        return;
+    }
+    x = left;
+    y = top;
+    nWidth = right - left;
+    nHeight = bottom - top;
+
     bool AYUV_PLANAR = (spd.type==MSP_AYUV_PLANAR);
     int draw_method = 0;
     if(AYUV_PLANAR)

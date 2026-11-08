@@ -110,6 +110,8 @@ namespace SubtitleDisplayLayout
     {
         CanvasResult canvas;
         FrameLayout frame;
+        SIZE buffer_size;
+        bool canvas_active;
 
         BitmapFrameResult();
     };

@@ -350,10 +350,14 @@ void CompositionObject::Dvb2PixelsCodeString(SubPicDesc& spd, CGolombBuffer& gb,
 
         if (nCount > 0) {
             FillSolidRect(spd, nX, nY, nCount, 1, m_Colors[nPaletteIndex]);
-            if (dirtyRect)
+            if (dirtyRect && nY >= 0 && nY < spd.h)
             {
-                CRect tmp(nX,nY,nX+nCount,nY+1);
-                ::UnionRect(dirtyRect, dirtyRect, &tmp);
+                const int left = max(0, int(nX));
+                const int right = min(int(spd.w), int(nX) + int(nCount));
+                if (right > left) {
+                    CRect tmp(left, nY, right, nY + 1);
+                    ::UnionRect(dirtyRect, dirtyRect, &tmp);
+                }
             }
             nX += nCount;
         }
@@ -418,10 +422,14 @@ void CompositionObject::Dvb4PixelsCodeString(SubPicDesc& spd, CGolombBuffer& gb,
 
         if (nCount > 0) {
             FillSolidRect(spd, nX, nY, nCount, 1, m_Colors[nPaletteIndex]);
-            if (dirtyRect)
+            if (dirtyRect && nY >= 0 && nY < spd.h)
             {
-                CRect tmp(nX,nY,nX+nCount,nY+1);
-                ::UnionRect(dirtyRect, dirtyRect, &tmp);
+                const int left = max(0, int(nX));
+                const int right = min(int(spd.w), int(nX) + int(nCount));
+                if (right > left) {
+                    CRect tmp(left, nY, right, nY + 1);
+                    ::UnionRect(dirtyRect, dirtyRect, &tmp);
+                }
             }
             nX += nCount;
         }
@@ -463,10 +471,14 @@ void CompositionObject::Dvb8PixelsCodeString(SubPicDesc& spd, CGolombBuffer& gb,
 
         if (nCount > 0) {
             FillSolidRect(spd, nX, nY, nCount, 1, m_Colors[nPaletteIndex]);
-            if (dirtyRect)
+            if (dirtyRect && nY >= 0 && nY < spd.h)
             {
-                CRect tmp(nX,nY,nX+nCount,nY+1);
-                ::UnionRect(dirtyRect, dirtyRect, &tmp);
+                const int left = max(0, int(nX));
+                const int right = min(int(spd.w), int(nX) + int(nCount));
+                if (right > left) {
+                    CRect tmp(left, nY, right, nY + 1);
+                    ::UnionRect(dirtyRect, dirtyRect, &tmp);
+                }
             }
             nX += nCount;
         }

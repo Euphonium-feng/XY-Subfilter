@@ -10,6 +10,7 @@
 #include "../../../subpic/SimpleSubPicWrapper.h"
 #include "../../../subpic/color_conv_table.h"
 #include "../../../subpic/hdr_evidence.h"
+#include "../../../subpic/diagnostic_log.h"
 #include "../../../subpic/subtitle_display_layout.h"
 #include "../basevideofilter/HdrGraphProbe.h"
 
@@ -63,51 +64,6 @@ CStringW BuildHdrDiagnosticPath()
     CStringW path(temp_path);
     path += L"xy_hdr_diag.txt";
     return path;
-}
-
-void AppendHdrDiagnostic(const CStringW& text)
-{
-    const CStringW path = BuildHdrDiagnosticPath();
-    if (path.IsEmpty()) {
-        return;
-    }
-
-    // Each process starts a fresh diagnostic file. The file is not an
-    // accumulating history across runs: one launch, one log.
-    static volatile LONG s_started = 0;
-    const bool first_write = InterlockedCompareExchange(&s_started, 1, 0) == 0;
-
-    const unsigned long long max_file_size = 512ULL * 1024ULL;
-    bool truncate = false;
-    WIN32_FILE_ATTRIBUTE_DATA attributes = {};
-    if (GetFileAttributesExW(
-            path.GetString(), GetFileExInfoStandard, &attributes)
-        && attributes.nFileSizeHigh == 0
-        && attributes.nFileSizeLow > max_file_size) {
-        truncate = true;
-    }
-
-    FILE* file = NULL;
-    if (_wfopen_s(
-            &file,
-            path.GetString(),
-            (first_write || truncate) ? L"w, ccs=UTF-8" : L"a, ccs=UTF-8") == 0
-        && file) {
-        SYSTEMTIME local_time = {};
-        GetLocalTime(&local_time);
-        fwprintf(
-            file,
-            L"\r\n[%04u-%02u-%02u %02u:%02u:%02u.%03u]\r\n",
-            local_time.wYear,
-            local_time.wMonth,
-            local_time.wDay,
-            local_time.wHour,
-            local_time.wMinute,
-            local_time.wSecond,
-            local_time.wMilliseconds);
-        fwprintf(file, L"%ls", text.GetString());
-        fclose(file);
-    }
 }
 
 CStringW GuidToString(const GUID& guid)
@@ -2308,7 +2264,7 @@ void XySubFilter::LogHdrConfiguration(
             bitmap_scale_x, bitmap_scale_y,
             int(canvas.fallback_reason));
     }
-    AppendHdrDiagnostic(diagnostic);
+    AppendXyDiagnostic(diagnostic);
 }
 
 CStringW XySubFilter::GetHdrStatusText()
@@ -3546,7 +3502,7 @@ bool XySubFilter::UpdateConsumerHdrSignal(
             L"schema=xy-hdr-probe/1\r\n"
             L"scan=%ls state=disconnect preservedEvidence=1\r\n",
             scan_reason ? scan_reason : L"disconnect");
-        AppendHdrDiagnostic(disconnect_diagnostic);
+        AppendXyDiagnostic(disconnect_diagnostic);
         return false;
     }
     HdrDetection::AutoHdrSignals old_signals;
@@ -3743,7 +3699,7 @@ bool XySubFilter::UpdateConsumerHdrSignal(
         new_auto_pq ? 1 : 0,
         decision_changed ? 1 : 0,
         yuv_matrix.GetString());
-    AppendHdrDiagnostic(diagnostic);
+    AppendXyDiagnostic(diagnostic);
     XY_LOG_INFO("HDR probe: graph:" << graph_signal
         << " container:" << container_signal
         << " filename:" << filename_hdr

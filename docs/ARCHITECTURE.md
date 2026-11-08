@@ -242,12 +242,13 @@ consumer 把零基 output 映射到 `videoOutputRect`，因此该布局在屏幕
 仅几何变化”时复用旧布局帧。
 
 PGS/SUP/DVB 的位图对象按流内坐标绘制，provider 不做缩放、留白或重排。
-`ResolveBitmapFrame()` 仍负责按显示宽高比构造画布，但当前实现不发布该画布：
-扩大 `GetOutputRect` / `GetClipRect` 在 madVR 实机上会让整帧消失。
+`ResolveBitmapFrame()` 按显示宽高比构造画布，位图渲染缓冲区直接使用该画布尺寸，
+因此 PGS/DVB 行可以落在画布的上下黑边。对象坐标不随画布变化；超出缓冲区的
+像素由 `Rasterizer::FillSolidRect` 与各 dirty-rect 计算裁剪。
 
-位图缓冲区必须保持流的设计分辨率；若把缓冲区改成画布尺寸，`CHdmvSub::Render`
-的 `spd.w/spd.h` 检查会跳过对象，导致字幕消失。位图进入黑边需要先将设计画布
-内容重采样到显示画布，再让 buffer 与发布矩形一致；尚未实现。
+位图帧发布与文本共用 `BuildFrameLayout()`：`GetOutputRect` 保持视频尺寸，
+`GetClipRect` 是画布减去视频原点，`GetBitmap.position` 是对象坐标加画布原点偏移。
+`CHdmvSub::Render` 不再要求对象完整落在 `spd` 内，只要求与缓冲区相交。
 
 画布缓存只在输入变化时重算，`Invalidate()` 与 `Connect()` 会使其失效。
 

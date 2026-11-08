@@ -194,11 +194,14 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameUsesTheFullDisplayCanvas)
         SubtitleDisplayLayout::ResolveBitmapFrame(input);
 
     EXPECT_TRUE(frame.canvas.uses_display_area);
+    EXPECT_TRUE(frame.canvas_active);
     ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.canvas.canvas_rect);
     ExpectRectEquals(RECT{ 0, 0, 1920, 800 }, frame.frame.output_rect);
     ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.frame.clip_rect);
     EXPECT_EQ(0, frame.frame.bitmap_offset.x);
     EXPECT_EQ(-140, frame.frame.bitmap_offset.y);
+    EXPECT_EQ(1920, frame.buffer_size.cx);
+    EXPECT_EQ(1080, frame.buffer_size.cy);
 }
 
 TEST(SubtitleDisplayLayoutTest, BitmapFrameIgnoresDesignResolution)
@@ -214,7 +217,10 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameIgnoresDesignResolution)
         SubtitleDisplayLayout::ResolveBitmapFrame(input);
 
     EXPECT_TRUE(frame.canvas.uses_display_area);
+    EXPECT_TRUE(frame.canvas_active);
     ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, frame.canvas.canvas_rect);
+    EXPECT_EQ(1920, frame.buffer_size.cx);
+    EXPECT_EQ(1080, frame.buffer_size.cy);
 }
 
 TEST(SubtitleDisplayLayoutTest, BitmapFrameFallsBackWithoutDisplaySize)
@@ -227,9 +233,61 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameFallsBackWithoutDisplaySize)
         SubtitleDisplayLayout::ResolveBitmapFrame(input);
 
     EXPECT_FALSE(frame.canvas.uses_display_area);
+    EXPECT_FALSE(frame.canvas_active);
     ExpectRectEquals(input.video_rect, frame.canvas.canvas_rect);
     ExpectRectEquals(input.video_rect, frame.frame.output_rect);
     ExpectRectEquals(input.video_rect, frame.frame.clip_rect);
+    EXPECT_EQ(input.video_rect.right - input.video_rect.left,
+        frame.buffer_size.cx);
+    EXPECT_EQ(input.video_rect.bottom - input.video_rect.top,
+        frame.buffer_size.cy);
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapFrameMapsDesignBottomIntoLowerBar)
+{
+    // A bitmap object at the bottom of a 1920x1080 design canvas must land in
+    // the lower 140-pixel bar, not be scaled back into the 800-pixel picture.
+    SubtitleDisplayLayout::BitmapFrameInput input;
+    input.enabled = true;
+    input.video_rect = RECT{ 0, 0, 1920, 800 };
+    input.display_area.cx = 2560;
+    input.display_area.cy = 1440;
+
+    const SubtitleDisplayLayout::BitmapFrameResult frame =
+        SubtitleDisplayLayout::ResolveBitmapFrame(input);
+    const RECT bitmap_rect = {
+        0, 1000, 300, 1040
+    };
+    const POINT published = {
+        bitmap_rect.left + frame.frame.bitmap_offset.x,
+        bitmap_rect.top + frame.frame.bitmap_offset.y
+    };
+
+    // The consumer maps output 1:1 to the video, then the video is scaled by
+    // 4/3 onto the 2560x1440 display. The picture starts around y=186.
+    const int video_top_on_display = 186;
+    const int bitmap_top_on_display =
+        video_top_on_display + published.y * 4 / 3;
+    EXPECT_GE(bitmap_top_on_display, video_top_on_display + 800 * 4 / 3);
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapFrameKeepsCanvasWhenDesignDiffers)
+{
+    // A 1280x720 stream design and a 1920x1080 display canvas are different;
+    // this must not disable the canvas or rescale the object.
+    SubtitleDisplayLayout::BitmapFrameInput input;
+    input.enabled = true;
+    input.video_rect = RECT{ 0, 0, 1920, 800 };
+    input.display_area.cx = 2560;
+    input.display_area.cy = 1440;
+
+    const SubtitleDisplayLayout::BitmapFrameResult frame =
+        SubtitleDisplayLayout::ResolveBitmapFrame(input);
+
+    EXPECT_TRUE(frame.canvas_active);
+    EXPECT_EQ(1920, frame.buffer_size.cx);
+    EXPECT_EQ(1080, frame.buffer_size.cy);
+    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.frame.clip_rect);
 }
 
 

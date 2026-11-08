@@ -115,10 +115,12 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 提交 `7b707ca` 的 run `42485815732` 三矩阵
 （`release-win32`、`release-x64`、`debug-x64`）全绿。
 
-2026-11-08 22:18 实机反馈“现在直接没字幕了”。根因是该提交把渲染缓冲区改成了
-显示画布尺寸，而 PGS 对象仍按设计坐标绘制，`CHdmvSub::Render` 的 `spd.w/spd.h`
-检查把对象整块跳过。已恢复缓冲区为设计分辨率，只保留画布帧几何；另新增
-“每次进程启动重写诊断日志”，不再跨会话累积。待云端三矩阵与用户实机复测。
+2026-11-08 22:18 实机反馈“现在直接没字幕了”。已按完整画布方案重做：
+位图缓冲区直接使用显示画布尺寸，PGS/DVB 对象保持流内坐标，`FillSolidRect`
+按 `spd` 边界裁剪，`CHdmvSub::Render` 从“整对象拒绝”改为“相交即绘制”。
+同时新增有界的 `xy-bitmap-frame/1` 诊断，只在几何或位图 ID 变化时写入。
+待云端三矩阵与用户实机复测；若仍不可见，用 `canvasActive/bufferSize/
+publishClip/bitmap0` 区分“对象为空”与“consumer 丢帧”。
 - run `42470777553`（提交 `3acfdb5`）在 `Install VSNASM` / `Install VSYASM`
   阶段失败：安装脚本从 `github.com/Microsoft/vswhere/releases` 下载
   `vswhere.exe` 解析失败，重跑仍复现。工作流现在先复制 runner 自带的

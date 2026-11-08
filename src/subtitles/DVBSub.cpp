@@ -38,6 +38,9 @@ CDVBSub::CDVBSub(void)
     m_nBufferWritePos = 0;
     m_nBufferSize     = 0;
     m_pBuffer         = NULL;
+    m_last_object_count = 0;
+    m_last_drawn_objects = 0;
+    m_last_skipped_objects = 0;
 }
 
 CDVBSub::~CDVBSub(void)
@@ -331,6 +334,9 @@ void CDVBSub::EndOfStream()
 
 void CDVBSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
 {
+    m_last_object_count = 0;
+    m_last_drawn_objects = 0;
+    m_last_skipped_objects = 0;
     DVB_PAGE* pPage = FindPage(rt);
 
     ::SetRectEmpty(&bbox);
@@ -345,6 +351,7 @@ void CDVBSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
                 for (int j = 0; j < pRegion->objectCount; j++) {
                     CompositionObject*  pObject = FindObject(pPage, pRegion->objects[j].object_id);
                     if (pObject) {
+                        ++m_last_object_count;
                         short nX, nY;
                         nX = pRegion->horizAddr + pRegion->objects[j].object_horizontal_position;
                         nY = pRegion->vertAddr  + pRegion->objects[j].object_vertical_position;
@@ -361,12 +368,21 @@ void CDVBSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
                             m_hdrConfig);
                         pObject->InitColor(spd);
                         pObject->RenderDvb(spd, nX, nY, &bbox);
+                        ++m_last_drawn_objects;
                         TRACE_DVB((_T(" --> %d/%d - %d/%d\n"), i + 1, pPage->regionCount, j + 1, pRegion->objectCount));
                     }
                 }
             }
         }
     }
+}
+
+void CDVBSub::GetAuxRenderStats(
+    int& object_count, int& drawn_objects, int& skipped_objects) const
+{
+    object_count = m_last_object_count;
+    drawn_objects = m_last_drawn_objects;
+    skipped_objects = m_last_skipped_objects;
 }
 
 HRESULT CDVBSub::GetTextureSize(POSITION pos, SIZE& MaxTextureSize, SIZE& VideoSize, POINT& VideoTopLeft)

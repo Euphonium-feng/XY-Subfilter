@@ -37,6 +37,9 @@ CHdmvSub::CHdmvSub(void)
     , m_nSegBufferPos(0)
     , m_nSegSize(0)
     , m_pCurrentPresentationSegment(NULL)
+    , m_last_object_count(0)
+    , m_last_drawn_objects(0)
+    , m_last_skipped_objects(0)
 {
 }
 
@@ -361,12 +364,16 @@ void CHdmvSub::ParseCompositionDescriptor(CGolombBuffer* pGBuffer, COMPOSITION_D
 
 void CHdmvSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
 {
+    const CRect buffer_rect(0, 0, spd.w, spd.h);
     HDMV_PRESENTATION_SEGMENT* pPresentationSegment = FindPresentationSegment(rt);
 
     bbox.left   = LONG_MAX;
     bbox.top    = LONG_MAX;
     bbox.right  = 0;
     bbox.bottom = 0;
+    m_last_object_count = 0;
+    m_last_drawn_objects = 0;
+    m_last_skipped_objects = 0;
 
     if (pPresentationSegment) {
         POSITION pos = pPresentationSegment->objects.GetHeadPosition();
@@ -376,10 +383,21 @@ void CHdmvSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
 
         while (pos) {
             CompositionObject* pObject = pPresentationSegment->objects.GetNext(pos);
+            ++m_last_object_count;
 
-            if (pObject->GetRLEDataSize() && pObject->m_width > 0 && pObject->m_height > 0
-                && spd.w >= (pObject->m_horizontal_position + pObject->m_width) 
-                && spd.h >= (pObject->m_vertical_position + pObject->m_height)) 
+            const LONG object_left = pObject->m_horizontal_position;
+            const LONG object_top = pObject->m_vertical_position;
+            const LONG object_right =
+                object_left + pObject->m_width;
+            const LONG object_bottom =
+                object_top + pObject->m_height;
+            if (pObject->GetRLEDataSize()
+                && pObject->m_width > 0
+                && pObject->m_height > 0
+                && object_right > 0
+                && object_bottom > 0
+                && object_left < buffer_rect.right
+                && object_top < buffer_rect.bottom)
             {
                 CompositionObject::ColorType color_type = m_colorTypeSetting;
                 if (color_type==CompositionObject::NONE)
@@ -391,26 +409,37 @@ void CHdmvSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
                     m_yuvRangeSetting==CompositionObject::RANGE_NONE ? CompositionObject::RANGE_TV : m_yuvRangeSetting,
                     m_hdrConfig);
 
-                bbox.left   = min(pObject->m_horizontal_position, bbox.left);
-                bbox.top    = min(pObject->m_vertical_position, bbox.top);
-                bbox.right  = max(pObject->m_horizontal_position + pObject->m_width, bbox.right);
-                bbox.bottom = max(pObject->m_vertical_position + pObject->m_height, bbox.bottom);
-
-                ASSERT(spd.h>=0);
-                bbox.left = bbox.left > 0 ? bbox.left : 0;
-                bbox.top = bbox.top > 0 ? bbox.top : 0;
-                bbox.right = bbox.right < spd.w ? bbox.right : spd.w;
-                bbox.bottom = bbox.bottom < spd.h ? bbox.bottom : spd.h;
+                CRect clipped_object(
+                    object_left, object_top, object_right, object_bottom);
+                clipped_object.IntersectRect(
+                    clipped_object, buffer_rect);
+                if (!clipped_object.IsRectEmpty())
+                {
+                    bbox.left = min(clipped_object.left, bbox.left);
+                    bbox.top = min(clipped_object.top, bbox.top);
+                    bbox.right = max(clipped_object.right, bbox.right);
+                    bbox.bottom = max(clipped_object.bottom, bbox.bottom);
+                }
 
                 pObject->InitColor(spd);
                 TRACE_HDMVSUB( (_T(" --> Object %d (Pos=%dx%d, Res=%dx%d, SPDRes=%dx%d)\n"),
                               pObject->m_object_id_ref, pObject->m_horizontal_position, pObject->m_vertical_position, pObject->m_width, pObject->m_height, spd.w, spd.h) );
                 pObject->RenderHdmv(spd);
+                ++m_last_drawn_objects;
             } else {
+                ++m_last_skipped_objects;
                 TRACE_HDMVSUB( (_T(" --> Invalid object %d\n"), pObject->m_object_id_ref) );
             }
         }
     }
+}
+
+void CHdmvSub::GetAuxRenderStats(
+    int& object_count, int& drawn_objects, int& skipped_objects) const
+{
+    object_count = m_last_object_count;
+    drawn_objects = m_last_drawn_objects;
+    skipped_objects = m_last_skipped_objects;
 }
 
 HRESULT CHdmvSub::GetTextureSize(POSITION pos, SIZE& MaxTextureSize, SIZE& VideoSize, POINT& VideoTopLeft)

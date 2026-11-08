@@ -19,18 +19,20 @@ public:
 private:
     HRESULT ResetAllocator();
     HRESULT Render(REFERENCE_TIME now, POSITION pos);
+    void LogBitmapFrame(const wchar_t* event, REFERENCE_TIME now, HRESULT hr);
 private :
     CBaseSub*                   m_pSub;
     bool                        m_cleanOld;
 
     IXyOptions                 *m_consumer;
     CSize                       m_cur_output_size;
+    CSize                       m_render_size;
     bool m_use_dst_alpha;
     HdrColor::Config m_applied_hdr_config;
 
-    // Cached canvas geometry. The PGS/DVB bitmap is drawn in the stream's own
-    // design resolution; only the published frame geometry changes when the
-    // display area is used. Recomputed only when an input changes.
+    // Cached canvas geometry. The bitmap buffer is the complete display
+    // canvas; stream coordinates stay unchanged and are clipped to the
+    // buffer. Recomputed only when an input changes.
     bool m_canvas_cached;
     SIZE m_canvas_design_size;
     SIZE m_canvas_video_size;
@@ -39,8 +41,23 @@ private :
     SIZE m_canvas_display_area;
     RECT m_canvas_publish_output;
     RECT m_canvas_publish_clip;
+    RECT m_canvas_rect;
     POINT m_canvas_bitmap_offset;
     bool m_canvas_active;
+    int m_canvas_fallback;
+
+    bool m_diag_valid;
+    ULONGLONG m_diag_bitmap_id;
+    int m_diag_bitmap_count;
+    RECT m_diag_bitmap_rect;
+    SIZE m_diag_buffer_size;
+    RECT m_diag_output;
+    RECT m_diag_clip;
+    POINT m_diag_offset;
+    int m_diag_object_count;
+    int m_diag_drawn_objects;
+    int m_diag_skipped_objects;
+    bool m_diag_canvas_active;
 
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;

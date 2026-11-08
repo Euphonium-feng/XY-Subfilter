@@ -3,6 +3,7 @@
 #include "DVBSub.h"
 #include "hdmv_subtitle_provider.h"
 #include "../subpic/XySubRenderFrameWrapper.h"
+#include "../subpic/diagnostic_log.h"
 #include "../subpic/subtitle_display_layout.h"
 #include "IDirectVobSubXy.h"
 
@@ -14,20 +15,15 @@
 
 namespace
 {
-bool SameSize(const SIZE& first, const SIZE& second)
-{
-    return first.cx == second.cx && first.cy == second.cy;
-}
-
 // Bitmaps use the same display canvas as text (D44). The canvas is built from
 // the video rect and the persisted display size; the stream's design
 // resolution only determines how many pixels the provider has to paint.
-bool ReadBitmapCanvasInput(
+void ReadBitmapCanvasInput(
     IXyOptions* consumer, const RECT& video_rect,
     SubtitleDisplayLayout::BitmapFrameInput* input)
 {
     if (!consumer || !input) {
-        return false;
+        return;
     }
 
     input->video_rect = video_rect;
@@ -39,14 +35,14 @@ bool ReadBitmapCanvasInput(
             DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
             &input->enabled))
         || !input->enabled) {
-        return false;
+        return;
     }
 
     if (SUCCEEDED(consumer->XyGetSize(
             DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &input->display_area))
         && input->display_area.cx > 0
         && input->display_area.cy > 0) {
-        return true;
+        return;
     }
 
     RECT fullscreen = {};
@@ -58,10 +54,10 @@ bool ReadBitmapCanvasInput(
         && fullscreen.bottom - fullscreen.top > video_rect.bottom - video_rect.top) {
         input->display_area.cx = fullscreen.right - fullscreen.left;
         input->display_area.cy = fullscreen.bottom - fullscreen.top;
-        return true;
+        return;
     }
 
-    return false;
+    return;
 }
 }
 
@@ -75,9 +71,21 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_use_dst_alpha(false)
     , m_canvas_cached(false)
     , m_canvas_active(false)
+    , m_canvas_fallback(0)
+    , m_diag_valid(false)
+    , m_diag_bitmap_id(0)
+    , m_diag_bitmap_count(0)
+    , m_diag_object_count(0)
+    , m_diag_drawn_objects(0)
+    , m_diag_skipped_objects(0)
+    , m_diag_canvas_active(false)
 {
+    m_cur_output_size.cx = 0;
+    m_cur_output_size.cy = 0;
     m_canvas_design_size.cx = 0;
     m_canvas_design_size.cy = 0;
+    m_render_size.cx = 0;
+    m_render_size.cy = 0;
     m_canvas_video_size.cx = 0;
     m_canvas_video_size.cy = 0;
     m_canvas_enabled = false;
@@ -85,8 +93,16 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_canvas_display_area.cy = 0;
     m_canvas_publish_output = RECT();
     m_canvas_publish_clip = RECT();
+    m_canvas_rect = RECT();
     m_canvas_bitmap_offset.x = 0;
     m_canvas_bitmap_offset.y = 0;
+    m_diag_bitmap_rect = RECT();
+    m_diag_buffer_size.cx = 0;
+    m_diag_buffer_size.cy = 0;
+    m_diag_output = RECT();
+    m_diag_clip = RECT();
+    m_diag_offset.x = 0;
+    m_diag_offset.y = 0;
 }
 
 HdmvSubtitleProviderImpl::~HdmvSubtitleProviderImpl( void )
@@ -101,6 +117,7 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
         hr = m_consumer != consumer ? S_OK : S_FALSE;
         m_consumer = consumer;
         m_canvas_cached = false;
+        m_diag_valid = false;
     }
     else
     {
@@ -157,15 +174,10 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         XY_LOG_ERROR("Failed to get sizes info");
         return hr;
     }
-    if (!m_allocator || m_cur_output_size!=MaxTextureSize)
+    if (m_cur_output_size != MaxTextureSize)
     {
         m_cur_output_size = MaxTextureSize;
-        if (m_cur_output_size.cx!=0 && m_cur_output_size.cy!=0)
-        {
-            hr = ResetAllocator();
-            ASSERT(SUCCEEDED(hr));
-        }
-        else
+        if (m_cur_output_size.cx==0 || m_cur_output_size.cy==0)
         {
             XY_LOG_WARN("Invalid output size "<<m_cur_output_size);
             return S_FALSE;
@@ -194,24 +206,42 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         || m_canvas_display_area.cy != m_canvas_input.display_area.cy)
     {
         SubtitleDisplayLayout::BitmapFrameInput input;
-        const bool has_canvas =
-            ReadBitmapCanvasInput(m_consumer, video_rect, &input);
+        ReadBitmapCanvasInput(m_consumer, video_rect, &input);
         const SubtitleDisplayLayout::BitmapFrameResult frame =
             SubtitleDisplayLayout::ResolveBitmapFrame(input);
-        // Publishing a clip that extends past the video rect made the bitmap
-        // frame disappear on the real renderer. Keep the design canvas until
-        // the bar placement is verified on hardware; the buffer and the
-        // published rect must then agree.
-        m_canvas_active = false;
+        // The bitmap renderer gets the complete display canvas. Its objects
+        // are painted at their stream coordinates and clipped to the buffer;
+        // no scaling, padding or reflow is applied.
+        m_canvas_active = frame.canvas_active;
         m_canvas_publish_output = frame.frame.output_rect;
         m_canvas_publish_clip = frame.frame.clip_rect;
+        m_canvas_rect = frame.canvas.uses_display_area
+            ? frame.canvas.canvas_rect : video_rect;
         m_canvas_bitmap_offset = frame.frame.bitmap_offset;
+        m_canvas_fallback = int(frame.canvas.fallback_reason);
         m_canvas_input = input;
         m_canvas_enabled = input.enabled;
         m_canvas_display_area = input.display_area;
         m_canvas_design_size = design_size;
         m_canvas_video_size = video_size;
         m_canvas_cached = true;
+    }
+
+    // The display canvas is the painting surface. Bitmap objects stay at
+    // their stream coordinates and are clipped by the renderer.
+    const SIZE render_size = m_canvas_active
+        ? SIZE{ m_canvas_rect.right - m_canvas_rect.left,
+                m_canvas_rect.bottom - m_canvas_rect.top }
+        : design_size;
+    if (!m_allocator
+        || m_render_size.cx != render_size.cx
+        || m_render_size.cy != render_size.cy)
+    {
+        m_render_size = render_size;
+        m_pSubPic = NULL;
+        m_xy_sub_render_frame = NULL;
+        hr = ResetAllocator();
+        ASSERT(SUCCEEDED(hr));
     }
 
     hr = Render( now, pos );
@@ -224,11 +254,106 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
     return hr;
 }
 
+void HdmvSubtitleProviderImpl::LogBitmapFrame(
+    const wchar_t* event, REFERENCE_TIME now, HRESULT hr)
+{
+    int object_count = 0;
+    int drawn_objects = 0;
+    int skipped_objects = 0;
+    m_pSub->GetAuxRenderStats(
+        object_count, drawn_objects, skipped_objects);
+
+    int bitmap_count = 0;
+    ULONGLONG bitmap_id = 0;
+    RECT bitmap_rect = {};
+    SIZE bitmap_size = {};
+    if (m_xy_sub_render_frame) {
+        m_xy_sub_render_frame->GetBitmapCount(&bitmap_count);
+        if (bitmap_count > 0) {
+            POINT position = {};
+            m_xy_sub_render_frame->GetBitmap(
+                0, &bitmap_id, &position, &bitmap_size, NULL, NULL);
+            bitmap_rect = {
+                position.x, position.y,
+                position.x + bitmap_size.cx,
+                position.y + bitmap_size.cy
+            };
+        }
+    }
+
+    if (m_diag_valid
+        && m_diag_bitmap_id == bitmap_id
+        && m_diag_bitmap_count == bitmap_count
+        && EqualRect(&m_diag_bitmap_rect, &bitmap_rect)
+        && m_diag_buffer_size.cx == m_render_size.cx
+        && m_diag_buffer_size.cy == m_render_size.cy
+        && EqualRect(&m_diag_output, &m_canvas_publish_output)
+        && EqualRect(&m_diag_clip, &m_canvas_publish_clip)
+        && m_diag_offset.x == m_canvas_bitmap_offset.x
+        && m_diag_offset.y == m_canvas_bitmap_offset.y
+        && m_diag_object_count == object_count
+        && m_diag_drawn_objects == drawn_objects
+        && m_diag_skipped_objects == skipped_objects
+        && m_diag_canvas_active == m_canvas_active) {
+        return;
+    }
+
+    m_diag_valid = true;
+    m_diag_bitmap_id = bitmap_id;
+    m_diag_bitmap_count = bitmap_count;
+    m_diag_bitmap_rect = bitmap_rect;
+    m_diag_buffer_size = m_render_size;
+    m_diag_output = m_canvas_publish_output;
+    m_diag_clip = m_canvas_publish_clip;
+    m_diag_offset = m_canvas_bitmap_offset;
+    m_diag_object_count = object_count;
+    m_diag_drawn_objects = drawn_objects;
+    m_diag_skipped_objects = skipped_objects;
+    m_diag_canvas_active = m_canvas_active;
+
+    CStringW diagnostic;
+    diagnostic.Format(
+        L"schema=xy-bitmap-frame/1\r\n"
+        L"event=%ls rt=%I64d hr=0x%08lX "
+        L"designSize=%ld,%ld videoSize=%ld,%ld "
+        L"displaySource=%d "
+        L"displayArea=%ld,%ld canvasRect=%ld,%ld,%ld,%ld "
+        L"canvasActive=%d bufferSize=%ld,%ld "
+        L"publishOutput=%ld,%ld,%ld,%ld "
+        L"publishClip=%ld,%ld,%ld,%ld bitmapOffset=%ld,%ld "
+        L"objectCount=%d drawnObjects=%d skippedObjects=%d "
+        L"bitmapCount=%d bitmap0=%ld,%ld,%ld,%ld "
+        L"canvasFallback=%d\r\n",
+        event ? event : L"frame",
+        now,
+        static_cast<int>(hr),
+        m_canvas_design_size.cx, m_canvas_design_size.cy,
+        m_canvas_video_size.cx, m_canvas_video_size.cy,
+        m_canvas_display_area.cx > 0 && m_canvas_display_area.cy > 0 ? 1 : 0,
+        m_canvas_display_area.cx, m_canvas_display_area.cy,
+        m_canvas_rect.left, m_canvas_rect.top,
+        m_canvas_rect.right, m_canvas_rect.bottom,
+        m_canvas_active ? 1 : 0,
+        m_render_size.cx, m_render_size.cy,
+        m_canvas_publish_output.left, m_canvas_publish_output.top,
+        m_canvas_publish_output.right, m_canvas_publish_output.bottom,
+        m_canvas_publish_clip.left, m_canvas_publish_clip.top,
+        m_canvas_publish_clip.right, m_canvas_publish_clip.bottom,
+        m_canvas_bitmap_offset.x, m_canvas_bitmap_offset.y,
+        object_count, drawn_objects, skipped_objects,
+        bitmap_count,
+        bitmap_rect.left, bitmap_rect.top,
+        bitmap_rect.right, bitmap_rect.bottom,
+        m_canvas_fallback);
+    AppendXyDiagnostic(diagnostic);
+}
+
 STDMETHODIMP HdmvSubtitleProviderImpl::Invalidate( REFERENCE_TIME rtInvalidate /*= -1*/ )
 {
     // Layout options and display size live on the consumer. Re-read them the
     // next time a frame is requested instead of caching the old geometry.
     m_canvas_cached = false;
+    m_diag_valid = false;
     if (m_pSubPic )
     {
         if (m_pSubPic->GetStart()>=rtInvalidate) {
@@ -263,11 +388,11 @@ HRESULT HdmvSubtitleProviderImpl::ResetAllocator()
 {
     const int MAX_SUBPIC_QUEUE_LENGTH = 1;
 
-    m_allocator = DEBUG_NEW CPooledSubPicAllocator(MSP_RGB32, m_cur_output_size, MAX_SUBPIC_QUEUE_LENGTH + 1);
+    m_allocator = DEBUG_NEW CPooledSubPicAllocator(MSP_RGB32, m_render_size, MAX_SUBPIC_QUEUE_LENGTH + 1);
     ASSERT(m_allocator);
 
-    m_allocator->SetCurSize(m_cur_output_size);
-    m_allocator->SetCurVidRect(CRect(CPoint(0,0),m_cur_output_size));
+    m_allocator->SetCurSize(m_render_size);
+    m_allocator->SetCurVidRect(CRect(CPoint(0,0),m_render_size));
     return S_OK;
 }
 
@@ -344,7 +469,6 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     }
     if (hr == S_OK)
     {
-        CRect video_rect(CPoint(0,0), m_cur_output_size);
         if (m_canvas_active)
         {
             m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
@@ -353,9 +477,11 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
         }
         else
         {
+            CRect video_rect(CPoint(0,0), m_render_size);
             m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
                 mem_subpic, video_rect, video_rect, now, &hr);
         }
+        LogBitmapFrame(L"frame", now, hr);
     }
     else
     {

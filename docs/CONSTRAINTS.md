@@ -102,8 +102,8 @@
   后轮换；disconnect 不得覆盖上次有效证据。打开日志按钮本身不得创建空文件。
 - HLG 当前与 PQ 共用 HDR 证据分类，个人范围不做专用映射或专项验收；文档不得把
   HLG 观感描述为已验证。
-- “按显示器区域排版字幕”默认关闭；关闭时不得改变任何现有输出。本轮只对
-  ASS/SSA/SRT 文本字幕生效；PGS/SUP/DVB 必须保持旧行为。
+- “按显示器区域排版字幕”默认关闭；关闭时不得改变任何现有输出。开启后文本
+  与 PGS/SUP/DVB 位图都使用完整显示画布；位图内容保持原始坐标，不缩放。
 - 显示尺寸优先取 `SIZE_DISPLAY_AREA`（属性页在 UI 线程用 `GetSystemMetrics`
   读取，持久化到 `General\display_area_width/height`）；其次取 consumer 的
   `fullscreenRect`（须完整包含并严格大于 `videoOutputRect`）。

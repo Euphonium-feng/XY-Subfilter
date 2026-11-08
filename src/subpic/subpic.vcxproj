@@ -59,6 +59,9 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="CoordGeom.cpp" />
+    <ClCompile Include="diagnostic_log.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="CRect2.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -97,6 +100,7 @@
     <ClInclude Include="alpha_blender.h" />
     <ClInclude Include="color_conv_table.h" />
     <ClInclude Include="CoordGeom.h" />
+    <ClInclude Include="diagnostic_log.h" />
     <ClInclude Include="CRect2.h" />
     <ClInclude Include="DX9SubPic.h" />
     <ClInclude Include="hdr_color.h" />

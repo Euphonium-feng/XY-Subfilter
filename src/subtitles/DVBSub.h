@@ -44,6 +44,8 @@ public:
     virtual void            Reset();
     virtual HRESULT         SetYuvType(ColorType colorType, YuvRangeType yuvRangeType);
     virtual HRESULT         SetHdrConfig(const HdrColor::Config& config);
+    virtual void            GetAuxRenderStats(
+        int& object_count, int& drawn_objects, int& skipped_objects) const;
 
     // EN 300-743, table 2
     enum DVB_SEGMENT_TYPE {
@@ -199,6 +201,9 @@ private:
     CAtlList<DVB_PAGE*> m_Pages;
     CAutoPtr<DVB_PAGE>  m_pCurrentPage;
     DVB_DISPLAY         m_Display;
+    int                 m_last_object_count;
+    int                 m_last_drawn_objects;
+    int                 m_last_skipped_objects;
     REFERENCE_TIME      m_rtStart;
     REFERENCE_TIME      m_rtStop;
 

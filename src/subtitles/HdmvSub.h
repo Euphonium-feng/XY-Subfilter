@@ -121,6 +121,8 @@ public:
     void      Reset();
     virtual HRESULT         SetYuvType(ColorType colorType, YuvRangeType yuvRangeType);
     virtual HRESULT         SetHdrConfig(const HdrColor::Config& config);
+    virtual void            GetAuxRenderStats(
+        int& object_count, int& drawn_objects, int& skipped_objects) const;
 private:
 
     HDMV_SEGMENT_TYPE            m_nCurSegment;
@@ -134,6 +136,9 @@ private:
 
     HDMV_CLUT                    m_CLUTs[256];
     CompositionObject            m_compositionObjects[64];
+    int                          m_last_object_count;
+    int                          m_last_drawn_objects;
+    int                          m_last_skipped_objects;
 
 
     int                 ParsePresentationSegment(REFERENCE_TIME rt, CGolombBuffer* pGBuffer);
