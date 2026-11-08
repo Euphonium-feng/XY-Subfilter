@@ -19,84 +19,49 @@ bool SameSize(const SIZE& first, const SIZE& second)
     return first.cx == second.cx && first.cy == second.cy;
 }
 
-// The bitmap subtitle is drawn in the stream's design resolution (PGS
-// video_descriptor, DVB display size). When the option is on and a display
-// size is known, that design canvas is centred on the display area: the canvas
-// keeps its own pixel grid, and the consumer scales the whole block onto the
-// screen. No resampling happens here, so the subtitle keeps its authored size
-// relative to the picture.
-bool ResolveBitmapCanvasLayout(
-    IXyOptions* consumer, const SIZE& design_size,
-    SIZE* publish_video_size, RECT* publish_output, RECT* publish_clip,
-    POINT* bitmap_offset, bool* active)
+// Bitmaps use the same display canvas as text (D44). The canvas is built from
+// the video rect and the persisted display size; the stream's design
+// resolution only determines how many pixels the provider has to paint.
+bool ReadBitmapCanvasInput(
+    IXyOptions* consumer, const RECT& video_rect,
+    SubtitleDisplayLayout::BitmapFrameInput* input)
 {
-    if (!consumer || !publish_video_size || !publish_output || !publish_clip
-        || !bitmap_offset || !active) {
+    if (!consumer || !input) {
         return false;
     }
 
-    *active = false;
-    publish_video_size->cx = design_size.cx;
-    publish_video_size->cy = design_size.cy;
-    *publish_output = RECT{ 0, 0, design_size.cx, design_size.cy };
-    *publish_clip = *publish_output;
-    bitmap_offset->x = 0;
-    bitmap_offset->y = 0;
+    input->video_rect = video_rect;
+    input->display_area.cx = 0;
+    input->display_area.cy = 0;
+    input->enabled = false;
 
-    bool enabled = false;
-    int aspect_mode = 0;
     if (FAILED(consumer->XyGetBool(
             DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
-            &enabled))
-        || !enabled) {
-        return false;
-    }
-    if (FAILED(consumer->XyGetInt(
-            DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
-            &aspect_mode))
-        || aspect_mode == DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF) {
+            &input->enabled))
+        || !input->enabled) {
         return false;
     }
 
-    SIZE display_area = {};
-    bool has_display_area =
-        SUCCEEDED(consumer->XyGetSize(
-            DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &display_area))
-        && display_area.cx > 0
-        && display_area.cy > 0;
+    if (SUCCEEDED(consumer->XyGetSize(
+            DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &input->display_area))
+        && input->display_area.cx > 0
+        && input->display_area.cy > 0) {
+        return true;
+    }
 
     RECT fullscreen = {};
-    if (!has_display_area
-        && SUCCEEDED(consumer->XyGetRect(
+    if (SUCCEEDED(consumer->XyGetRect(
             DirectVobSubXyOptions::RECT_FULLSCREEN, &fullscreen))
         && fullscreen.right > fullscreen.left
         && fullscreen.bottom > fullscreen.top
-        && fullscreen.right - fullscreen.left > design_size.cx
-        && fullscreen.bottom - fullscreen.top > design_size.cy) {
-        display_area.cx = fullscreen.right - fullscreen.left;
-        display_area.cy = fullscreen.bottom - fullscreen.top;
-        has_display_area = true;
-    }
-    if (!has_display_area) {
-        return false;
+        && fullscreen.right - fullscreen.left > video_rect.right - video_rect.left
+        && fullscreen.bottom - fullscreen.top > video_rect.bottom - video_rect.top) {
+        input->display_area.cx = fullscreen.right - fullscreen.left;
+        input->display_area.cy = fullscreen.bottom - fullscreen.top;
+        return true;
     }
 
-    // Nothing is redrawn: the PGS/DVB bitmap already covers the picture plus
-    // its bars in the stream's design resolution. Only the published geometry
-    // changes, exactly like the text path: publishing the design canvas as the
-    // output makes the consumer scale the whole block onto the screen, so the
-    // bars land where the display has them.
-    if (!SubtitleDisplayLayout::ResolveBitmapCanvas(
-            design_size, display_area.cx, display_area.cy,
-            publish_output, publish_clip)) {
-        return false;
-    }
-
-    *publish_video_size = design_size;
-    bitmap_offset->x = 0;
-    bitmap_offset->y = 0;
-    *active = true;
-    return true;
+    return false;
 }
 }
 
@@ -113,6 +78,17 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
 {
     m_canvas_design_size.cx = 0;
     m_canvas_design_size.cy = 0;
+    m_canvas_render_size.cx = 0;
+    m_canvas_render_size.cy = 0;
+    m_canvas_video_size.cx = 0;
+    m_canvas_video_size.cy = 0;
+    m_design_size.cx = 0;
+    m_design_size.cy = 0;
+    m_render_size.cx = 0;
+    m_render_size.cy = 0;
+    m_canvas_enabled = false;
+    m_canvas_display_area.cx = 0;
+    m_canvas_display_area.cy = 0;
     m_canvas_publish_output = RECT();
     m_canvas_publish_clip = RECT();
     m_canvas_bitmap_offset.x = 0;
@@ -130,6 +106,7 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
     {
         hr = m_consumer != consumer ? S_OK : S_FALSE;
         m_consumer = consumer;
+        m_canvas_cached = false;
     }
     else
     {
@@ -186,38 +163,75 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         XY_LOG_ERROR("Failed to get sizes info");
         return hr;
     }
-    if (!m_allocator || m_cur_output_size!=MaxTextureSize)
-    {
-        m_cur_output_size = MaxTextureSize;
-        if (m_cur_output_size.cx!=0 && m_cur_output_size.cy!=0)
-        {
-            hr = ResetAllocator();
-            ASSERT(SUCCEEDED(hr));
-        }
-        else
-        {
-            XY_LOG_WARN("Invalid output size "<<m_cur_output_size);
-            return S_FALSE;
-        }
+    m_design_size = MaxTextureSize;
+    if (m_design_size.cx == 0 || m_design_size.cy == 0) {
+        XY_LOG_WARN("Invalid design size "<<m_design_size);
+        return S_FALSE;
     }
 
-    // Resolve the published geometry once per design/display change. The
-    // bitmap itself is always drawn in the design resolution, so only these
-    // few values change and only when an input does.
+    // Resolve the canvas once per input change. The canvas is built from the
+    // active video size, not from the stream's design resolution: a PGS
+    // design canvas can be 1920x1080 while the picture is 1920x800.
+    SIZE video_size = m_design_size;
+    if (FAILED(m_consumer->XyGetSize(
+            DirectVobSubXyOptions::SIZE_ORIGINAL_VIDEO, &video_size))
+        || video_size.cx <= 0
+        || video_size.cy <= 0) {
+        video_size = m_design_size;
+    }
+    const RECT video_rect = { 0, 0, video_size.cx, video_size.cy };
     if (!m_canvas_cached
-        || m_canvas_design_size.cx != m_cur_output_size.cx
-        || m_canvas_design_size.cy != m_cur_output_size.cy)
+        || m_canvas_design_size.cx != m_design_size.cx
+        || m_canvas_design_size.cy != m_design_size.cy
+        || m_canvas_video_size.cx != video_size.cx
+        || m_canvas_video_size.cy != video_size.cy
+        || m_canvas_enabled != m_canvas_input.enabled
+        || m_canvas_display_area.cx != m_canvas_input.display_area.cx
+        || m_canvas_display_area.cy != m_canvas_input.display_area.cy)
     {
-        // The published size stays the design size, so it needs no storage.
-        SIZE publish_size = {};
-        bool canvas_active = false;
-        ResolveBitmapCanvasLayout(
-            m_consumer, m_cur_output_size,
-            &publish_size, &m_canvas_publish_output, &m_canvas_publish_clip,
-            &m_canvas_bitmap_offset, &canvas_active);
-        m_canvas_active = canvas_active;
-        m_canvas_design_size = m_cur_output_size;
+        SubtitleDisplayLayout::BitmapFrameInput input;
+        const bool has_canvas =
+            ReadBitmapCanvasInput(m_consumer, video_rect, &input);
+        const SubtitleDisplayLayout::BitmapFrameResult frame =
+            SubtitleDisplayLayout::ResolveBitmapFrame(input);
+        const LONG canvas_width =
+            frame.frame.clip_rect.right - frame.frame.clip_rect.left;
+        const LONG canvas_height =
+            frame.frame.clip_rect.bottom - frame.frame.clip_rect.top;
+        m_canvas_active =
+            has_canvas
+            && frame.canvas.uses_display_area
+            && canvas_width >= m_design_size.cx
+            && canvas_height >= m_design_size.cy;
+        m_canvas_publish_output = frame.frame.output_rect;
+        m_canvas_publish_clip = frame.frame.clip_rect;
+        m_canvas_bitmap_offset = frame.frame.bitmap_offset;
+        m_canvas_input = input;
+        m_canvas_enabled = input.enabled;
+        m_canvas_display_area = input.display_area;
+        m_canvas_design_size = m_design_size;
+        m_canvas_video_size = video_size;
         m_canvas_cached = true;
+    }
+
+    // The painting buffer is the canvas, not the design resolution. The
+    // provider still paints objects at their stream coordinates; a larger
+    // canvas simply gives them the room the display actually has.
+    SIZE render_size = m_canvas_active
+        ? SIZE{ m_canvas_publish_clip.right - m_canvas_publish_clip.left,
+                m_canvas_publish_clip.bottom - m_canvas_publish_clip.top }
+        : m_design_size;
+    if (m_canvas_render_size.cx != render_size.cx
+        || m_canvas_render_size.cy != render_size.cy) {
+        m_canvas_render_size = render_size;
+        m_render_size = render_size;
+        hr = ResetAllocator();
+        ASSERT(SUCCEEDED(hr));
+    }
+    else if (!m_allocator) {
+        m_render_size = render_size;
+        hr = ResetAllocator();
+        ASSERT(SUCCEEDED(hr));
     }
 
     hr = Render( now, pos );
@@ -269,11 +283,11 @@ HRESULT HdmvSubtitleProviderImpl::ResetAllocator()
 {
     const int MAX_SUBPIC_QUEUE_LENGTH = 1;
 
-    m_allocator = DEBUG_NEW CPooledSubPicAllocator(MSP_RGB32, m_cur_output_size, MAX_SUBPIC_QUEUE_LENGTH + 1);
+    m_allocator = DEBUG_NEW CPooledSubPicAllocator(MSP_RGB32, m_render_size, MAX_SUBPIC_QUEUE_LENGTH + 1);
     ASSERT(m_allocator);
 
-    m_allocator->SetCurSize(m_cur_output_size);
-    m_allocator->SetCurVidRect(CRect(CPoint(0,0),m_cur_output_size));
+    m_allocator->SetCurSize(m_render_size);
+    m_allocator->SetCurVidRect(CRect(CPoint(0,0),m_render_size));
     return S_OK;
 }
 
@@ -350,7 +364,7 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     }
     if (hr == S_OK)
     {
-        CRect video_rect(CPoint(0,0), m_cur_output_size);
+        CRect video_rect(CPoint(0,0), m_render_size);
         if (m_canvas_active)
         {
             m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(

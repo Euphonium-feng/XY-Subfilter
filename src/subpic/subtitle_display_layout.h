@@ -93,15 +93,28 @@ namespace SubtitleDisplayLayout
         bool enabled, int aspect_mode, bool fullscreen,
         const RECT& video_rect, int display_width, int display_height);
 
-    // Bitmap (PGS/DVB) subtitles are drawn in their own design resolution,
-    // which already covers the picture plus its letterbox bars. When the
-    // design aspect matches the display aspect, that canvas can be published
-    // as-is: output = clip = design canvas, no offset, and the consumer scales
-    // the whole block onto the screen. Returns false when the aspect differs
-    // so the caller falls back to the plain video-sized frame.
-    bool ResolveBitmapCanvas(
-        const SIZE& design_size, int display_width, int display_height,
-        RECT* publish_output, RECT* publish_clip);
+    // Bitmap (PGS/DVB) subtitles use the full display canvas. The stream's
+    // design resolution is not a publication canvas, and the aspect mode is
+    // deliberately ignored here: bitmaps are drawn in their own coordinates
+    // and only need the canvas they are rendered into.
+    struct BitmapFrameInput
+    {
+        bool enabled;
+        RECT video_rect;
+        SIZE display_area;
+
+        BitmapFrameInput();
+    };
+
+    struct BitmapFrameResult
+    {
+        CanvasResult canvas;
+        FrameLayout frame;
+
+        BitmapFrameResult();
+    };
+
+    BitmapFrameResult ResolveBitmapFrame(const BitmapFrameInput& input);
 
     // Builds the published frame geometry from the consumer's video rect and
     // the resolved canvas. Bitmap positions are canvas-local and are shifted

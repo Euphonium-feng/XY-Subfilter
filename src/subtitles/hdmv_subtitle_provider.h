@@ -2,6 +2,7 @@
 
 #include "Rasterizer.h"
 #include "../SubPic/SubPicProviderImpl.h"
+#include "../subpic/subtitle_display_layout.h"
 #include "HdmvSub.h"
 #include "BaseSub.h"
 
@@ -23,7 +24,8 @@ private :
     bool                        m_cleanOld;
 
     IXyOptions                 *m_consumer;
-    CSize                       m_cur_output_size;
+    CSize                       m_design_size;
+    CSize                       m_render_size;
     bool m_use_dst_alpha;
     HdrColor::Config m_applied_hdr_config;
 
@@ -32,6 +34,11 @@ private :
     // display area is used. Recomputed only when an input changes.
     bool m_canvas_cached;
     SIZE m_canvas_design_size;
+    SIZE m_canvas_render_size;
+    SIZE m_canvas_video_size;
+    SubtitleDisplayLayout::BitmapFrameInput m_canvas_input;
+    bool m_canvas_enabled;
+    SIZE m_canvas_display_area;
     RECT m_canvas_publish_output;
     RECT m_canvas_publish_clip;
     POINT m_canvas_bitmap_offset;

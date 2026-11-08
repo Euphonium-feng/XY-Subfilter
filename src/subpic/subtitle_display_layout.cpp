@@ -279,33 +279,31 @@ namespace SubtitleDisplayLayout
         return result;
     }
 
-    bool ResolveBitmapCanvas(
-        const SIZE& design_size, int display_width, int display_height,
-        RECT* publish_output, RECT* publish_clip)
+    BitmapFrameInput::BitmapFrameInput()
+        : enabled(false)
+        , video_rect()
     {
-        if (!publish_output || !publish_clip
-            || design_size.cx <= 0 || design_size.cy <= 0
-            || display_width <= 0 || display_height <= 0) {
-            return false;
-        }
+        display_area.cx = 0;
+        display_area.cy = 0;
+    }
 
-        // The design canvas is only usable as-is when it has the same aspect
-        // as the display; otherwise the picture would be distorted.
-        const __int64 display_scaled =
-            __int64(display_width) * design_size.cy;
-        const __int64 design_scaled =
-            __int64(display_height) * design_size.cx;
-        const __int64 tolerance = design_scaled / 200; // 0.5%
-        const __int64 delta = display_scaled > design_scaled
-            ? display_scaled - design_scaled
-            : design_scaled - display_scaled;
-        if (delta > tolerance) {
-            return false;
-        }
+    BitmapFrameResult::BitmapFrameResult()
+    {
+    }
 
-        const RECT canvas = { 0, 0, design_size.cx, design_size.cy };
-        *publish_output = canvas;
-        *publish_clip = canvas;
-        return true;
+    BitmapFrameResult ResolveBitmapFrame(const BitmapFrameInput& input)
+    {
+        BitmapFrameResult result;
+        // The bitmap canvas is the display area expressed in source pixels,
+        // exactly like the text path: 1920x800 video on a 16:9 display gets a
+        // 1920x1080 canvas. The aspect mode is not consulted here; bitmap
+        // subtitles always use the whole display area.
+        result.canvas = ResolveCanvasForAspect(
+            input.enabled, ASPECT_AUTO, true, input.video_rect,
+            input.display_area.cx, input.display_area.cy);
+        const RECT canvas = result.canvas.uses_display_area
+            ? result.canvas.canvas_rect : input.video_rect;
+        result.frame = BuildFrameLayout(input.video_rect, canvas);
+        return result;
     }
 }
