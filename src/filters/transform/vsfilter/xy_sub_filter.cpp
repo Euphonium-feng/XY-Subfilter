@@ -2525,7 +2525,11 @@ void XySubFilter::SetSubtitle( ISubStream* pSubStream, bool fApplyDefStyle /*= t
             pVSS->SetAlignment(m_xy_bool_opt[BOOL_OVERRIDE_PLACEMENT], m_xy_size_opt[SIZE_PLACEMENT_PERC].cx, m_xy_size_opt[SIZE_PLACEMENT_PERC].cy, 1, 1);
             pVSS->m_fOnlyShowForcedSubs = m_xy_bool_opt[BOOL_VOBSUBSETTINGS_ONLY_SHOW_FORCED_SUBS];
             m_xy_bool_opt[BOOL_IS_BITMAP] = true;
-            m_xy_bool_opt[BOOL_IS_MOVABLE] = true;
+            // PGS/DVB bitmaps are authored at absolute canvas coordinates.
+            // Advertising them as movable invites consumers to reflow or
+            // rescale them back into the video rect, which destroys the
+            // letterbox placement.
+            m_xy_bool_opt[BOOL_IS_MOVABLE] = false;
         }
         else if(clsid == __uuidof(CVobSubStream))
         {
@@ -2534,7 +2538,7 @@ void XySubFilter::SetSubtitle( ISubStream* pSubStream, bool fApplyDefStyle /*= t
             pVSS->SetAlignment(m_xy_bool_opt[BOOL_OVERRIDE_PLACEMENT], m_xy_size_opt[SIZE_PLACEMENT_PERC].cx, m_xy_size_opt[SIZE_PLACEMENT_PERC].cy, 1, 1);
             pVSS->m_fOnlyShowForcedSubs = m_xy_bool_opt[BOOL_VOBSUBSETTINGS_ONLY_SHOW_FORCED_SUBS];
             m_xy_bool_opt[BOOL_IS_BITMAP] = true;
-            m_xy_bool_opt[BOOL_IS_MOVABLE] = true;
+            m_xy_bool_opt[BOOL_IS_MOVABLE] = false;
         }
         else if(clsid == __uuidof(CRenderedTextSubtitle))
         {
@@ -2687,7 +2691,7 @@ void XySubFilter::SetSubtitle( ISubStream* pSubStream, bool fApplyDefStyle /*= t
                 sub->SetYuvType(color_type, range_type);
             }
             m_xy_bool_opt[BOOL_IS_BITMAP] = true;
-            m_xy_bool_opt[BOOL_IS_MOVABLE] = true;
+            m_xy_bool_opt[BOOL_IS_MOVABLE] = false;
         }
     }
 

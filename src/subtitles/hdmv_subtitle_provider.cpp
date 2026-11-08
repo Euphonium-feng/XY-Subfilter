@@ -72,6 +72,7 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_canvas_cached(false)
     , m_canvas_active(false)
     , m_canvas_fallback(0)
+    , m_frame_geometry_dirty(false)
     , m_diag_valid(false)
     , m_diag_bitmap_id(0)
     , m_diag_bitmap_count(0)
@@ -183,7 +184,6 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
             return S_FALSE;
         }
     }
-
     // Resolve the canvas once per input change. The canvas is built from the
     // active video size, not from the stream's design resolution: a PGS
     // design canvas can be 1920x1080 while the picture is 1920x800.
@@ -225,6 +225,7 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_canvas_design_size = design_size;
         m_canvas_video_size = video_size;
         m_canvas_cached = true;
+        m_frame_geometry_dirty = true;
     }
 
     // The display canvas is the painting surface. Bitmap objects stay at
@@ -240,8 +241,17 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_render_size = render_size;
         m_pSubPic = NULL;
         m_xy_sub_render_frame = NULL;
+        m_frame_geometry_dirty = true;
         hr = ResetAllocator();
         ASSERT(SUCCEEDED(hr));
+    }
+    if (m_frame_geometry_dirty) {
+        // Render() returns S_OK early when m_pSubPic still covers this
+        // interval. The published geometry changed, so the cached frame must
+        // not be reused.
+        m_pSubPic = NULL;
+        m_xy_sub_render_frame = NULL;
+        m_frame_geometry_dirty = false;
     }
 
     hr = Render( now, pos );
@@ -255,7 +265,8 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
 }
 
 void HdmvSubtitleProviderImpl::LogBitmapFrame(
-    const wchar_t* event, REFERENCE_TIME now, HRESULT hr)
+    const wchar_t* event, REFERENCE_TIME now, HRESULT hr,
+    const CRect* dirty_rect, int lock_hr, int alloc_hr)
 {
     int object_count = 0;
     int drawn_objects = 0;
@@ -314,19 +325,22 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
     CStringW diagnostic;
     diagnostic.Format(
         L"schema=xy-bitmap-frame/1\r\n"
-        L"event=%ls rt=%I64d hr=0x%08lX "
+        L"event=%ls rt=%I64d hr=0x%08lX lock=0x%08lX alloc=0x%08lX "
         L"designSize=%ld,%ld videoSize=%ld,%ld "
         L"displaySource=%d "
         L"displayArea=%ld,%ld canvasRect=%ld,%ld,%ld,%ld "
         L"canvasActive=%d bufferSize=%ld,%ld "
         L"publishOutput=%ld,%ld,%ld,%ld "
         L"publishClip=%ld,%ld,%ld,%ld bitmapOffset=%ld,%ld "
+        L"dirtyRect=%ld,%ld,%ld,%ld "
         L"objectCount=%d drawnObjects=%d skippedObjects=%d "
         L"bitmapCount=%d bitmap0=%ld,%ld,%ld,%ld "
         L"canvasFallback=%d\r\n",
         event ? event : L"frame",
         now,
         static_cast<int>(hr),
+        lock_hr,
+        alloc_hr,
         m_canvas_design_size.cx, m_canvas_design_size.cy,
         m_canvas_video_size.cx, m_canvas_video_size.cy,
         m_canvas_display_area.cx > 0 && m_canvas_display_area.cy > 0 ? 1 : 0,
@@ -340,6 +354,10 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         m_canvas_publish_clip.left, m_canvas_publish_clip.top,
         m_canvas_publish_clip.right, m_canvas_publish_clip.bottom,
         m_canvas_bitmap_offset.x, m_canvas_bitmap_offset.y,
+        dirty_rect ? dirty_rect->left : 0,
+        dirty_rect ? dirty_rect->top : 0,
+        dirty_rect ? dirty_rect->right : 0,
+        dirty_rect ? dirty_rect->bottom : 0,
         object_count, drawn_objects, skipped_objects,
         bitmap_count,
         bitmap_rect.left, bitmap_rect.top,
@@ -354,6 +372,7 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Invalidate( REFERENCE_TIME rtInvalidate /
     // next time a frame is requested instead of caching the old geometry.
     m_canvas_cached = false;
     m_diag_valid = false;
+    m_frame_geometry_dirty = true;
     if (m_pSubPic )
     {
         if (m_pSubPic->GetStart()>=rtInvalidate) {
@@ -414,8 +433,10 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     //should always re-alloc one for the old be in used by the consumer
     m_pSubPic = NULL;
     ASSERT(m_allocator);
-    if(FAILED(m_allocator->AllocDynamicEx(&m_pSubPic))) {
+    const HRESULT alloc_hr = m_allocator->AllocDynamicEx(&m_pSubPic);
+    if(FAILED(alloc_hr)) {
         XY_LOG_ERROR("Failed to allocate subpic");
+        LogBitmapFrame(L"alloc-failed", now, alloc_hr, NULL, S_OK, alloc_hr);
         return E_FAIL;
     }
 
@@ -423,12 +444,13 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
 
     HRESULT hr = E_FAIL;
 
+    CRect dirty_rect;
     CMemSubPic * mem_subpic = dynamic_cast<CMemSubPic*>((ISubPicEx *)m_pSubPic);
     ASSERT(mem_subpic);
     SubPicDesc spd;
-    if(SUCCEEDED(m_pSubPic->Lock(spd)))
+    const HRESULT lock_hr = m_pSubPic->Lock(spd);
+    if(SUCCEEDED(lock_hr))
     {
-        CRect dirty_rect;
         DWORD color = 0xFF000000;
         if(SUCCEEDED(m_pSubPic->ClearDirtyRect(color)))
         {
@@ -457,6 +479,7 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
                 if (FAILED(hr))
                 {
                     XY_LOG_ERROR("Failed. "<<XY_LOG_VAR_2_STR(hr));
+                    LogBitmapFrame(L"flip-failed", now, hr, &dirty_rect, lock_hr, alloc_hr);
                     return hr;
                 }
             }
@@ -481,11 +504,15 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
             m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
                 mem_subpic, video_rect, video_rect, now, &hr);
         }
-        LogBitmapFrame(L"frame", now, hr);
+        LogBitmapFrame(L"frame", now, hr, NULL, lock_hr, alloc_hr);
     }
     else
     {
         m_xy_sub_render_frame = NULL;
+        LogBitmapFrame(L"render-empty", now, hr, &dirty_rect, lock_hr, alloc_hr);
+        if (FAILED(hr)) {
+            return hr;
+        }
     }
     return hr;
 }

@@ -19,7 +19,9 @@ public:
 private:
     HRESULT ResetAllocator();
     HRESULT Render(REFERENCE_TIME now, POSITION pos);
-    void LogBitmapFrame(const wchar_t* event, REFERENCE_TIME now, HRESULT hr);
+    void LogBitmapFrame(
+        const wchar_t* event, REFERENCE_TIME now, HRESULT hr,
+        const CRect* dirty_rect, int lock_hr, int alloc_hr);
 private :
     CBaseSub*                   m_pSub;
     bool                        m_cleanOld;
@@ -45,6 +47,7 @@ private :
     POINT m_canvas_bitmap_offset;
     bool m_canvas_active;
     int m_canvas_fallback;
+    bool m_frame_geometry_dirty;
 
     bool m_diag_valid;
     ULONGLONG m_diag_bitmap_id;

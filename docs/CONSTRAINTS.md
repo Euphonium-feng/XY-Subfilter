@@ -104,6 +104,8 @@
   HLG 观感描述为已验证。
 - “按显示器区域排版字幕”默认关闭；关闭时不得改变任何现有输出。开启后文本
   与 PGS/SUP/DVB 位图都使用完整显示画布；位图内容保持原始坐标，不缩放。
+- 位图字幕在 consumer 侧必须保持 `isMovable=false`：坐标由 PGS/DVB 流决定，
+  允许重定位会让 madVR 把内容压回视频矩形，破坏黑边布置。
 - 显示尺寸优先取 `SIZE_DISPLAY_AREA`（属性页在 UI 线程用 `GetSystemMetrics`
   读取，持久化到 `General\display_area_width/height`）；其次取 consumer 的
   `fullscreenRect`（须完整包含并严格大于 `videoOutputRect`）。
