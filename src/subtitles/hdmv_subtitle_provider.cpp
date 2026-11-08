@@ -198,15 +198,11 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
             ReadBitmapCanvasInput(m_consumer, video_rect, &input);
         const SubtitleDisplayLayout::BitmapFrameResult frame =
             SubtitleDisplayLayout::ResolveBitmapFrame(input);
-        const LONG canvas_width =
-            frame.frame.clip_rect.right - frame.frame.clip_rect.left;
-        const LONG canvas_height =
-            frame.frame.clip_rect.bottom - frame.frame.clip_rect.top;
-        m_canvas_active =
-            has_canvas
-            && frame.canvas.uses_display_area
-            && canvas_width >= design_size.cx
-            && canvas_height >= design_size.cy;
+        // Publishing a clip that extends past the video rect made the bitmap
+        // frame disappear on the real renderer. Keep the design canvas until
+        // the bar placement is verified on hardware; the buffer and the
+        // published rect must then agree.
+        m_canvas_active = false;
         m_canvas_publish_output = frame.frame.output_rect;
         m_canvas_publish_clip = frame.frame.clip_rect;
         m_canvas_bitmap_offset = frame.frame.bitmap_offset;

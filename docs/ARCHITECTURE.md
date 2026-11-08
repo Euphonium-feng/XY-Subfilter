@@ -241,13 +241,15 @@ consumer 把零基 output 映射到 `videoOutputRect`，因此该布局在屏幕
 `RTS::Init()` 在布局变化时清空 `m_last_frame`，避免 libass 在“文本未变、
 仅几何变化”时复用旧布局帧。
 
-PGS/SUP/DVB 使用与文本相同的显示画布，但对象仍按流内坐标绘制，provider 不做
-缩放、留白或重排。画布由 `ResolveBitmapFrame()` 根据显示宽高比在源像素空间
-构造；设计分辨率不参与启用判定。渲染缓冲区始终是流的设计分辨率，只有帧几何
-是显示画布——把缓冲区也改成画布会让对象越界并被整块跳过。
+PGS/SUP/DVB 的位图对象按流内坐标绘制，provider 不做缩放、留白或重排。
+`ResolveBitmapFrame()` 仍负责按显示宽高比构造画布，但当前实现不发布该画布：
+扩大 `GetOutputRect` / `GetClipRect` 在 madVR 实机上会让整帧消失。
 
-画布与偏移在 `HdmvSubtitleProviderImpl` 内按设计分辨率、视频尺寸、显示尺寸和
-布局开关缓存，仅在输入变化时重算。
+位图缓冲区必须保持流的设计分辨率；若把缓冲区改成画布尺寸，`CHdmvSub::Render`
+的 `spd.w/spd.h` 检查会跳过对象，导致字幕消失。位图进入黑边需要先将设计画布
+内容重采样到显示画布，再让 buffer 与发布矩形一致；尚未实现。
+
+画布缓存只在输入变化时重算，`Invalidate()` 与 `Connect()` 会使其失效。
 
 ## 界面与本地化
 
