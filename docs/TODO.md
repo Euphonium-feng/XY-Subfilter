@@ -105,6 +105,7 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 - 代码修复 `3acfdb5` 与 vswhere 工作流修复 `41be4a0` 的合并状态在
   run `42471372793` 通过三矩阵（`release-win32`、`release-x64`、
   `debug-x64`）。
+- 文档记录提交 `a44e128` 的 run `42472018217` 同样三矩阵全绿。
 - run `42470777553`（提交 `3acfdb5`）在 `Install VSNASM` / `Install VSYASM`
   阶段失败：安装脚本从 `github.com/Microsoft/vswhere/releases` 下载
   `vswhere.exe` 解析失败，重跑仍复现。工作流现在先复制 runner 自带的
