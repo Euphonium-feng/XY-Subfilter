@@ -2264,7 +2264,7 @@ void XySubFilter::LogHdrConfiguration(
             bitmap_scale_x, bitmap_scale_y,
             int(canvas.fallback_reason));
     }
-    AppendXyDiagnostic(diagnostic);
+    AppendXyDiagnostic(diagnostic.GetString());
 }
 
 CStringW XySubFilter::GetHdrStatusText()
@@ -3502,7 +3502,7 @@ bool XySubFilter::UpdateConsumerHdrSignal(
             L"schema=xy-hdr-probe/1\r\n"
             L"scan=%ls state=disconnect preservedEvidence=1\r\n",
             scan_reason ? scan_reason : L"disconnect");
-        AppendXyDiagnostic(disconnect_diagnostic);
+        AppendXyDiagnostic(disconnect_diagnostic.GetString());
         return false;
     }
     HdrDetection::AutoHdrSignals old_signals;
@@ -3699,7 +3699,7 @@ bool XySubFilter::UpdateConsumerHdrSignal(
         new_auto_pq ? 1 : 0,
         decision_changed ? 1 : 0,
         yuv_matrix.GetString());
-    AppendXyDiagnostic(diagnostic);
+    AppendXyDiagnostic(diagnostic.GetString());
     XY_LOG_INFO("HDR probe: graph:" << graph_signal
         << " container:" << container_signal
         << " filename:" << filename_hdr

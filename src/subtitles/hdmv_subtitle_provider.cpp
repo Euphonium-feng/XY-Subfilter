@@ -345,7 +345,7 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         bitmap_rect.left, bitmap_rect.top,
         bitmap_rect.right, bitmap_rect.bottom,
         m_canvas_fallback);
-    AppendXyDiagnostic(diagnostic);
+    AppendXyDiagnostic(diagnostic.GetString());
 }
 
 STDMETHODIMP HdmvSubtitleProviderImpl::Invalidate( REFERENCE_TIME rtInvalidate /*= -1*/ )

@@ -36,9 +36,6 @@
     <ClCompile Include="color_conv_table.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="diagnostic_log.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="hdr_evidence.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
