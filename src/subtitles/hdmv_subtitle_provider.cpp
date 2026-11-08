@@ -232,6 +232,9 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
 
 STDMETHODIMP HdmvSubtitleProviderImpl::Invalidate( REFERENCE_TIME rtInvalidate /*= -1*/ )
 {
+    // Layout options and display size live on the consumer. Re-read them the
+    // next time a frame is requested instead of caching the old geometry.
+    m_canvas_cached = false;
     if (m_pSubPic )
     {
         if (m_pSubPic->GetStart()>=rtInvalidate) {

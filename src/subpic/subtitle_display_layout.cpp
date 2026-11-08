@@ -294,7 +294,7 @@ namespace SubtitleDisplayLayout
         const __int64 display_scaled =
             __int64(display_width) * design_size.cy;
         const __int64 design_scaled =
-            __int64(design_height) * design_size.cx;
+            __int64(display_height) * design_size.cx;
         const __int64 tolerance = design_scaled / 200; // 0.5%
         const __int64 delta = display_scaled > design_scaled
             ? display_scaled - design_scaled

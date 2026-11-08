@@ -178,6 +178,7 @@ private:
     CCritSec m_csHdrRefresh;
     int m_hdr_batch_depth;
     bool m_hdr_refresh_pending;
+    bool m_layout_refresh_pending;
     bool m_consumer_clear_attempted;
     HRESULT m_last_consumer_clear_hr;
     volatile LONG m_video_hdr_signal_pending;

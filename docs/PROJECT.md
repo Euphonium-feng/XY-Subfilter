@@ -16,7 +16,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
    有界读取本地 MKV 的 Colour/mastering 元数据作为兜底。
 6. **按显示器区域排版字幕** —— 为 21:9 等带黑边视频增加可选布局，
    默认关闭；开启后文本字幕以 consumer 的 `subtitleTargetRect` 为画布排版，
-   而不是仅活动视频矩形。PGS/SUP/DVB 暂不参与。
+   而不是仅活动视频矩形。PGS/SUP/DVB 按流的设计分辨率发布几何，
+   不重采样。
 
 ## 需求
 
@@ -38,7 +39,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 - 本地 MKV 头部 HDR 元数据探测；不读取 Cluster 或视频样本。
 - 全屏字幕布局可选项：关闭（默认）、Auto、16:9、16:10、21:9、32:9、4:3。
   Auto 使用 consumer 的 `subtitleTargetRect`；显式画幅在其内部生成最大内接
-  画布。仅 ASS/SSA/SRT 文本生效；PGS/SUP/DVB 为待办。
+  画布。ASS/SSA/SRT 按零基显示画布重排；PGS/SUP/DVB 在设计分辨率与
+  显示比例一致时直接发布设计画布。
 
 排除：
 
@@ -58,7 +60,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
    白点输入连续键入时不需手动移动插入符。
 7. 字幕显示区域开关默认关闭；关闭时输出与当前版本一致。开启后仅在严格全屏
    （目标尺寸匹配显示尺寸 ≤5%、包含视频、且严格大于视频）生效；无字段、
-   窗口模式或无效矩形必须安全回退。本轮只覆盖文本字幕。
+   窗口模式或无效矩形必须安全回退。文本字幕按画布重排；位图字幕在比例
+   一致时发布设计画布，否则回退。
 
 ## 当前状态
 

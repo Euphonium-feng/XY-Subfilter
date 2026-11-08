@@ -204,6 +204,17 @@ TEST(SubtitleDisplayLayoutTest, BitmapCanvasRejectsAspectMismatch)
         design, 2560, 1440, &output, &clip));
 }
 
+TEST(SubtitleDisplayLayoutTest, BitmapCanvasComparesHeightAgainstDisplay)
+{
+    // Same width but a taller design canvas must not be accepted: this
+    // catches a width/height mix-up in the cross multiplication.
+    RECT output = {};
+    RECT clip = {};
+    const SIZE design = { 2560, 1600 };
+    EXPECT_FALSE(SubtitleDisplayLayout::ResolveBitmapCanvas(
+        design, 2560, 1440, &output, &clip));
+}
+
 TEST(SubtitleDisplayLayoutTest, BitmapCanvasRejectsMissingDisplaySize)
 {
     RECT output = {};

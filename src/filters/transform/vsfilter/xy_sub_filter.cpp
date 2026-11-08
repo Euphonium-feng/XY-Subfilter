@@ -258,6 +258,7 @@ XySubFilter::XySubFilter( LPUNKNOWN punk,
     , m_context_id(0)
     , m_hdr_batch_depth(0)
     , m_hdr_refresh_pending(false)
+    , m_layout_refresh_pending(false)
     , m_consumer_clear_attempted(false)
     , m_last_consumer_clear_hr(S_FALSE)
     , m_video_hdr_signal_pending(0)
@@ -718,9 +719,6 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     case INT_PGS_HDR_MODE:
     case INT_PGS_HDR_WHITE_NITS:
     case INT_TEXT_HDR_MODE:
-    case INT_SUBTITLE_DISPLAY_ASPECT:
-    case BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES:
-    case SIZE_DISPLAY_AREA:
         {
             bool deferred = false;
             {
@@ -732,6 +730,24 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
             }
             if (!deferred) {
                 ApplyHdrRefresh();
+            }
+        }
+        break;
+    case INT_SUBTITLE_DISPLAY_ASPECT:
+    case BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES:
+    case SIZE_DISPLAY_AREA:
+        {
+            bool deferred = false;
+            {
+                CAutoLock cAutoLock(&m_csHdrRefresh);
+                deferred = m_hdr_batch_depth > 0;
+                if (deferred) {
+                    m_layout_refresh_pending = true;
+                }
+            }
+            if (!deferred) {
+                m_context_id++;
+                InvalidateSubtitle();
             }
         }
         break;
@@ -2085,6 +2101,7 @@ void XySubFilter::BeginHdrOptionBatch()
 void XySubFilter::EndHdrOptionBatch()
 {
     bool apply = false;
+    bool layout_apply = false;
     {
         CAutoLock cAutoLock(&m_csHdrRefresh);
         if (m_hdr_batch_depth > 0) {
@@ -2094,6 +2111,14 @@ void XySubFilter::EndHdrOptionBatch()
             m_hdr_refresh_pending = false;
             apply = true;
         }
+        if (m_hdr_batch_depth == 0 && m_layout_refresh_pending) {
+            m_layout_refresh_pending = false;
+            layout_apply = true;
+        }
+    }
+    if (layout_apply) {
+        ++m_context_id;
+        InvalidateSubtitle();
     }
     if (apply) {
         ApplyHdrRefresh();
