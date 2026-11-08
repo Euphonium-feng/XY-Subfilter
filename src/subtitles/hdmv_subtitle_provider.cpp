@@ -78,14 +78,8 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
 {
     m_canvas_design_size.cx = 0;
     m_canvas_design_size.cy = 0;
-    m_canvas_render_size.cx = 0;
-    m_canvas_render_size.cy = 0;
     m_canvas_video_size.cx = 0;
     m_canvas_video_size.cy = 0;
-    m_design_size.cx = 0;
-    m_design_size.cy = 0;
-    m_render_size.cx = 0;
-    m_render_size.cy = 0;
     m_canvas_enabled = false;
     m_canvas_display_area.cx = 0;
     m_canvas_display_area.cy = 0;
@@ -163,26 +157,36 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         XY_LOG_ERROR("Failed to get sizes info");
         return hr;
     }
-    m_design_size = MaxTextureSize;
-    if (m_design_size.cx == 0 || m_design_size.cy == 0) {
-        XY_LOG_WARN("Invalid design size "<<m_design_size);
-        return S_FALSE;
+    if (!m_allocator || m_cur_output_size!=MaxTextureSize)
+    {
+        m_cur_output_size = MaxTextureSize;
+        if (m_cur_output_size.cx!=0 && m_cur_output_size.cy!=0)
+        {
+            hr = ResetAllocator();
+            ASSERT(SUCCEEDED(hr));
+        }
+        else
+        {
+            XY_LOG_WARN("Invalid output size "<<m_cur_output_size);
+            return S_FALSE;
+        }
     }
 
     // Resolve the canvas once per input change. The canvas is built from the
     // active video size, not from the stream's design resolution: a PGS
     // design canvas can be 1920x1080 while the picture is 1920x800.
-    SIZE video_size = m_design_size;
+    const SIZE design_size = m_cur_output_size;
+    SIZE video_size = design_size;
     if (FAILED(m_consumer->XyGetSize(
             DirectVobSubXyOptions::SIZE_ORIGINAL_VIDEO, &video_size))
         || video_size.cx <= 0
         || video_size.cy <= 0) {
-        video_size = m_design_size;
+        video_size = design_size;
     }
     const RECT video_rect = { 0, 0, video_size.cx, video_size.cy };
     if (!m_canvas_cached
-        || m_canvas_design_size.cx != m_design_size.cx
-        || m_canvas_design_size.cy != m_design_size.cy
+        || m_canvas_design_size.cx != design_size.cx
+        || m_canvas_design_size.cy != design_size.cy
         || m_canvas_video_size.cx != video_size.cx
         || m_canvas_video_size.cy != video_size.cy
         || m_canvas_enabled != m_canvas_input.enabled
@@ -201,37 +205,17 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_canvas_active =
             has_canvas
             && frame.canvas.uses_display_area
-            && canvas_width >= m_design_size.cx
-            && canvas_height >= m_design_size.cy;
+            && canvas_width >= design_size.cx
+            && canvas_height >= design_size.cy;
         m_canvas_publish_output = frame.frame.output_rect;
         m_canvas_publish_clip = frame.frame.clip_rect;
         m_canvas_bitmap_offset = frame.frame.bitmap_offset;
         m_canvas_input = input;
         m_canvas_enabled = input.enabled;
         m_canvas_display_area = input.display_area;
-        m_canvas_design_size = m_design_size;
+        m_canvas_design_size = design_size;
         m_canvas_video_size = video_size;
         m_canvas_cached = true;
-    }
-
-    // The painting buffer is the canvas, not the design resolution. The
-    // provider still paints objects at their stream coordinates; a larger
-    // canvas simply gives them the room the display actually has.
-    SIZE render_size = m_canvas_active
-        ? SIZE{ m_canvas_publish_clip.right - m_canvas_publish_clip.left,
-                m_canvas_publish_clip.bottom - m_canvas_publish_clip.top }
-        : m_design_size;
-    if (m_canvas_render_size.cx != render_size.cx
-        || m_canvas_render_size.cy != render_size.cy) {
-        m_canvas_render_size = render_size;
-        m_render_size = render_size;
-        hr = ResetAllocator();
-        ASSERT(SUCCEEDED(hr));
-    }
-    else if (!m_allocator) {
-        m_render_size = render_size;
-        hr = ResetAllocator();
-        ASSERT(SUCCEEDED(hr));
     }
 
     hr = Render( now, pos );
@@ -283,11 +267,11 @@ HRESULT HdmvSubtitleProviderImpl::ResetAllocator()
 {
     const int MAX_SUBPIC_QUEUE_LENGTH = 1;
 
-    m_allocator = DEBUG_NEW CPooledSubPicAllocator(MSP_RGB32, m_render_size, MAX_SUBPIC_QUEUE_LENGTH + 1);
+    m_allocator = DEBUG_NEW CPooledSubPicAllocator(MSP_RGB32, m_cur_output_size, MAX_SUBPIC_QUEUE_LENGTH + 1);
     ASSERT(m_allocator);
 
-    m_allocator->SetCurSize(m_render_size);
-    m_allocator->SetCurVidRect(CRect(CPoint(0,0),m_render_size));
+    m_allocator->SetCurSize(m_cur_output_size);
+    m_allocator->SetCurVidRect(CRect(CPoint(0,0),m_cur_output_size));
     return S_OK;
 }
 
@@ -364,7 +348,7 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     }
     if (hr == S_OK)
     {
-        CRect video_rect(CPoint(0,0), m_render_size);
+        CRect video_rect(CPoint(0,0), m_cur_output_size);
         if (m_canvas_active)
         {
             m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(

@@ -72,6 +72,11 @@ void AppendHdrDiagnostic(const CStringW& text)
         return;
     }
 
+    // Each process starts a fresh diagnostic file. The file is not an
+    // accumulating history across runs: one launch, one log.
+    static volatile LONG s_started = 0;
+    const bool first_write = InterlockedCompareExchange(&s_started, 1, 0) == 0;
+
     const unsigned long long max_file_size = 512ULL * 1024ULL;
     bool truncate = false;
     WIN32_FILE_ATTRIBUTE_DATA attributes = {};
@@ -86,7 +91,7 @@ void AppendHdrDiagnostic(const CStringW& text)
     if (_wfopen_s(
             &file,
             path.GetString(),
-            truncate ? L"w, ccs=UTF-8" : L"a, ccs=UTF-8") == 0
+            (first_write || truncate) ? L"w, ccs=UTF-8" : L"a, ccs=UTF-8") == 0
         && file) {
         SYSTEMTIME local_time = {};
         GetLocalTime(&local_time);
