@@ -48,14 +48,13 @@ jobs:
           if (-not (Test-Path -LiteralPath $vswhere)) {
             throw "vswhere.exe was not found at $vswhere"
           }
-          New-Item -ItemType Directory -Force -Path VSNASM, VSYASM | Out-Null
-          Copy-Item -LiteralPath $vswhere -Destination VSNASM\vswhere.exe
-          Copy-Item -LiteralPath $vswhere -Destination VSYASM\vswhere.exe
+          "VSWHERE_PATH=$vswhere" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install VSNASM
         shell: cmd
         run: |
           git clone https://github.com/ShiftMediaProject/VSNASM.git
+          copy /B /Y "%VSWHERE_PATH%" VSNASM\vswhere.exe
           .\VSNASM\install_script.bat
 
       - name: Install VS2010 Redistributable for VSYASM
@@ -66,6 +65,7 @@ jobs:
         shell: cmd
         run: |
           git clone https://github.com/ShiftMediaProject/VSYASM.git
+          copy /B /Y "%VSWHERE_PATH%" VSYASM\vswhere.exe
           .\VSYASM\install_script.bat
 
       - name: Add MSBuild to PATH
