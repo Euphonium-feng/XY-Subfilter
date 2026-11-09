@@ -485,11 +485,16 @@ PGS/SUP/DVB 的完整画布支持已由 D45 取代；本节只保留文本画布
 DVB 的 dirty-rect 计算都会把绘制限制在 `spd` 内。这样即使画布某一维小于流设计
 画布，也不会整块丢对象或越界写内存。
 
-帧发布几何与文本路径完全一致：`GetOutputRect=(0,0,videoW,videoH)`，
-`GetClipRect = 画布 - videoOutputRect 原点`，
-`GetBitmap.position = 对象左上角 + 画布原点偏移`。`GetOutputRect` 始终保持视频
-尺寸，避免 consumer 对 output 二次缩放。画布启用条件只有三项：布局开关开启、
-显示尺寸可用、画布有效且包含视频；设计比例与设计分辨率不参与判断。
+帧发布几何不能与文本路径完全一致。2026-11-09 14:15 的日志显示，
+`GetOutputRect=(0,0,1920,800)`、`GetBitmap.position=(660,790)` 时，画布底栏的
+`bitmap0=(660,790,1260,880)` 落在 800 行 output 之外，只剩约 10 行可见。
+
+位图帧改为发布自己的缓冲区：`GetOutputRect=GetClipRect=(0,0,canvasW,canvasH)`，
+`bitmapOffset=(0,0)`。位图对象仍在画布内按流坐标绘制，不做缩放、留白或重排。
+文本路径继续使用视频尺寸 output，由文本渲染器自己完成画布缩放。
+
+画布启用条件只有三项：布局开关开启、显示尺寸可用、画布有效且包含视频；设计
+比例与设计分辨率不参与判断。
 
 位图流必须声明 `isMovable=false`。PGS/DVB 对象是绝对画布坐标，声明为可移动
 会让 madVR 把字幕重新定位/缩放回视频矩形。`XySubFilter::RequestFrame()` 每帧
@@ -508,6 +513,6 @@ DVB 的 dirty-rect 计算都会把绘制限制在 `spd` 内。这样即使画布
 
 被否方案：要求设计比例等于显示比例才启用（1920×1080 PGS 配 1920×800 视频会
 永远不生效）；把设计画布内容重采样到显示画布（违反“不缩放”约束，且没有必要）；
-把 `GetOutputRect` 改成画布尺寸（会让 consumer 把整帧再缩放一次）。
+使用视频尺寸 output 却把画布偏移只写进 bitmap position（对象越出 output）。
 
 该实现不需要新增 `SubRenderIntf` 字段，也不改任何既有选项 ID。

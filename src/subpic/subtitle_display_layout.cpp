@@ -190,6 +190,25 @@ namespace SubtitleDisplayLayout
         return layout;
     }
 
+    FrameLayout BuildBitmapFrameLayout(
+        const RECT& video_output_rect, const RECT& canvas_rect)
+    {
+        FrameLayout layout;
+        // Bitmap objects are painted into a buffer of the canvas size. The
+        // published output must describe that same buffer; a video-sized
+        // output would leave the canvas-local bottom bar outside the frame.
+        layout.output_rect = RECT{
+            0, 0,
+            canvas_rect.right - canvas_rect.left,
+            canvas_rect.bottom - canvas_rect.top
+        };
+        layout.clip_rect = layout.output_rect;
+        layout.bitmap_offset.x = 0;
+        layout.bitmap_offset.y = 0;
+        (void)video_output_rect;
+        return layout;
+    }
+
     CanvasResult ResolveCanvasForAspect(
         bool enabled, int aspect_mode, bool fullscreen,
         const RECT& video_rect, int display_width, int display_height)
@@ -306,7 +325,7 @@ namespace SubtitleDisplayLayout
             input.display_area.cx, input.display_area.cy);
         const RECT canvas = result.canvas.uses_display_area
             ? result.canvas.canvas_rect : input.video_rect;
-        result.frame = BuildFrameLayout(input.video_rect, canvas);
+        result.frame = BuildBitmapFrameLayout(input.video_rect, canvas);
         result.buffer_size.cx = canvas.right - canvas.left;
         result.buffer_size.cy = canvas.bottom - canvas.top;
         result.canvas_active = result.canvas.uses_display_area;

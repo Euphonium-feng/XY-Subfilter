@@ -196,10 +196,12 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameUsesTheFullDisplayCanvas)
     EXPECT_TRUE(frame.canvas.uses_display_area);
     EXPECT_TRUE(frame.canvas_active);
     ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.canvas.canvas_rect);
-    ExpectRectEquals(RECT{ 0, 0, 1920, 800 }, frame.frame.output_rect);
-    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.frame.clip_rect);
+    // The bitmap buffer is the frame. Publishing a video-sized output moved a
+    // bottom-bar object to y=790..880 outside an 800-row output.
+    ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, frame.frame.output_rect);
+    ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, frame.frame.clip_rect);
     EXPECT_EQ(0, frame.frame.bitmap_offset.x);
-    EXPECT_EQ(-140, frame.frame.bitmap_offset.y);
+    EXPECT_EQ(0, frame.frame.bitmap_offset.y);
     EXPECT_EQ(1920, frame.buffer_size.cx);
     EXPECT_EQ(1080, frame.buffer_size.cy);
 }
@@ -258,17 +260,16 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameMapsDesignBottomIntoLowerBar)
     const RECT bitmap_rect = {
         0, 1000, 300, 1040
     };
-    const POINT published = {
+    const RECT published = {
         bitmap_rect.left + frame.frame.bitmap_offset.x,
-        bitmap_rect.top + frame.frame.bitmap_offset.y
+        bitmap_rect.top + frame.frame.bitmap_offset.y,
+        bitmap_rect.right + frame.frame.bitmap_offset.x,
+        bitmap_rect.bottom + frame.frame.bitmap_offset.y
     };
 
-    // The consumer maps output 1:1 to the video, then the video is scaled by
-    // 4/3 onto the 2560x1440 display. The picture starts around y=186.
-    const int video_top_on_display = 186;
-    const int bitmap_top_on_display =
-        video_top_on_display + published.y * 4 / 3;
-    EXPECT_GE(bitmap_top_on_display, video_top_on_display + 800 * 4 / 3);
+    EXPECT_TRUE(SubtitleDisplayLayout::ContainsRect(
+        frame.frame.output_rect, published));
+    EXPECT_GE(published.top, 800);
 }
 
 TEST(SubtitleDisplayLayoutTest, BitmapFrameKeepsCanvasWhenDesignDiffers)
@@ -287,7 +288,7 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameKeepsCanvasWhenDesignDiffers)
     EXPECT_TRUE(frame.canvas_active);
     EXPECT_EQ(1920, frame.buffer_size.cx);
     EXPECT_EQ(1080, frame.buffer_size.cy);
-    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.frame.clip_rect);
+    ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, frame.frame.clip_rect);
 }
 
 

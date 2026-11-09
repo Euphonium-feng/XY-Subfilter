@@ -258,9 +258,16 @@ PGS/SUP/DVB 的位图对象按流内坐标绘制，provider 不做缩放、留�
 上述位图完整画布路径已经实现并通过云端三矩阵，但**未通过实机验收**：
 Auto/16:9 仍看不到位图字幕，关闭时仍整体压扁。当前代码不能描述为已生效方案。
 
-位图帧发布与文本共用 `BuildFrameLayout()`：`GetOutputRect` 保持视频尺寸，
-`GetClipRect` 是画布减去视频原点，`GetBitmap.position` 是对象坐标加画布原点偏移。
-`CHdmvSub::Render` 不再要求对象完整落在 `spd` 内，只要求与缓冲区相交。
+2026-11-09 14:15 的 `xy-bitmap-frame/1` 日志把发布错误固定下来：
+`publishOutput=(0,0,1920,800)`、`publishClip=(0,-140,1920,940)`、
+`bitmapOffset=(0,-140)`，而 `bitmap0=(660,790,1260,880)`。画布底栏对象
+发布到只有 800 行的 output 之外，只剩约 10 行与视频底边重叠。
+
+位图帧因此不再与文本共用 `BuildFrameLayout()`。`BuildBitmapFrameLayout()`
+把位图缓冲区的画布直接作为 `GetOutputRect`，`GetClipRect` 与 `output` 相同，
+`bitmapOffset` 为零；对象保持画布内原始坐标。文本路径仍使用
+`BuildFrameLayout()` 的视频尺寸 output 契约。`CHdmvSub::Render` 不再要求
+对象完整落在 `spd` 内，只要求与缓冲区相交。
 
 画布缓存只在输入变化时重算，`Invalidate()` 与 `Connect()` 会使其失效。
 画布或发布几何变化还会丢弃当前 `m_pSubPic`，因为 `Render()` 在字幕区间未变时

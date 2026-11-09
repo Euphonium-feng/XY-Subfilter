@@ -111,6 +111,10 @@
 - 当前位图完整画布实现尚未通过实机验收：Auto/16:9 不可见、关闭时压扁。
   在该问题闭环前，不得把云端三矩阵或 `xy-bitmap-frame/1` 存在记录当作
   位图字幕已生效。
+- 2026-11-09 14:15 日志显示对象确实绘制，但发布几何把画布底栏的
+  `bitmap0=660,790,1260,880` 放进只有 `1920×800` 的 output；该越界位置
+  不能视为有效帧。修正前不得仅凭 `canvasActive=1` 或 `drawnObjects=1`
+  判定画面已生效。
 - 显示尺寸优先取 `SIZE_DISPLAY_AREA`（属性页在 UI 线程用 `GetSystemMetrics`
   读取，持久化到 `General\display_area_width/height`）；其次取 consumer 的
   `fullscreenRect`（须完整包含并严格大于 `videoOutputRect`）。
@@ -125,6 +129,8 @@
   （`RTS::RenderEx` 会因此返回 `E_NOTIMPL`，整帧不交付）。
 - `GetOutputRect`、`GetClipRect`、`GetBitmap.position` 必须处于同一坐标系；
   `GetClipRect` 允许超出 output 并含负值，但不得混入屏幕/桌面绝对坐标。
+- 位图画布帧的 `GetOutputRect`、`GetClipRect` 必须描述实际渲染缓冲区；
+  不得用视频尺寸 output 配合画布原点偏移来发布黑边对象。
 - 显示区域或画布改变时必须丢弃当前字幕区间的缓存帧：文本侧 wrapper
   `Invalidate()` 与 `RTS::Init()` 清空 libass 的 `m_last_frame`；位图侧
   除 `m_canvas_cached` 外还必须清 `m_pSubPic`/`m_xy_sub_render_frame`，

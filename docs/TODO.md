@@ -141,6 +141,11 @@ Auto/16:9 看不到位图字幕；关闭能看到，但整体被压扁并挤在�
   `render-empty`/`alloc-failed`/`flip-failed` 诊断。
 - **这些修改没有修复位图问题。** 用户实机结果仍为 Auto/16:9 不可见、
   关闭时压扁，故不得记录为已修复或已验收。
+- 2026-11-09 14:15 的最新 `xy_hdr_diag.txt` 进一步确认：位图对象已绘制，
+  但 `xy-bitmap-frame/1` 发布为 `publishOutput=0,0,1920,800`、
+  `publishClip=0,-140,1920,940`、`bitmapOffset=0,-140`，
+  `bitmap0=660,790,1260,880`。即画布底栏对象被平移到视频 output 之外，
+  只剩约 10 行与视频底边重叠；`canvasActive=1` 不能证明字体可见。
 - run `42470777553`（提交 `3acfdb5`）在 `Install VSNASM` / `Install VSYASM`
   阶段失败：安装脚本从 `github.com/Microsoft/vswhere/releases` 下载
   `vswhere.exe` 解析失败，重跑仍复现。工作流现在先复制 runner 自带的
