@@ -76,7 +76,11 @@ public:
     const BYTE* GetRLEData() { return m_pRLEData; };
     int   GetRLEDataSize() { return m_nRLEDataSize; };
     bool  IsRLEComplete() { return m_nRLEPos >= m_nRLEDataSize; };
-    void  RenderHdmv(SubPicDesc& spd);
+    // origin/scale map this object's design-space RLE coordinates into the
+    // destination buffer's space. Defaults keep the original identity path.
+    void  RenderHdmv(SubPicDesc& spd,
+                     POINT origin = POINT(),
+                     double scale_x = 1.0, double scale_y = 1.0);
     void  RenderDvb(SubPicDesc& spd, short nX, short nY, RECT *dirtyRect = NULL /* in-out */);
     void  WriteSeg(SubPicDesc& spd, short nX, short nY, short nCount, short nPaletteIndex);
     void  InitColor(const SubPicDesc& spd);

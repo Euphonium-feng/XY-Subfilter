@@ -47,6 +47,8 @@ private :
     RECT m_canvas_rect;
     RECT m_canvas_video_in_canvas;
     POINT m_canvas_bitmap_offset;
+    SubtitleDisplayLayout::BitmapDisplayTransform m_display_transform;
+    SIZE m_diag_consumer_display_area_raw;
     bool m_canvas_active;
     int m_canvas_fallback;
     bool m_frame_geometry_dirty;

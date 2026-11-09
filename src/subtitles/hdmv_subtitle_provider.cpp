@@ -120,6 +120,8 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_diag_consumer_display_mode.cx = 0;
     m_diag_consumer_display_mode.cy = 0;
     m_diag_consumer_subtitle_target = RECT();
+    m_diag_consumer_display_area_raw.cx = 0;
+    m_diag_consumer_display_area_raw.cy = 0;
 }
 
 HdmvSubtitleProviderImpl::~HdmvSubtitleProviderImpl( void )
@@ -215,6 +217,11 @@ void HdmvSubtitleProviderImpl::RefreshConsumerDiagnostics()
             DirectVobSubXyOptions::SIZE_DISPLAY_MODE, &display_mode))) {
         m_diag_consumer_display_mode = display_mode;
     }
+    SIZE display_area = {};
+    if (SUCCEEDED(m_consumer->XyGetSize(
+            DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &display_area))) {
+        m_diag_consumer_display_area_raw = display_area;
+    }
     RECT subtitle_target = {};
     if (SUCCEEDED(m_consumer->XyGetRect(
             DirectVobSubXyOptions::RECT_SUBTITLE_TARGET, &subtitle_target))) {
@@ -296,17 +303,45 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         video_size = design_size;
     }
     const RECT video_rect = { 0, 0, video_size.cx, video_size.cy };
+    // Some consumers (MPC VR) report their rects in display pixels instead of
+    // source pixels. Publishing source-space geometry then lands in the wrong
+    // coordinate system and the letterbox part is discarded. When the reported
+    // video rect is strictly larger than the stream size, build and publish the
+    // whole frame in that space.
+    const SIZE consumer_video_size = {
+        m_diag_consumer_video_output.right - m_diag_consumer_video_output.left,
+        m_diag_consumer_video_output.bottom - m_diag_consumer_video_output.top
+    };
+    m_display_transform = SubtitleDisplayLayout::ResolveBitmapDisplayTransform(
+        design_size, consumer_video_size);
+    // Everything downstream (canvas, buffer, published rects) is expressed in
+    // this space. It equals the stream size for consumers that report source
+    // pixels, so madVR keeps the verified geometry.
+    const SIZE frame_space = m_display_transform.active
+        ? consumer_video_size : design_size;
+    const SIZE frame_video_size = m_display_transform.active
+        ? consumer_video_size : video_size;
+    m_pSub->SetDisplayTransform(m_display_transform);
     if (!m_canvas_cached
-        || m_canvas_design_size.cx != design_size.cx
-        || m_canvas_design_size.cy != design_size.cy
-        || m_canvas_video_size.cx != video_size.cx
-        || m_canvas_video_size.cy != video_size.cy
+        || m_canvas_design_size.cx != frame_space.cx
+        || m_canvas_design_size.cy != frame_space.cy
+        || m_canvas_video_size.cx != frame_video_size.cx
+        || m_canvas_video_size.cy != frame_video_size.cy
         || m_canvas_enabled != m_canvas_input.enabled
         || m_canvas_display_area.cx != m_canvas_input.display_area.cx
         || m_canvas_display_area.cy != m_canvas_input.display_area.cy)
     {
         SubtitleDisplayLayout::BitmapFrameInput input;
-        ReadBitmapCanvasInput(m_consumer, video_rect, &input);
+        const RECT frame_video_rect = {
+            0, 0, frame_video_size.cx, frame_video_size.cy
+        };
+        ReadBitmapCanvasInput(m_consumer, frame_video_rect, &input);
+        if (m_display_transform.active
+            && input.display_area.cx == m_diag_consumer_display_area_raw.cx
+            && input.display_area.cy == m_diag_consumer_display_area_raw.cy) {
+            // Express the persisted display area in the consumer's space too.
+            input.display_area = consumer_video_size;
+        }
         const SubtitleDisplayLayout::BitmapFrameResult frame =
             SubtitleDisplayLayout::ResolveBitmapFrame(input);
         // The bitmap renderer gets the complete display canvas. Its objects
@@ -316,15 +351,15 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_canvas_publish_output = frame.frame.output_rect;
         m_canvas_publish_clip = frame.frame.clip_rect;
         m_canvas_rect = frame.canvas.uses_display_area
-            ? frame.canvas.canvas_rect : video_rect;
+            ? frame.canvas.canvas_rect : frame_video_rect;
         m_canvas_video_in_canvas = frame.video_in_canvas;
         m_canvas_bitmap_offset = frame.frame.bitmap_offset;
         m_canvas_fallback = int(frame.canvas.fallback_reason);
         m_canvas_input = input;
         m_canvas_enabled = input.enabled;
         m_canvas_display_area = input.display_area;
-        m_canvas_design_size = design_size;
-        m_canvas_video_size = video_size;
+        m_canvas_design_size = frame_space;
+        m_canvas_video_size = frame_video_size;
         m_canvas_cached = true;
         m_frame_geometry_dirty = true;
     }

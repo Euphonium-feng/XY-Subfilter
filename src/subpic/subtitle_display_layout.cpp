@@ -469,6 +469,67 @@ namespace SubtitleDisplayLayout
         size.cy = 0;
     }
 
+    BitmapDisplayTransform::BitmapDisplayTransform()
+        : active(false)
+    {
+        design_size.cx = 0;
+        design_size.cy = 0;
+        target_size.cx = 0;
+        target_size.cy = 0;
+        offset.x = 0;
+        offset.y = 0;
+    }
+
+    BitmapDisplayTransform ResolveBitmapDisplayTransform(
+        const SIZE& design_size, const SIZE& target_size)
+    {
+        BitmapDisplayTransform result;
+        result.design_size = design_size;
+        result.target_size = target_size;
+        if (design_size.cx <= 0 || design_size.cy <= 0
+            || target_size.cx <= 0 || target_size.cy <= 0) {
+            return result;
+        }
+        // Only remap when the consumer reports a strictly larger video rect.
+        // madVR reports source pixels, so this stays inactive there and the
+        // verified source-space geometry is untouched.
+        if (target_size.cx <= design_size.cx
+            && target_size.cy <= design_size.cy) {
+            return result;
+        }
+        result.active = true;
+        return result;
+    }
+
+    RECT MapRectToTarget(
+        const RECT& rect, const BitmapDisplayTransform& transform)
+    {
+        if (!transform.active
+            || transform.design_size.cx <= 0 || transform.design_size.cy <= 0) {
+            return rect;
+        }
+        const LONG left = transform.offset.x
+            + MulDiv(rect.left, transform.target_size.cx,
+                     transform.design_size.cx);
+        const LONG right = transform.offset.x
+            + MulDiv(rect.right, transform.target_size.cx,
+                     transform.design_size.cx);
+        const LONG top = transform.offset.y
+            + MulDiv(rect.top, transform.target_size.cy,
+                     transform.design_size.cy);
+        const LONG bottom = transform.offset.y
+            + MulDiv(rect.bottom, transform.target_size.cy,
+                     transform.design_size.cy);
+        RECT mapped = { left, top, right, bottom };
+        if (mapped.right <= mapped.left) {
+            mapped.right = mapped.left + 1;
+        }
+        if (mapped.bottom <= mapped.top) {
+            mapped.bottom = mapped.top + 1;
+        }
+        return mapped;
+    }
+
     BitmapSlice ResolveBitmapSlice(
         const RECT& bitmap_rect, const POINT& bitmap_offset)
     {

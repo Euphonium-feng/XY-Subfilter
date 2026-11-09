@@ -21,6 +21,7 @@
 #pragma once
 
 #include "CompositionObject.h"
+#include "../subpic/subtitle_display_layout.h"
 
 #define  ReftimeToCString(rt) ReftimeToString(rt).GetString()
 enum SUBTITLE_TYPE {
@@ -50,6 +51,11 @@ public:
     virtual HRESULT         GetTextureSize(POSITION pos, SIZE& MaxTextureSize, SIZE& VideoSize, POINT& VideoTopLeft) = NULL;
     virtual HRESULT         SetYuvType(ColorType colorType, YuvRangeType yuvRangeType) = NULL;
     virtual HRESULT         SetHdrConfig(const HdrColor::Config& config) = NULL;
+    void SetDisplayTransform(
+        const SubtitleDisplayLayout::BitmapDisplayTransform& transform)
+    {
+        m_displayTransform = transform;
+    }
     virtual void            GetAuxRenderStats(
         int& object_count, int& drawn_objects, int& skipped_objects) const
     {
@@ -62,4 +68,5 @@ protected:
     ColorType               m_colorTypeSetting;
     YuvRangeType            m_yuvRangeSetting;
     HdrColor::Config        m_hdrConfig;
+    SubtitleDisplayLayout::BitmapDisplayTransform m_displayTransform;
 };
