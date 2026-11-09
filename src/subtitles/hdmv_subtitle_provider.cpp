@@ -504,7 +504,7 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
             m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
                 mem_subpic, video_rect, video_rect, now, &hr);
         }
-        LogBitmapFrame(L"frame", now, hr, NULL, lock_hr, alloc_hr);
+        LogBitmapFrame(L"frame", now, hr, &dirty_rect, lock_hr, alloc_hr);
     }
     else
     {
