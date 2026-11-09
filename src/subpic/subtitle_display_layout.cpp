@@ -194,18 +194,24 @@ namespace SubtitleDisplayLayout
         const RECT& video_output_rect, const RECT& canvas_rect)
     {
         FrameLayout layout;
-        // Bitmap objects are painted into a buffer of the canvas size. The
-        // published output must describe that same buffer; a video-sized
-        // output would leave the canvas-local bottom bar outside the frame.
+        // GetOutputRect is the video-sized reference rect. Publishing the
+        // canvas size here makes the consumer scale the whole canvas back
+        // into the video and squash the subtitles.
         layout.output_rect = RECT{
+            0, 0,
+            video_output_rect.right - video_output_rect.left,
+            video_output_rect.bottom - video_output_rect.top
+        };
+        // The clip is the display canvas in the same output space. PGS
+        // objects are authored from the video top-left, so the canvas must
+        // start at that origin (not at the centred canvas y=-140).
+        layout.clip_rect = RECT{
             0, 0,
             canvas_rect.right - canvas_rect.left,
             canvas_rect.bottom - canvas_rect.top
         };
-        layout.clip_rect = layout.output_rect;
         layout.bitmap_offset.x = 0;
         layout.bitmap_offset.y = 0;
-        (void)video_output_rect;
         return layout;
     }
 
