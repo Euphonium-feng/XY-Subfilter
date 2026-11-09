@@ -19,6 +19,7 @@ public:
 private:
     HRESULT ResetAllocator();
     HRESULT Render(REFERENCE_TIME now, POSITION pos);
+    void RefreshConsumerDiagnostics();
     void LogBitmapFrame(
         const wchar_t* event, REFERENCE_TIME now, HRESULT hr,
         const CRect* dirty_rect, int lock_hr, int alloc_hr);
@@ -66,6 +67,15 @@ private :
     RECT m_diag_video_in_canvas;
     int m_diag_partition_count;
     RECT m_diag_partitions[3];
+    CStringW m_diag_consumer_name;
+    CStringW m_diag_consumer_version;
+    int m_diag_presented_bitmap;
+    int m_diag_presented_movable;
+    int m_diag_max_bitmap_count;
+    RECT m_diag_consumer_fullscreen;
+    SIZE m_diag_consumer_display_mode;
+    RECT m_diag_consumer_subtitle_target;
+    bool m_diag_consumer_pending;
 
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;

@@ -197,6 +197,12 @@ generation 和当前 HDR 证据。断开连接只追加事件，不再用全零�
 `alloc-failed`、`flip-failed` 也会记录。`xy-hdr-config/1` 同时记录 `isMovable`，
 用于确认位图流没有被重新标记为可移动。
 
+consumer 身份与呈现契约也进入诊断：`xy-bitmap-frame/1` 记录
+`consumer`、`consumerVersion`、`presentedBitmap`、`presentedMovable`、
+`maxBitmapCount`、`consumerFullscreen`、`consumerDisplayMode` 与
+`consumerSubtitleTarget`。采样在 provider 首次 `RequestFrame` 时执行一次并
+缓存，不进入逐帧热路径；consumer 自述中的空格替换为 `_`，保证单行字段可解析。
+
 文本与位图共用 `DirectVobSubImpl::ResolveHdrMode()`、同一个 consumer HDR 信号和
 `INT_PGS_HDR_WHITE_NITS`，但模式选项仍然独立。属性页将二者明确标为
 “位图字幕 HDR”和“文本字幕 HDR”，HDR 状态行也以 `Bitmap:` / `Text:` 前缀

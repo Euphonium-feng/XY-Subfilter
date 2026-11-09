@@ -1,5 +1,8 @@
 #include "subtitle_display_layout.h"
 
+#include <string.h>
+#include <wchar.h>
+
 namespace
 {
     bool IsPositiveSize(const RECT& rect)
@@ -417,5 +420,36 @@ namespace SubtitleDisplayLayout
         result.size.cx = bitmap_rect.right - bitmap_rect.left;
         result.size.cy = bitmap_rect.bottom - bitmap_rect.top;
         return result;
+    }
+
+    namespace
+    {
+        bool ContainsNoCase(const wchar_t* haystack, const wchar_t* needle)
+        {
+            if (!haystack || !needle || !*needle) {
+                return false;
+            }
+            const size_t needle_len = wcslen(needle);
+            for (const wchar_t* start = haystack; *start; ++start) {
+                if (_wcsnicmp(start, needle, needle_len) == 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    ConsumerFamily ClassifyConsumer(const wchar_t* consumer_name)
+    {
+        if (!consumer_name || !*consumer_name) {
+            return CONSUMER_UNKNOWN;
+        }
+        if (ContainsNoCase(consumer_name, L"madvr")) {
+            return CONSUMER_MADVR;
+        }
+        if (ContainsNoCase(consumer_name, L"mpc")) {
+            return CONSUMER_MPC_VR;
+        }
+        return CONSUMER_UNKNOWN;
     }
 }

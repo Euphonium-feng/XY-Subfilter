@@ -146,6 +146,18 @@ namespace SubtitleDisplayLayout
     BitmapSlice ResolveBitmapSlice(
         const RECT& bitmap_rect, const POINT& bitmap_offset);
 
+    enum ConsumerFamily
+    {
+        CONSUMER_UNKNOWN = 0,
+        CONSUMER_MADVR,
+        CONSUMER_MPC_VR
+    };
+
+    // Identifies the connected subtitle consumer from its self-reported
+    // name. Comparison is case-insensitive substring matching; an empty or
+    // unrecognized name maps to CONSUMER_UNKNOWN.
+    ConsumerFamily ClassifyConsumer(const wchar_t* consumer_name);
+
     // Builds the published text frame geometry from the consumer's video rect
     // and the resolved canvas. Text positions are shifted by
     // canvas_rect.topLeft because the text renderer keeps a video-sized output.

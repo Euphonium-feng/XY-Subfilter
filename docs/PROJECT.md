@@ -62,6 +62,9 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
    （`isMovable=false`）。
 8. 位图帧的每张 bitmap 不得跨越视频与黑边的边界；跨边界内容按视频上下沿
    拆成独立 bitmap 发布。
+9. 全屏画布的呈现契约按 consumer 区分：madVR 使用已验证覆盖层契约
+   （`isBitmap` 读为 false）；MPC VR 与未知 consumer 先保持真实
+   `isBitmap=true`。关闭布局开关时输出与基线一致。
 
 ## 当前状态
 
@@ -102,3 +105,8 @@ Auto 与手动 PQ 均未呈现预期映射。已排除 CSRI；当前保存的 `t
 后，底栏对象完全不可见；`32127f8` 恢复文本几何后仍不可见，根因是单张 bitmap
 跨越视频带与黑边。现方案（D46）按视频上下沿拆分 bitmap，`isMovable=false`。
 代码已改、云端三矩阵尚未运行、实机尚未验收，因此该功能仍不能标记为已修复。
+
+2026-11-09 深夜 madVR 实机通过：`5c380dd` 在 PotPlayer + madVR 下 Auto 与
+16:9 均把位图字幕正确放入下黑边，比例正常。关键条件是画布启用时对 madVR
+把 `isBitmap` 读为 false。MPC VR 是独立实现，没有同样的实测证据；当前
+`D47` 让 MPC VR 与未知 consumer 保持真实 `isBitmap=true`，等待实机取证。

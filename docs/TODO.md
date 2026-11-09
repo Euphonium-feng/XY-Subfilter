@@ -182,8 +182,18 @@ D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确�
   残余差异是 consumer 的 `isBitmap=true` 分支只按视频矩形合成。
   已实现单变量实验：画布启用时仅对 consumer 把 `isBitmap` 报为 false，
   `isMovable` 保持 false，内部 HDR 标志不变。**该实验尚未实机验证。**
-  下一步唯一动作：推送后由用户复测；若字幕出现在黑边，确认 `isBitmap` 分支
-  是根因；若仍不可见，放弃位图身份路线，改为在文本覆盖层内合成位图内容。
+  该实验已由用户实机确认成功：`5c380dd` 在 PotPlayer + madVR 下 Auto 与
+  16:9 均把位图字幕正确放入下黑边，比例正常。madVR 路径就此闭环。
+- 2026-11-09 新任务：适配 MPC VR。`D47` 已把呈现分流收敛为
+  “仅 madVR 伪装 `isBitmap`，其余 consumer 保持真实位图身份”；
+  `ClassifyConsumer()` 为纯函数，未知名称归为 `CONSUMER_UNKNOWN` 并走
+  真实位图路径。`xy-bitmap-frame/1` 已加入 consumer 自述、呈现标志、
+  `maxBitmapCount` 与三块 consumer 矩形。
+  **代码与云端构建尚未验证，MPC VR 实机尚未取证。**
+  下一步唯一动作：提交推送并等三矩阵全绿，然后由用户在 MPC VR 下用
+  Auto 与 16:9 各播放一次并回传日志。判定顺序：`presentedBitmap=1` 且可见
+  → 路径 A 收口；`presentedBitmap=0` 且可见 → 路径 B 收口；都不可见 →
+  进入路径 C，不再改 output/clip 几何。
   旧的验收日志字段仍可参考：日志必须出现
   `bufferSize=1920,1080`、`publishOutput=0,0,1920,800`、
   `publishClip=0,-140,1920,940`、`bitmapOffset=0,-140`、

@@ -119,6 +119,11 @@
   黑边部分。当前实验为：画布启用时仅对 consumer 把 `isBitmap` 报为 false，
   `isMovable` 保持 false，内部位图标志与 HDR 选择不变。该实验未实机确认前，
   不得把位图黑边显示记为已修复。
+- 呈现契约必须按 consumer 区分，不得全局伪装。当前只对名称包含 `madVR` 的
+  consumer 把 `isBitmap` 读为 false；MPC VR 与未知名称保持真实
+  `isBitmap=true`、`isMovable=false`。内部 `BOOL_IS_BITMAP` 与 HDR 选择不变。
+  任何新增 consumer 的例外都必须先有该 consumer 的实机证据，不得按“应该可以”
+  推测加入。
 - 当前位图完整画布实现尚未通过实机验收：Auto/16:9 不可见、关闭时压扁。
   在该问题闭环前，不得把云端三矩阵或 `xy-bitmap-frame/1` 存在记录当作
   位图字幕已生效。

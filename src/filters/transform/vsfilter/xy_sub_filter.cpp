@@ -804,6 +804,16 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     return hr;
 }
 
+bool XySubFilter::ShouldMaskBitmapFlagForConsumer() const
+{
+    // Only madVR has been field-verified to composite a canvas-positioned
+    // overlay outside the video rectangle. Other consumers (notably MPC VR)
+    // keep the real bitmap flag so the provider's bitmap path stays intact.
+    return SubtitleDisplayLayout::ClassifyConsumer(
+        m_xy_str_opt[STRING_CONNECTED_CONSUMER])
+        == SubtitleDisplayLayout::CONSUMER_MADVR;
+}
+
 HRESULT XySubFilter::DoGetField( unsigned field, void *value )
 {
     HRESULT hr = NOERROR;
@@ -832,7 +842,8 @@ HRESULT XySubFilter::DoGetField( unsigned field, void *value )
                 && m_xy_bool_opt[BOOL_IS_BITMAP]
                 && m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES]
                 && m_xy_size_opt[SIZE_DISPLAY_AREA].cx > 0
-                && m_xy_size_opt[SIZE_DISPLAY_AREA].cy > 0) {
+                && m_xy_size_opt[SIZE_DISPLAY_AREA].cy > 0
+                && ShouldMaskBitmapFlagForConsumer()) {
                 // With the display canvas active the frame is a
                 // pre-positioned overlay in the same space as text. Consumers
                 // that see isBitmap=true composite it only against the video
@@ -2186,6 +2197,12 @@ void XySubFilter::LogHdrConfiguration(
             m_xy_bool_opt[BOOL_IS_BITMAP]
             && use_display_area
             && has_display_area;
+        const bool mask_bitmap_flag = ShouldMaskBitmapFlagForConsumer();
+        const bool presented_bitmap =
+            m_xy_bool_opt[BOOL_IS_BITMAP]
+            && !(bitmap_canvas_overlay && mask_bitmap_flag);
+        const SIZE display_mode = m_xy_size_opt[SIZE_DISPLAY_MODE];
+        const int max_bitmap_count = m_xy_int_opt[INT_MAX_BITMAP_COUNT2];
         const bool display_rect_valid =
             display_rect.right > display_rect.left
             && display_rect.bottom > display_rect.top;
@@ -2252,6 +2269,10 @@ void XySubFilter::LogHdrConfiguration(
             L"event=%ls field=%u backend=%ls isBitmap=%d "
             L"presentedBitmap=%d "
             L"isMovable=%d "
+            L"consumer=%ls consumerVersion=%ls maxBitmapCount=%d "
+            L"consumerFullscreen=%ld,%ld,%ld,%ld "
+            L"consumerDisplayMode=%ld,%ld "
+            L"consumerSubtitleTarget=%ld,%ld,%ld,%ld "
             L"requestedBitmap=%d requestedText=%d white=%d "
             L"resolvedBitmap=%d resolvedText=%d generation=%llu "
             L"graph=%d container=%d nameHdr=%d sideData=%d "
@@ -2266,8 +2287,16 @@ void XySubFilter::LogHdrConfiguration(
             field,
             backend_name,
             m_xy_bool_opt[BOOL_IS_BITMAP] ? 1 : 0,
-            bitmap_canvas_overlay ? 0 : (m_xy_bool_opt[BOOL_IS_BITMAP] ? 1 : 0),
+            presented_bitmap ? 1 : 0,
             m_xy_bool_opt[BOOL_IS_MOVABLE] ? 1 : 0,
+            m_xy_str_opt[STRING_CONNECTED_CONSUMER].GetString(),
+            m_xy_str_opt[STRING_CONSUMER_VERSION].GetString(),
+            max_bitmap_count,
+            display_rect.left, display_rect.top,
+            display_rect.right, display_rect.bottom,
+            display_mode.cx, display_mode.cy,
+            subtitle_target.left, subtitle_target.top,
+            subtitle_target.right, subtitle_target.bottom,
             pgs_mode,
             text_mode,
             white_nits,

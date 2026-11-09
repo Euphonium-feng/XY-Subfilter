@@ -444,6 +444,45 @@ TEST(SubtitleDisplayLayoutTest, BitmapSlicesStayInsideTheirOwnBand)
 }
 
 
+TEST(SubtitleDisplayLayoutTest, ClassifyConsumerRecognizesMadVr)
+{
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MADVR,
+        SubtitleDisplayLayout::ClassifyConsumer(L"madVR"));
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MADVR,
+        SubtitleDisplayLayout::ClassifyConsumer(L"MadVR Video Renderer"));
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MADVR,
+        SubtitleDisplayLayout::ClassifyConsumer(L"potplayer - madvr"));
+}
+
+TEST(SubtitleDisplayLayoutTest, ClassifyConsumerRecognizesMpcVr)
+{
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MPC_VR,
+        SubtitleDisplayLayout::ClassifyConsumer(L"MPC Video Renderer"));
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MPC_VR,
+        SubtitleDisplayLayout::ClassifyConsumer(L"mpcvr"));
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MPC_VR,
+        SubtitleDisplayLayout::ClassifyConsumer(L"MPC-BE"));
+}
+
+TEST(SubtitleDisplayLayoutTest, ClassifyConsumerRejectsUnknownNames)
+{
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_UNKNOWN,
+        SubtitleDisplayLayout::ClassifyConsumer(L""));
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_UNKNOWN,
+        SubtitleDisplayLayout::ClassifyConsumer(NULL));
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_UNKNOWN,
+        SubtitleDisplayLayout::ClassifyConsumer(L"EVR"));
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_UNKNOWN,
+        SubtitleDisplayLayout::ClassifyConsumer(L"VMR-9"));
+}
+
+TEST(SubtitleDisplayLayoutTest, ClassifyConsumerPrefersMadVrPrefix)
+{
+    // A name mentioning both must not be misrouted to the MPC path.
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MADVR,
+        SubtitleDisplayLayout::ClassifyConsumer(L"madVR (MPC-HC)"));
+}
+
 TEST(SubtitleDisplayLayoutTest, AspectMetadataIsComplete)
 {
     EXPECT_EQ(16, SubtitleDisplayLayout::AspectWidth(

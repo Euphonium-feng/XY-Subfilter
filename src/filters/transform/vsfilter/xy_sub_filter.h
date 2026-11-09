@@ -91,6 +91,7 @@ private:
     void SetRgbOutputLevel();
     void SetHdrMode();
     void ApplyHdrRefresh();
+    bool ShouldMaskBitmapFlagForConsumer() const;
     HRESULT RefreshConsumerCache();
     void LogHdrConfiguration(const wchar_t* event, unsigned field);
     bool UpdateConsumerHdrSignal(

@@ -570,6 +570,31 @@ madVR 的精确规则没有源码确认，这是待实机验证的推断，不�
 `isBitmap` 分支是根因；若仍不可见，则必须放弃“位图身份”路线，改为在文本覆盖层
 路径内合成位图内容。
 
+**2026-11-09 madVR 实机结论：** 该实验成功。Auto 与 16:9 下位图字幕进入下黑边，
+比例正常。因此 madVR 的 `isBitmap=true` 分支确实只按视频矩形合成，`isBitmap`
+伪装是 madVR 的必要条件。
+
+## D47：呈现契约按 consumer 区分，MPC VR 先走真实位图路径
+
+madVR 的成功依赖把 `isBitmap` 读为 false；这是 madVR 的实测行为，不能外推到
+其他 consumer。MPC VR 是独立实现，历史记录已证明它不提供 `fullscreenRect`，
+且当前日志中没有 MPC VR 的实机画面结果。
+
+因此呈现分流收敛为：consumer 名称包含 `madVR` 时使用已验证覆盖层契约
+（`isBitmap` 读为 false、`isMovable` 读为 false）；其余 consumer 保持真实
+`isBitmap=true`、`isMovable=false`，即路径 A。内部 `BOOL_IS_BITMAP` 始终不变，
+HDR 选择与状态文本不受影响。
+
+判定抽为纯函数 `SubtitleDisplayLayout::ClassifyConsumer()`，大小写不敏感子串
+匹配，未知名称一律归为 `CONSUMER_UNKNOWN` 并走路径 A。这样未知 consumer 不会
+被静默伪装，MPC VR 也能先验证“真实位图身份 + 画布 clip”是否成立。
+
+`xy-bitmap-frame/1` 新增 consumer 自述、呈现标志、`maxBitmapCount` 与三块
+consumer 矩形，用于一轮取证判定路径 A/B/C。采样在 provider 首次
+`RequestFrame` 时执行一次并缓存，不进入逐帧热路径。
+
+**验证状态：** madVR 已实机通过；MPC VR 未验证，文档不得写成跨渲染器已修复。
+
 被否方案：把 2560×1440 物理显示尺寸直接写成 output（会被再次压扁）；
 把完整画布写成 output（`fff048c` 已实机失败）；视频 output + 零基 clip
 （`0940012` 已实机失败）；继续用单张跨界 bitmap（`32127f8` 已实机失败）。

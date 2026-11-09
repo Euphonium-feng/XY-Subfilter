@@ -82,6 +82,10 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_diag_canvas_active(false)
     , m_diag_video_in_canvas()
     , m_diag_partition_count(0)
+    , m_diag_presented_bitmap(-1)
+    , m_diag_presented_movable(-1)
+    , m_diag_max_bitmap_count(-1)
+    , m_diag_consumer_pending(true)
 {
     m_cur_output_size.cx = 0;
     m_cur_output_size.cy = 0;
@@ -112,6 +116,10 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
         m_diag_bitmap_rects[i] = RECT();
         m_diag_partitions[i] = RECT();
     }
+    m_diag_consumer_fullscreen = RECT();
+    m_diag_consumer_display_mode.cx = 0;
+    m_diag_consumer_display_mode.cy = 0;
+    m_diag_consumer_subtitle_target = RECT();
 }
 
 HdmvSubtitleProviderImpl::~HdmvSubtitleProviderImpl( void )
@@ -127,12 +135,90 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
         m_consumer = consumer;
         m_canvas_cached = false;
         m_diag_valid = false;
+        m_diag_consumer_pending = true;
     }
     else
     {
         hr = E_INVALIDARG;
     }
     return hr;
+}
+
+void HdmvSubtitleProviderImpl::RefreshConsumerDiagnostics()
+{
+    m_diag_consumer_name.Empty();
+    m_diag_consumer_version.Empty();
+    m_diag_presented_bitmap = -1;
+    m_diag_presented_movable = -1;
+    m_diag_max_bitmap_count = -1;
+    m_diag_consumer_fullscreen = RECT();
+    m_diag_consumer_display_mode.cx = 0;
+    m_diag_consumer_display_mode.cy = 0;
+    m_diag_consumer_subtitle_target = RECT();
+    if (!m_consumer) {
+        return;
+    }
+
+    LPWSTR name = NULL;
+    int name_chars = 0;
+    if (SUCCEEDED(m_consumer->XyGetString(
+            DirectVobSubXyOptions::STRING_CONNECTED_CONSUMER,
+            &name, &name_chars)) && name) {
+        m_diag_consumer_name = name;
+        LocalFree(name);
+        for (int i = 0; i < m_diag_consumer_name.GetLength(); ++i) {
+            const wchar_t ch = m_diag_consumer_name[i];
+            if (ch == L' ' || ch == L'\t' || ch == L'\r' || ch == L'\n') {
+                m_diag_consumer_name.SetAt(i, L'_');
+            }
+        }
+    }
+    LPWSTR version = NULL;
+    int version_chars = 0;
+    if (SUCCEEDED(m_consumer->XyGetString(
+            DirectVobSubXyOptions::STRING_CONSUMER_VERSION,
+            &version, &version_chars)) && version) {
+        m_diag_consumer_version = version;
+        LocalFree(version);
+        for (int i = 0; i < m_diag_consumer_version.GetLength(); ++i) {
+            const wchar_t ch = m_diag_consumer_version[i];
+            if (ch == L' ' || ch == L'\t' || ch == L'\r' || ch == L'\n') {
+                m_diag_consumer_version.SetAt(i, L'_');
+            }
+        }
+    }
+    bool is_bitmap = false;
+    if (SUCCEEDED(m_consumer->XyGetBool(
+            DirectVobSubXyOptions::BOOL_IS_BITMAP, &is_bitmap))) {
+        m_diag_presented_bitmap = is_bitmap ? 1 : 0;
+    }
+    bool is_movable = false;
+    if (SUCCEEDED(m_consumer->XyGetBool(
+            DirectVobSubXyOptions::BOOL_IS_MOVABLE, &is_movable))) {
+        m_diag_presented_movable = is_movable ? 1 : 0;
+    }
+    int max_bitmap_count = 0;
+    if (SUCCEEDED(m_consumer->XyGetInt(
+            DirectVobSubXyOptions::INT_MAX_BITMAP_COUNT2,
+            &max_bitmap_count))) {
+        m_diag_max_bitmap_count = max_bitmap_count;
+    }
+    RECT fullscreen = {};
+    if (SUCCEEDED(m_consumer->XyGetRect(
+            DirectVobSubXyOptions::RECT_FULLSCREEN, &fullscreen))) {
+        m_diag_consumer_fullscreen = fullscreen;
+    }
+    SIZE display_mode = {};
+    if (SUCCEEDED(m_consumer->XyGetSize(
+            DirectVobSubXyOptions::SIZE_DISPLAY_MODE, &display_mode))) {
+        m_diag_consumer_display_mode = display_mode;
+    }
+    RECT subtitle_target = {};
+    if (SUCCEEDED(m_consumer->XyGetRect(
+            DirectVobSubXyOptions::RECT_SUBTITLE_TARGET, &subtitle_target))) {
+        m_diag_consumer_subtitle_target = subtitle_target;
+    }
+    m_diag_consumer_pending = false;
 }
 
 STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRenderFrame, REFERENCE_TIME now )
@@ -155,6 +241,10 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
     if (!pos)
     {
         return S_FALSE;
+    }
+
+    if (m_diag_consumer_pending) {
+        RefreshConsumerDiagnostics();
     }
 
     bool use_dst_alpha = false;
@@ -380,6 +470,11 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         L"partition0=%ld,%ld,%ld,%ld "
         L"partition1=%ld,%ld,%ld,%ld "
         L"partition2=%ld,%ld,%ld,%ld "
+        L"consumer=%ls consumerVersion=%ls "
+        L"presentedBitmap=%d presentedMovable=%d maxBitmapCount=%d "
+        L"consumerFullscreen=%ld,%ld,%ld,%ld "
+        L"consumerDisplayMode=%ld,%ld "
+        L"consumerSubtitleTarget=%ld,%ld,%ld,%ld "
         L"canvasFallback=%d\r\n",
         event ? event : L"frame",
         now,
@@ -420,6 +515,18 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         m_diag_partitions[1].right, m_diag_partitions[1].bottom,
         m_diag_partitions[2].left, m_diag_partitions[2].top,
         m_diag_partitions[2].right, m_diag_partitions[2].bottom,
+        m_diag_consumer_name.IsEmpty() ? L"?" : m_diag_consumer_name.GetString(),
+        m_diag_consumer_version.IsEmpty() ? L"?" : m_diag_consumer_version.GetString(),
+        m_diag_presented_bitmap,
+        m_diag_presented_movable,
+        m_diag_max_bitmap_count,
+        m_diag_consumer_fullscreen.left, m_diag_consumer_fullscreen.top,
+        m_diag_consumer_fullscreen.right, m_diag_consumer_fullscreen.bottom,
+        m_diag_consumer_display_mode.cx, m_diag_consumer_display_mode.cy,
+        m_diag_consumer_subtitle_target.left,
+        m_diag_consumer_subtitle_target.top,
+        m_diag_consumer_subtitle_target.right,
+        m_diag_consumer_subtitle_target.bottom,
         m_canvas_fallback);
     AppendXyDiagnostic(diagnostic.GetString());
 }
