@@ -26,6 +26,18 @@ SubtitleDisplayLayout::CanvasResult ResolveConsumerCanvas(
             DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
             &input.enabled))
         || !input.enabled) {
+        {
+            CStringW diag;
+            diag.Format(
+                L"schema=xy-canvas-input/1\r\nevent=disabled enabled=%d "
+                L"videoRect=%ld,%ld,%ld,%ld targetRect=%ld,%ld,%ld,%ld\r\n",
+                input.enabled ? 1 : 0,
+                video_output_rect.left, video_output_rect.top,
+                video_output_rect.right, video_output_rect.bottom,
+                subtitle_target_rect.left, subtitle_target_rect.top,
+                subtitle_target_rect.right, subtitle_target_rect.bottom);
+            AppendXyDiagnostic(diag.GetString());
+        }
         return SubtitleDisplayLayout::ResolveCanvas(input);
     }
 
@@ -33,6 +45,18 @@ SubtitleDisplayLayout::CanvasResult ResolveConsumerCanvas(
             DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
             &input.aspect_mode))
         || input.aspect_mode == DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF) {
+        {
+            CStringW diag;
+            diag.Format(
+                L"schema=xy-canvas-input/1\r\nevent=aspect-off aspect=%d "
+                L"videoRect=%ld,%ld,%ld,%ld targetRect=%ld,%ld,%ld,%ld\r\n",
+                input.aspect_mode,
+                video_output_rect.left, video_output_rect.top,
+                video_output_rect.right, video_output_rect.bottom,
+                subtitle_target_rect.left, subtitle_target_rect.top,
+                subtitle_target_rect.right, subtitle_target_rect.bottom);
+            AppendXyDiagnostic(diag.GetString());
+        }
         return SubtitleDisplayLayout::ResolveCanvas(input);
     }
 
