@@ -130,12 +130,6 @@ namespace SubtitleDisplayLayout
         const RECT& dirty, const RECT& canvas_bounds,
         const RECT& video_in_canvas, RECT out[3]);
 
-    // Merges adjacent partition rects until at most max_count remain. A limit
-    // of 1 returns the union of everything as a single rect. Used to honour
-    // the consumer's announced maxBitmapCount without changing geometry.
-    int MergePartitionsToLimit(
-        const RECT* parts, int count, int max_count, RECT out[3]);
-
     // Resolves the published position and size of one partitioned bitmap:
     // the rect is a pixel sub-range of the canvas buffer, so its position is
     // canvasOrigin + rect.topLeft and its size is rect.Size(). The canvas
@@ -151,32 +145,6 @@ namespace SubtitleDisplayLayout
 
     BitmapSlice ResolveBitmapSlice(
         const RECT& bitmap_rect, const POINT& bitmap_offset);
-
-    // Maps a design-space bitmap coordinate into the consumer's rect space.
-    // Some consumers (MPC VR) report their rects in display pixels rather
-    // than source pixels; a frame published in source space then lands in a
-    // different coordinate system and the letterbox part is discarded.
-    // scale/offset are derived from consumerVideoOutput / designSize.
-    struct BitmapDisplayTransform
-    {
-        bool active;
-        SIZE design_size;
-        SIZE target_size;
-        POINT offset;
-
-        BitmapDisplayTransform();
-    };
-
-    // Builds the transform when target_size is strictly larger than
-    // design_size in either axis (i.e. the consumer is not reporting source
-    // pixels). An inactive transform is an identity mapping.
-    BitmapDisplayTransform ResolveBitmapDisplayTransform(
-        const SIZE& design_size, const SIZE& target_size);
-
-    // Maps one rect through the transform. Runs and widths are rounded so
-    // adjacent spans stay contiguous.
-    RECT MapRectToTarget(
-        const RECT& rect, const BitmapDisplayTransform& transform);
 
     enum ConsumerFamily
     {

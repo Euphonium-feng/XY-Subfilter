@@ -391,21 +391,13 @@ void CHdmvSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
                 object_left + pObject->m_width;
             const LONG object_bottom =
                 object_top + pObject->m_height;
-            // The object is authored in the stream's design space. When the
-            // consumer reports display pixels, publish in that same space so
-            // the bitmap coordinates match the rects the consumer handed us.
-            const RECT design_object = {
-                object_left, object_top, object_right, object_bottom
-            };
-            const RECT mapped_object = SubtitleDisplayLayout::MapRectToTarget(
-                design_object, m_displayTransform);
             if (pObject->GetRLEDataSize()
                 && pObject->m_width > 0
                 && pObject->m_height > 0
-                && mapped_object.right > 0
-                && mapped_object.bottom > 0
-                && mapped_object.left < buffer_rect.right
-                && mapped_object.top < buffer_rect.bottom)
+                && object_right > 0
+                && object_bottom > 0
+                && object_left < buffer_rect.right
+                && object_top < buffer_rect.bottom)
             {
                 CompositionObject::ColorType color_type = m_colorTypeSetting;
                 if (color_type==CompositionObject::NONE)
@@ -418,8 +410,7 @@ void CHdmvSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
                     m_hdrConfig);
 
                 CRect clipped_object(
-                    mapped_object.left, mapped_object.top,
-                    mapped_object.right, mapped_object.bottom);
+                    object_left, object_top, object_right, object_bottom);
                 clipped_object.IntersectRect(
                     clipped_object, buffer_rect);
                 if (!clipped_object.IsRectEmpty())
@@ -433,20 +424,7 @@ void CHdmvSub::Render(SubPicDesc& spd, REFERENCE_TIME rt, RECT& bbox)
                 pObject->InitColor(spd);
                 TRACE_HDMVSUB( (_T(" --> Object %d (Pos=%dx%d, Res=%dx%d, SPDRes=%dx%d)\n"),
                               pObject->m_object_id_ref, pObject->m_horizontal_position, pObject->m_vertical_position, pObject->m_width, pObject->m_height, spd.w, spd.h) );
-                if (m_displayTransform.active
-                    && m_displayTransform.design_size.cx > 0
-                    && m_displayTransform.design_size.cy > 0) {
-                    const double scale_x = double(
-                        m_displayTransform.target_size.cx)
-                        / m_displayTransform.design_size.cx;
-                    const double scale_y = double(
-                        m_displayTransform.target_size.cy)
-                        / m_displayTransform.design_size.cy;
-                    pObject->RenderHdmv(
-                        spd, m_displayTransform.offset, scale_x, scale_y);
-                } else {
-                    pObject->RenderHdmv(spd);
-                }
+                pObject->RenderHdmv(spd);
                 ++m_last_drawn_objects;
             } else {
                 ++m_last_skipped_objects;

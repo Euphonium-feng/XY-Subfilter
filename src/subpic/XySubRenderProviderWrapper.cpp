@@ -1,7 +1,6 @@
 #include "stdafx.h"
 #include "XySubRenderProviderWrapper.h"
 #include "IDirectVobSubXy.h"
-#include "diagnostic_log.h"
 
 #if ENABLE_XY_LOG_RENDERER_REQUEST2
 #  define TRACE_RENDERER_REQUEST(msg) XY_LOG_TRACE(msg)
@@ -26,18 +25,6 @@ SubtitleDisplayLayout::CanvasResult ResolveConsumerCanvas(
             DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
             &input.enabled))
         || !input.enabled) {
-        {
-            CStringW diag;
-            diag.Format(
-                L"schema=xy-canvas-input/1\r\nevent=disabled enabled=%d "
-                L"videoRect=%ld,%ld,%ld,%ld targetRect=%ld,%ld,%ld,%ld\r\n",
-                input.enabled ? 1 : 0,
-                video_output_rect.left, video_output_rect.top,
-                video_output_rect.right, video_output_rect.bottom,
-                subtitle_target_rect.left, subtitle_target_rect.top,
-                subtitle_target_rect.right, subtitle_target_rect.bottom);
-            AppendXyDiagnostic(diag.GetString());
-        }
         return SubtitleDisplayLayout::ResolveCanvas(input);
     }
 
@@ -45,18 +32,6 @@ SubtitleDisplayLayout::CanvasResult ResolveConsumerCanvas(
             DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
             &input.aspect_mode))
         || input.aspect_mode == DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF) {
-        {
-            CStringW diag;
-            diag.Format(
-                L"schema=xy-canvas-input/1\r\nevent=aspect-off aspect=%d "
-                L"videoRect=%ld,%ld,%ld,%ld targetRect=%ld,%ld,%ld,%ld\r\n",
-                input.aspect_mode,
-                video_output_rect.left, video_output_rect.top,
-                video_output_rect.right, video_output_rect.bottom,
-                subtitle_target_rect.left, subtitle_target_rect.top,
-                subtitle_target_rect.right, subtitle_target_rect.bottom);
-            AppendXyDiagnostic(diag.GetString());
-        }
         return SubtitleDisplayLayout::ResolveCanvas(input);
     }
 
@@ -623,44 +598,6 @@ HRESULT XySubRenderProviderWrapper2::Render( REFERENCE_TIME now, POSITION pos )
         TRACE_RENDERER_REQUEST("Finished combine bitmap");
     }
 
-    if (m_xy_sub_render_frame)
-    {
-        RECT out_rect = {};
-        RECT clip_rect = {};
-        POINT first_pos = {};
-        SIZE first_size = {};
-        int count = 0;
-        if (SUCCEEDED(m_xy_sub_render_frame->GetOutputRect(&out_rect))
-            && SUCCEEDED(m_xy_sub_render_frame->GetClipRect(&clip_rect))
-            && SUCCEEDED(m_xy_sub_render_frame->GetBitmapCount(&count))
-            && count > 0
-            && SUCCEEDED(m_xy_sub_render_frame->GetBitmap(
-                0, NULL, &first_pos, &first_size, NULL, NULL))) {
-            CStringW diagnostic;
-            diagnostic.Format(
-                L"schema=xy-text-frame/1\r\n"
-                L"event=frame canvas=%d maxBitmap=%d bitmapCount=%d "
-                L"videoRect=%ld,%ld,%ld,%ld canvasRect=%ld,%ld,%ld,%ld "
-                L"targetRect=%ld,%ld,%ld,%ld "
-                L"output=%ld,%ld,%ld,%ld clip=%ld,%ld,%ld,%ld "
-                L"bitmap0=%ld,%ld,%ld,%ld\r\n",
-                m_use_display_canvas ? 1 : 0,
-                m_max_bitmap_count2,
-                count,
-                m_output_rect.left, m_output_rect.top,
-                m_output_rect.right, m_output_rect.bottom,
-                m_render_target_rect.left, m_render_target_rect.top,
-                m_render_target_rect.right, m_render_target_rect.bottom,
-                m_subtitle_target_rect.left, m_subtitle_target_rect.top,
-                m_subtitle_target_rect.right, m_subtitle_target_rect.bottom,
-                out_rect.left, out_rect.top, out_rect.right, out_rect.bottom,
-                clip_rect.left, clip_rect.top, clip_rect.right, clip_rect.bottom,
-                first_pos.x, first_pos.y,
-                first_pos.x + first_size.cx, first_pos.y + first_size.cy);
-            AppendXyDiagnostic(diagnostic.GetString());
-        }
-    }
-
     if (!m_provider->IsAnimated(pos))
     {
         m_start = m_provider->GetStart(pos, m_fps);
@@ -713,13 +650,6 @@ HRESULT XySubRenderProviderWrapper2::CombineBitmap(REFERENCE_TIME now)
             XY_LOG_ERROR("Failed to clear dirty rect. "<<XY_LOG_VAR_2_STR(hr));
             return hr;
         }
-        // The canvas lives outside the video rect: clipping the combined
-        // dirty rect (or publishing the render rects) to m_render_target_rect
-        // discards everything in the letterbox bars. Keep the union intact
-        // and publish the canvas-space geometry instead.
-        const CRect canvas_bounds = m_use_display_canvas
-            ? CRect(CPoint(0, 0), m_render_target_rect.Size())
-            : m_render_target_rect;
         CRect dirty_rect;
         for (int i=0;i<count;i++)
         {
@@ -734,18 +664,10 @@ HRESULT XySubRenderProviderWrapper2::CombineBitmap(REFERENCE_TIME now)
                 return hr;
             }
             ASSERT(SUCCEEDED(hr));
-            // GetBitmap() already reports positions with the canvas offset
-            // applied. The merged frame is built from the buffer itself, so
-            // undo the offset when blitting and re-apply it via the wrapper.
-            POINT local_pos = pos;
-            if (m_use_display_canvas) {
-                local_pos.x -= m_frame_layout.bitmap_offset.x;
-                local_pos.y -= m_frame_layout.bitmap_offset.y;
-            }
-            dirty_rect |= CRect(local_pos, size);
-            XyBitmap::BltPack(spd, local_pos, size, pixels, pitch);
+            dirty_rect |= CRect(pos, size);
+            XyBitmap::BltPack(spd, pos, size, pixels, pitch);
         }
-        dirty_rect &= canvas_bounds;
+        dirty_rect &= m_render_target_rect;
         hr = m_subpic->Unlock(&dirty_rect);
         if (FAILED(hr))
         {
@@ -757,14 +679,9 @@ HRESULT XySubRenderProviderWrapper2::CombineBitmap(REFERENCE_TIME now)
         CMemSubPic * mem_subpic = dynamic_cast<CMemSubPic*>((ISubPicEx *)m_subpic);
         ASSERT(mem_subpic);
 
-        const CRect output_rect = m_use_display_canvas
-            ? m_frame_layout.output_rect : m_render_video_rect;
-        const CRect clip_rect = m_use_display_canvas
-            ? m_frame_layout.clip_rect : m_render_target_rect;
         m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
-            mem_subpic, output_rect, clip_rect,
-            s_combined_bitmap_id++, &hr,
-            m_use_display_canvas ? m_frame_layout.bitmap_offset : POINT());
+            mem_subpic, m_render_video_rect, m_render_target_rect,
+            s_combined_bitmap_id++, &hr);
         return hr;
     }
     return hr;

@@ -806,13 +806,12 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
 
 bool XySubFilter::ShouldMaskBitmapFlagForConsumer() const
 {
-    // A canvas-positioned frame is a pre-positioned overlay, not a bitmap
-    // anchored to the video rect. Consumers that see isBitmap=true composite
-    // it only against the video rectangle and discard the letterbox part of
-    // clip. Both field-tested consumers (madVR, MPC VR) need the overlay
-    // contract, so the flag is masked for every consumer once the canvas is
-    // active. The internal bitmap flag still drives HDR and the status text.
-    return true;
+    // Only madVR has been field-verified to composite a canvas-positioned
+    // overlay outside the video rectangle. Other consumers (notably MPC VR)
+    // keep the real bitmap flag so the provider's bitmap path stays intact.
+    return SubtitleDisplayLayout::ClassifyConsumer(
+        m_xy_str_opt[STRING_CONNECTED_CONSUMER])
+        == SubtitleDisplayLayout::CONSUMER_MADVR;
 }
 
 HRESULT XySubFilter::DoGetField( unsigned field, void *value )

@@ -186,8 +186,7 @@ void CompositionObject::AppendRLEData(const BYTE* pBuffer, int nSize)
 }
 
 
-void CompositionObject::RenderHdmv(
-    SubPicDesc& spd, POINT origin, double scale_x, double scale_y)
+void CompositionObject::RenderHdmv(SubPicDesc& spd)
 {
     if (!m_pRLEData || !HavePalette()) {
         return;
@@ -198,10 +197,6 @@ void CompositionObject::RenderHdmv(
     BYTE  bSwitch;
     BYTE  nPaletteIndex = 0;
     short nCount;
-    const bool identity = scale_x == 1.0 && scale_y == 1.0
-        && origin.x == 0 && origin.y == 0;
-    const int base_x = m_horizontal_position;
-    const int base_y = m_vertical_position;
     short nX = m_horizontal_position;
     short nY = m_vertical_position;
 
@@ -235,24 +230,7 @@ void CompositionObject::RenderHdmv(
 
         if (nCount > 0) {
             if (nPaletteIndex != 0xFF) {    // Fully transparent (§9.14.4.2.2.1.1)
-                if (identity) {
-                    FillSolidRect(
-                        spd, nX, nY, nCount, 1, m_Colors[nPaletteIndex]);
-                } else {
-                    const int dest_x = origin.x
-                        + (int)((nX - base_x) * scale_x + base_x * scale_x);
-                    const int dest_y = origin.y
-                        + (int)((nY - base_y) * scale_y + base_y * scale_y);
-                    const int dest_right = origin.x
-                        + (int)((nX + nCount - base_x) * scale_x
-                                + base_x * scale_x);
-                    const int width = dest_right - dest_x;
-                    if (width > 0) {
-                        FillSolidRect(
-                            spd, dest_x, dest_y, width, 1,
-                            m_Colors[nPaletteIndex]);
-                    }
-                }
+                FillSolidRect(spd, nX, nY, nCount, 1, m_Colors[nPaletteIndex]);
             }
             nX += nCount;
         } else {
