@@ -148,7 +148,8 @@ Auto/16:9 看不到位图字幕；关闭能看到，但整体被压扁并挤在�
   只剩约 10 行与视频底边重叠；`canvasActive=1` 不能证明字体可见。
 - 修复 `fff048c` 让位图帧发布自己的缓冲区：`publishOutput=publishClip=
   (0,0,1920,1080)`、`bitmapOffset=(0,0)`，对象保持画布坐标。云端三矩阵
-  run `42582772438` 通过（`release-win32`、`release-x64`、`debug-x64`）。
+  run `42582772438` 通过（`release-win32`、`release-x64`、`debug-x64`）；
+  文档提交 `6b8e823` 的 run `42585707239` 同样三矩阵全绿。
   该版本的实机画面尚未复核；下一步应重新读取 `xy-bitmap-frame/1`，确认
   `bitmap0` 落在 `publishOutput` 内，再由用户确认 Auto/16:9 是否进入黑边。
 - run `42470777553`（提交 `3acfdb5`）在 `Install VSNASM` / `Install VSYASM`
