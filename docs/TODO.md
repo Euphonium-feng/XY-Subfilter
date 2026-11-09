@@ -173,8 +173,18 @@ D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确�
   `xy-bitmap-frame/1` 新增 `videoInCanvas`、`partitionCount`、`partition0..2`、
   `bitmap0..2`；`xy-hdr-config/1` 新增 `isMovable`。
   云端三矩阵 run `42622400699` 全绿（`release-win32`、`release-x64`、
-  `debug-x64`）；**实机验收仍未完成。**
-  下一步唯一动作：由用户用该构建复测；日志必须出现
+  `debug-x64`）。
+- 2026-11-09 22:17 实机复测：拆分已生效——日志为
+  `partitionCount=2`、`bitmapCount=2`、`bitmap0=360,790,1560,800`、
+  `bitmap1=360,800,1560,880`、`videoInCanvas=0,140,1920,940`；
+  但 Auto 与 16:9 仍完全看不到字幕，关闭模式可见。
+  该结果推翻了“跨界 bitmap 被丢弃”的假设：文本路径同样发布跨界 bitmap 却能显示。
+  残余差异是 consumer 的 `isBitmap=true` 分支只按视频矩形合成。
+  已实现单变量实验：画布启用时仅对 consumer 把 `isBitmap` 报为 false，
+  `isMovable` 保持 false，内部 HDR 标志不变。**该实验尚未实机验证。**
+  下一步唯一动作：推送后由用户复测；若字幕出现在黑边，确认 `isBitmap` 分支
+  是根因；若仍不可见，放弃位图身份路线，改为在文本覆盖层内合成位图内容。
+  旧的验收日志字段仍可参考：日志必须出现
   `bufferSize=1920,1080`、`publishOutput=0,0,1920,800`、
   `publishClip=0,-140,1920,940`、`bitmapOffset=0,-140`、
   `partitionCount=2`、`bitmapCount=2`，且 `bitmap0/1` 不跨

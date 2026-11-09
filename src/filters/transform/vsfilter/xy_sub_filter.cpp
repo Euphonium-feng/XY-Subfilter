@@ -818,11 +818,29 @@ HRESULT XySubFilter::DoGetField( unsigned field, void *value )
     case STRING_OUTPUT_LEVELS:
     case BOOL_COMBINE_BITMAPS:
     case BOOL_IS_MOVABLE:
-    case BOOL_IS_BITMAP:
     case BOOL_SUB_FRAME_USE_DST_ALPHA:
         {
             CAutoLock cAutolock(&m_csProviderFields);//do NOT hold m_csSubLock so that it is faster
             hr = XyOptionsImpl::DoGetField(field, value);
+        }
+        break;
+    case BOOL_IS_BITMAP:
+        {
+            CAutoLock cAutolock(&m_csProviderFields);
+            hr = XyOptionsImpl::DoGetField(field, value);
+            if (SUCCEEDED(hr)
+                && m_xy_bool_opt[BOOL_IS_BITMAP]
+                && m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES]
+                && m_xy_size_opt[SIZE_DISPLAY_AREA].cx > 0
+                && m_xy_size_opt[SIZE_DISPLAY_AREA].cy > 0) {
+                // With the display canvas active the frame is a
+                // pre-positioned overlay in the same space as text. Consumers
+                // that see isBitmap=true composite it only against the video
+                // rectangle and ignore the letterbox part of clip. Present
+                // the overlay contract to the consumer; the internal bitmap
+                // flag still drives HDR selection and status text.
+                *static_cast<bool*>(value) = false;
+            }
         }
         break;
     case INT_LANGUAGE_COUNT:
@@ -2164,6 +2182,10 @@ void XySubFilter::LogHdrConfiguration(
         const SIZE display_area = m_xy_size_opt[SIZE_DISPLAY_AREA];
         const bool has_display_area =
             display_area.cx > 0 && display_area.cy > 0;
+        const bool bitmap_canvas_overlay =
+            m_xy_bool_opt[BOOL_IS_BITMAP]
+            && use_display_area
+            && has_display_area;
         const bool display_rect_valid =
             display_rect.right > display_rect.left
             && display_rect.bottom > display_rect.top;
@@ -2228,6 +2250,7 @@ void XySubFilter::LogHdrConfiguration(
         diagnostic.Format(
             L"schema=xy-hdr-config/1\r\n"
             L"event=%ls field=%u backend=%ls isBitmap=%d "
+            L"presentedBitmap=%d "
             L"isMovable=%d "
             L"requestedBitmap=%d requestedText=%d white=%d "
             L"resolvedBitmap=%d resolvedText=%d generation=%llu "
@@ -2243,6 +2266,7 @@ void XySubFilter::LogHdrConfiguration(
             field,
             backend_name,
             m_xy_bool_opt[BOOL_IS_BITMAP] ? 1 : 0,
+            bitmap_canvas_overlay ? 0 : (m_xy_bool_opt[BOOL_IS_BITMAP] ? 1 : 0),
             m_xy_bool_opt[BOOL_IS_MOVABLE] ? 1 : 0,
             pgs_mode,
             text_mode,
