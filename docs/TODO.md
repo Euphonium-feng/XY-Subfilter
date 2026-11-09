@@ -172,8 +172,9 @@ D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确�
   `XySubRenderFrameWrapper` 支持多 bitmap 零拷贝发布。
   `xy-bitmap-frame/1` 新增 `videoInCanvas`、`partitionCount`、`partition0..2`、
   `bitmap0..2`；`xy-hdr-config/1` 新增 `isMovable`。
-  **云端三矩阵与实机验收均未完成。**
-  下一步唯一动作：提交并推送，等三矩阵全绿后由用户复测；日志必须出现
+  云端三矩阵 run `42622400699` 全绿（`release-win32`、`release-x64`、
+  `debug-x64`）；**实机验收仍未完成。**
+  下一步唯一动作：由用户用该构建复测；日志必须出现
   `bufferSize=1920,1080`、`publishOutput=0,0,1920,800`、
   `publishClip=0,-140,1920,940`、`bitmapOffset=0,-140`、
   `partitionCount=2`、`bitmapCount=2`，且 `bitmap0/1` 不跨
