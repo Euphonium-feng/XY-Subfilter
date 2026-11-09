@@ -98,14 +98,19 @@
 - 属性页运行时用户可见文本必须来自 `IDS_XY_UI_*`（产品或标准缩写除外）；
   `Test-ResourceLocalization.ps1` 失败时不得绕过，除非在对应行标注
   `l10n-exempt:` 并说明技术理由。
-- `%TEMP%\xy_hdr_diag.txt` 在探测或 HDR 配置刷新时生成并追加，超过 512 KiB
-  后轮换；disconnect 不得覆盖上次有效证据。打开日志按钮本身不得创建空文件。
+- `%TEMP%\xy_hdr_diag.txt` 在探测或 HDR 配置刷新时生成并追加；每次进程启动后的
+  第一次写入截断旧内容，单次运行超过 512 KiB 后重新开始；disconnect 不得覆盖
+  本次有效证据。打开日志按钮本身不得创建空文件。
 - HLG 当前与 PQ 共用 HDR 证据分类，个人范围不做专用映射或专项验收；文档不得把
   HLG 观感描述为已验证。
 - “按显示器区域排版字幕”默认关闭；关闭时不得改变任何现有输出。开启后文本
   与 PGS/SUP/DVB 位图都使用完整显示画布；位图内容保持原始坐标，不缩放。
-- 位图字幕在 consumer 侧必须保持 `isMovable=false`：坐标由 PGS/DVB 流决定，
-  允许重定位会让 madVR 把内容压回视频矩形，破坏黑边布置。
+- 位图字幕在 consumer 侧必须保持 `isMovable=false`，且 `RequestFrame` 不得把
+  非文本流重新标记为可移动：坐标由 PGS/DVB 流决定，允许重定位会让 madVR 把
+  内容压回视频矩形，破坏黑边布置。
+- 当前位图完整画布实现尚未通过实机验收：Auto/16:9 不可见、关闭时压扁。
+  在该问题闭环前，不得把云端三矩阵或 `xy-bitmap-frame/1` 存在记录当作
+  位图字幕已生效。
 - 显示尺寸优先取 `SIZE_DISPLAY_AREA`（属性页在 UI 线程用 `GetSystemMetrics`
   读取，持久化到 `General\display_area_width/height`）；其次取 consumer 的
   `fullscreenRect`（须完整包含并严格大于 `videoOutputRect`）。
@@ -113,15 +118,17 @@
   `GetForegroundWindow`、`IsWindowVisible`、`GetWindowRect` 一律禁止。
   一次跨进程等待就会冻结播放。
 - 不得把视频矩形当作显示器矩形，也不得用活动视频宽高推断显示器宽高。
-- 不得用活动视频宽高猜显示器宽高，也不得把窗口尺寸当显示器区域。字段缺失、
-  窗口模式、无效矩形或内接画布失败时必须回退视频区域。
+- 不得用活动视频宽高猜显示器宽高，也不得把窗口尺寸当显示器区域。缺少持久化
+  显示尺寸、画布无效或内嵌画布失败时必须回退视频区域。
 - 显式 16:9/16:10/21:9/32:9/4:3 只限制字幕画布的内接比例，不得生成超出
   `subtitleTargetRect` 的矩形，也不得生成不能完整包含 `videoOutputRect` 的画布
   （`RTS::RenderEx` 会因此返回 `E_NOTIMPL`，整帧不交付）。
 - `GetOutputRect`、`GetClipRect`、`GetBitmap.position` 必须处于同一坐标系；
   `GetClipRect` 允许超出 output 并含负值，但不得混入屏幕/桌面绝对坐标。
-- 显示区域或画布改变时必须丢弃当前字幕区间的缓存帧：不仅 wrapper 侧
-  `Invalidate()`，`RTS::Init()` 也必须清空 libass 的 `m_last_frame`。
+- 显示区域或画布改变时必须丢弃当前字幕区间的缓存帧：文本侧 wrapper
+  `Invalidate()` 与 `RTS::Init()` 清空 libass 的 `m_last_frame`；位图侧
+  除 `m_canvas_cached` 外还必须清 `m_pSubPic`/`m_xy_sub_render_frame`，
+  否则 `Render()` 会因字幕区间未变而复用旧几何。
 - 内置 `XySubFilterConsumer` 不掌握真实桌面显示区域，必须保持
   `displayModeSize=(0,0)` 与空 `fullscreenRect`；不得伪造显示器尺寸。
 - 代理不得在功能完成后自行启动 PotPlayer 实机验收；自动验证只认合成单测、

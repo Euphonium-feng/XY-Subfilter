@@ -1719,8 +1719,16 @@ STDMETHODIMP XySubFilter::RequestFrame( REFERENCE_TIME start, REFERENCE_TIME sto
                 ASSERT(0);
             }
 
-            CRenderedTextSubtitle * rts = dynamic_cast<CRenderedTextSubtitle*>(m_curSubStream);
-            m_xy_bool_opt[BOOL_IS_MOVABLE] = (!rts) || ((rts->IsMovable()) && ((rts->IsSimple()) || (m_xy_bool_opt[BOOL_ALLOW_MOVING])));
+            // Only text streams can be repositioned by the consumer. Bitmap
+            // objects are authored at absolute canvas coordinates and must stay
+            // isMovable=false, otherwise the per-frame refresh here would undo
+            // the value set by SetSubtitle.
+            if (CRenderedTextSubtitle* rts =
+                    dynamic_cast<CRenderedTextSubtitle*>(m_curSubStream)) {
+                m_xy_bool_opt[BOOL_IS_MOVABLE] =
+                    (rts->IsMovable())
+                    && ((rts->IsSimple()) || (m_xy_bool_opt[BOOL_ALLOW_MOVING]));
+            }
         }
     }
     CAutoLock cAutoLock(&m_csConsumer);

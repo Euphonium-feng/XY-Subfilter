@@ -422,8 +422,7 @@ yuvMatrix 和当前 HDR 证据。资源标签改为“Bitmap HDR / Text HDR”�
 被否方案：用 `fullscreenRect` 画屏幕像素、把 `clip` 设成显示器矩形而 `output`
 仍是视频矩形（两者不同空间）、或直接用固定比例拉伸位图。
 
-PGS/SUP/DVB 本轮不参与。它们把字幕绘进视频尺寸位图，除非 provider 侧整屏重采样，
-否则无法进入黑边；强行用 clip 表达只会被裁掉。强制关闭后行为与本轮之前完全一致。
+PGS/SUP/DVB 的完整画布支持已由 D45 取代；本节只保留文本画布的决策。
 
 ## D43：显示尺寸取自播放器窗口，而不是 consumer 字段
 
@@ -463,8 +462,9 @@ PGS/SUP/DVB 本轮不参与。它们把字幕绘进视频尺寸位图，除非 p
 `GetSystemMetrics(SM_CXSCREEN/SM_CYSCREEN)` 读取一次，写入
 `General\display_area_width/height` 持久化，启动时加载。播放线程只读这个值。
 
-判定因此收敛为一条：有显示尺寸就按显示宽高比扩展画布；否则退回 consumer 矩形。
-consumer 的 `fullscreenRect` 仅作为第二来源（madVR 提供），MPC VR 不提供也能工作。
+判定因此收敛为一条：有持久化显示尺寸就按显示宽高比扩展画布；否则退回视频
+矩形。consumer 的 `fullscreenRect` 只在 `SIZE_DISPLAY_AREA` 缺失时作为第二
+来源，MPC VR 不提供也能工作。
 
 被否方案：在播放线程枚举窗口、用前台窗口推断、用工作区大小推断并不可靠——任务栏
 可见时会误判为非全屏，且都依赖跨进程查询。
@@ -492,8 +492,19 @@ DVB 的 dirty-rect 计算都会把绘制限制在 `spd` 内。这样即使画布
 显示尺寸可用、画布有效且包含视频；设计比例与设计分辨率不参与判断。
 
 位图流必须声明 `isMovable=false`。PGS/DVB 对象是绝对画布坐标，声明为可移动
-会让 madVR 把字幕重新定位/缩放回视频矩形，实测表现为 Auto/16:9 下整条字幕
-消失。`isBitmap=true` 与完整画布几何保持不变。
+会让 madVR 把字幕重新定位/缩放回视频矩形。`XySubFilter::RequestFrame()` 每帧
+原本会把非文本流重新标记为可移动，覆盖 `SetSubtitle()` 的设置；现在该处只对
+`CRenderedTextSubtitle` 重算，位图值保持不变。
+
+画布变化必须同时清 `m_pSubPic` 和 `m_xy_sub_render_frame`，不能只清
+`m_canvas_cached`。`HdmvSubtitleProviderImpl::Render()` 在字幕区间未变时会提前
+返回 `S_OK`，否则属性页切到 Auto/16:9 后仍会发布旧视频几何。该几何失效标志
+在 `Invalidate()` 和画布输入变化时置位，在下一次请求消耗一次。
+
+**验证状态（2026-11-09）：以上完整画布方案未通过实机验收。** 用户针对本轮
+修复的实机行为仍为 Auto/16:9 看不到位图字幕、关闭模式可见但整体压扁。
+因此 `isMovable=false` 与几何失效修复都不能视为该问题的解决方案；D45 目前
+描述的是已实现、已通过云端三矩阵、但未通过实机验收的设计，不是已解决问题。
 
 被否方案：要求设计比例等于显示比例才启用（1920×1080 PGS 配 1920×800 视频会
 永远不生效）；把设计画布内容重采样到显示画布（违反“不缩放”约束，且没有必要）；

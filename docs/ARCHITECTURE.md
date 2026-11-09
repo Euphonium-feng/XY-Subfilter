@@ -183,10 +183,17 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 `DirectVobSubImpl::GetHdrDiagnosticPath()` 与日志写入共用
 `%TEMP%\xy_hdr_diag.txt`。属性页的 `Open log` / “打开日志”按钮只打开已存在的日志；
 文件缺失或 `ShellExecuteW` 失败时显示本地化提示，不创建空文件。
-日志采用追加写入并在超过 512 KiB 后轮换。每次图/容器探测和 HDR 配置刷新都会
-记录时间、事件、实际渲染后端（libass/VSFilter/CSRI）、位图/文本请求模式、
-最终解析模式、generation 和当前 HDR 证据。断开连接只追加事件，不再用全零结果
-覆盖上一次有效探测。
+日志在每次进程启动后的第一次写入时截断，因此每次运行只保留本次证据；单次运行
+超过 512 KiB 后重新开始。每次图/容器探测和 HDR 配置刷新都会记录时间、事件、
+实际渲染后端（libass/VSFilter/CSRI）、位图/文本请求模式、最终解析模式、
+generation 和当前 HDR 证据。断开连接只追加事件，不再用全零结果覆盖上一次有效探测。
+
+位图 provider 另写有界的 `xy-bitmap-frame/1` 事件，只在几何、位图 ID 或渲染统计
+变化时追加。字段包括 `canvasActive`、`bufferSize`、`publishOutput`、
+`publishClip`、`bitmapOffset`、`dirtyRect`、`objectCount`、`drawnObjects`、
+`skippedObjects`、`bitmapCount` 和首个 `bitmap0`，用于区分“没有位图对象”、
+“对象被缓冲区裁空”和“consumer 丢帧”。`render-empty`、`alloc-failed`、
+`flip-failed` 也会记录。
 
 文本与位图共用 `DirectVobSubImpl::ResolveHdrMode()`、同一个 consumer HDR 信号和
 `INT_PGS_HDR_WHITE_NITS`，但模式选项仍然独立。属性页将二者明确标为
@@ -217,7 +224,8 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
   `subtitleTargetRect`，显式画幅在其内部取内接画布。
 
 两条路径都要求画布完整包含 `videoOutputRect`；否则回退视频矩形，因为
-`RTS::RenderEx` 会以 `E_NOTIMPL` 丢弃整帧。
+`RTS::RenderEx` 会以 `E_NOTIMPL` 丢弃整帧。位图画布必须完整包含视频，但对象
+可以超出画布并被裁剪；位图侧不使用 `RTS::RenderEx`。
 
 文本数据流：
 
@@ -244,13 +252,19 @@ consumer 把零基 output 映射到 `videoOutputRect`，因此该布局在屏幕
 PGS/SUP/DVB 的位图对象按流内坐标绘制，provider 不做缩放、留白或重排。
 `ResolveBitmapFrame()` 按显示宽高比构造画布，位图渲染缓冲区直接使用该画布尺寸，
 因此 PGS/DVB 行可以落在画布的上下黑边。对象坐标不随画布变化；超出缓冲区的
-像素由 `Rasterizer::FillSolidRect` 与各 dirty-rect 计算裁剪。
+像素由 `Rasterizer::FillSolidRect` 与各 dirty-rect 计算裁剪。位图流固定
+`isMovable=false`；它表示 consumer 不得把绝对画布坐标重新定位或缩放。
+
+上述位图完整画布路径已经实现并通过云端三矩阵，但**未通过实机验收**：
+Auto/16:9 仍看不到位图字幕，关闭时仍整体压扁。当前代码不能描述为已生效方案。
 
 位图帧发布与文本共用 `BuildFrameLayout()`：`GetOutputRect` 保持视频尺寸，
 `GetClipRect` 是画布减去视频原点，`GetBitmap.position` 是对象坐标加画布原点偏移。
 `CHdmvSub::Render` 不再要求对象完整落在 `spd` 内，只要求与缓冲区相交。
 
 画布缓存只在输入变化时重算，`Invalidate()` 与 `Connect()` 会使其失效。
+画布或发布几何变化还会丢弃当前 `m_pSubPic`，因为 `Render()` 在字幕区间未变时
+会提前返回并复用旧帧；仅清画布缓存不足以让属性页切换立即生效。
 
 ## 界面与本地化
 
