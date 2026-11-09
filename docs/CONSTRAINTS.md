@@ -114,7 +114,8 @@
 - 2026-11-09 14:15 日志显示对象确实绘制，但发布几何把画布底栏的
   `bitmap0=660,790,1260,880` 放进只有 `1920×800` 的 output；该越界位置
   不能视为有效帧。修正前不得仅凭 `canvasActive=1` 或 `drawnObjects=1`
-  判定画面已生效。
+  判定画面已生效。`fff048c` 已把位图帧改为画布尺寸的 output/clip；在用户
+  重新提供 madVR 实机结果前，仍不得记为已验收。
 - 显示尺寸优先取 `SIZE_DISPLAY_AREA`（属性页在 UI 线程用 `GetSystemMetrics`
   读取，持久化到 `General\display_area_width/height`）；其次取 consumer 的
   `fullscreenRect`（须完整包含并严格大于 `videoOutputRect`）。

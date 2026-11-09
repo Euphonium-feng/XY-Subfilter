@@ -146,6 +146,11 @@ Auto/16:9 看不到位图字幕；关闭能看到，但整体被压扁并挤在�
   `publishClip=0,-140,1920,940`、`bitmapOffset=0,-140`，
   `bitmap0=660,790,1260,880`。即画布底栏对象被平移到视频 output 之外，
   只剩约 10 行与视频底边重叠；`canvasActive=1` 不能证明字体可见。
+- 修复 `fff048c` 让位图帧发布自己的缓冲区：`publishOutput=publishClip=
+  (0,0,1920,1080)`、`bitmapOffset=(0,0)`，对象保持画布坐标。云端三矩阵
+  run `42582772438` 通过（`release-win32`、`release-x64`、`debug-x64`）。
+  该版本的实机画面尚未复核；下一步应重新读取 `xy-bitmap-frame/1`，确认
+  `bitmap0` 落在 `publishOutput` 内，再由用户确认 Auto/16:9 是否进入黑边。
 - run `42470777553`（提交 `3acfdb5`）在 `Install VSNASM` / `Install VSYASM`
   阶段失败：安装脚本从 `github.com/Microsoft/vswhere/releases` 下载
   `vswhere.exe` 解析失败，重跑仍复现。工作流现在先复制 runner 自带的
