@@ -196,13 +196,10 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameUsesTheFullDisplayCanvas)
     EXPECT_TRUE(frame.canvas.uses_display_area);
     EXPECT_TRUE(frame.canvas_active);
     ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.canvas.canvas_rect);
-    // output stays the video reference rect; clip is the full canvas starting
-    // at the video top-left, so a bottom-bar object is not shifted into the
-    // picture and the consumer is not asked to squash a 1080-high video.
     ExpectRectEquals(RECT{ 0, 0, 1920, 800 }, frame.frame.output_rect);
-    ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, frame.frame.clip_rect);
+    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.frame.clip_rect);
     EXPECT_EQ(0, frame.frame.bitmap_offset.x);
-    EXPECT_EQ(0, frame.frame.bitmap_offset.y);
+    EXPECT_EQ(-140, frame.frame.bitmap_offset.y);
     EXPECT_EQ(1920, frame.buffer_size.cx);
     EXPECT_EQ(1080, frame.buffer_size.cy);
 }
@@ -268,6 +265,8 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameMapsDesignBottomIntoLowerBar)
         bitmap_rect.bottom + frame.frame.bitmap_offset.y
     };
 
+    // The published position intentionally extends below the video output;
+    // the clip is what grants the consumer permission to draw into the bar.
     EXPECT_TRUE(SubtitleDisplayLayout::ContainsRect(
         frame.frame.clip_rect, published));
     EXPECT_GE(published.top, 800);
@@ -289,8 +288,7 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameKeepsCanvasWhenDesignDiffers)
     EXPECT_TRUE(frame.canvas_active);
     EXPECT_EQ(1920, frame.buffer_size.cx);
     EXPECT_EQ(1080, frame.buffer_size.cy);
-    ExpectRectEquals(RECT{ 0, 0, 1920, 800 }, frame.frame.output_rect);
-    ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, frame.frame.clip_rect);
+    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.frame.clip_rect);
 }
 
 

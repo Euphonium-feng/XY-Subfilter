@@ -156,6 +156,14 @@ Auto/16:9 看不到位图字幕；关闭能看到，但整体被压扁并挤在�
   该版本**没有**用户实机复核，不能写成已修复。
   下一步：重新取得 `xy-bitmap-frame/1`，确认 `bitmap0` 位于
   `publishOutput` 内，再由用户确认 Auto/16:9 是否进入黑边。
+- 2026-11-09 19:28 实机复测否定了上述两种单独修正：
+  - `fff048c` 的 `output=1920×1080` 被 consumer 当作视频尺寸，整幅画布
+    被缩回 800，字幕压扁。
+  - `0940012` 的 `output=1920×800` + `clip=0,0,1920,1080` 使
+    `bitmap0=780,930,1140,1020` 落在 output 高度之外，字幕完全不可见。
+  当前提交改为与已验收文本路径同构的几何：`output=video`、
+  `clip=canvas-videoOrigin`（居中，含负值）、`bitmapOffset=canvasOrigin`，
+  并在画布启用时保持 `isMovable=true`。该组合尚未实机验证。
 - run `42470777553`（提交 `3acfdb5`）在 `Install VSNASM` / `Install VSYASM`
   阶段失败：安装脚本从 `github.com/Microsoft/vswhere/releases` 下载
   `vswhere.exe` 解析失败，重跑仍复现。工作流现在先复制 runner 自带的

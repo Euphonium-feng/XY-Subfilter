@@ -55,9 +55,9 @@ namespace SubtitleDisplayLayout
         CanvasResult();
     };
 
-    // Layout of a published bitmap frame in the provider's coordinate space.
-    // The painting buffer is the canvas, so output, clip and bitmap positions
-    // all use the canvas' zero-based space.
+    // Layout of a published frame in the provider's coordinate space:
+    // output is the zero-based video rect, clip may extend into the bars and
+    // bitmap_offset removes the video's on-screen origin.
     struct FrameLayout
     {
         RECT output_rect;
@@ -122,12 +122,6 @@ namespace SubtitleDisplayLayout
     // and the resolved canvas. Text positions are shifted by
     // canvas_rect.topLeft because the text renderer keeps a video-sized output.
     FrameLayout BuildFrameLayout(
-        const RECT& video_output_rect, const RECT& canvas_rect);
-
-    // Builds the published bitmap frame geometry. The buffer already is the
-    // canvas, so the frame must publish the canvas as output, clip it 1:1 and
-    // leave bitmap positions in canvas-local coordinates.
-    FrameLayout BuildBitmapFrameLayout(
         const RECT& video_output_rect, const RECT& canvas_rect);
 
     // Aspect label metadata for property-page combo boxes.

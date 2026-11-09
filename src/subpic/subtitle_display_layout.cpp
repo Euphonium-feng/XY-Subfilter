@@ -190,31 +190,6 @@ namespace SubtitleDisplayLayout
         return layout;
     }
 
-    FrameLayout BuildBitmapFrameLayout(
-        const RECT& video_output_rect, const RECT& canvas_rect)
-    {
-        FrameLayout layout;
-        // GetOutputRect is the video-sized reference rect. Publishing the
-        // canvas size here makes the consumer scale the whole canvas back
-        // into the video and squash the subtitles.
-        layout.output_rect = RECT{
-            0, 0,
-            video_output_rect.right - video_output_rect.left,
-            video_output_rect.bottom - video_output_rect.top
-        };
-        // The clip is the display canvas in the same output space. PGS
-        // objects are authored from the video top-left, so the canvas must
-        // start at that origin (not at the centred canvas y=-140).
-        layout.clip_rect = RECT{
-            0, 0,
-            canvas_rect.right - canvas_rect.left,
-            canvas_rect.bottom - canvas_rect.top
-        };
-        layout.bitmap_offset.x = 0;
-        layout.bitmap_offset.y = 0;
-        return layout;
-    }
-
     CanvasResult ResolveCanvasForAspect(
         bool enabled, int aspect_mode, bool fullscreen,
         const RECT& video_rect, int display_width, int display_height)
@@ -331,7 +306,11 @@ namespace SubtitleDisplayLayout
             input.display_area.cx, input.display_area.cy);
         const RECT canvas = result.canvas.uses_display_area
             ? result.canvas.canvas_rect : input.video_rect;
-        result.frame = BuildBitmapFrameLayout(input.video_rect, canvas);
+        // Match the verified text path exactly: the output stays the video
+        // reference rect, the clip is the centred canvas extending into the
+        // bars, and bitmap positions are moved by the canvas origin. With
+        // isMovable=true the consumer maps this geometry into the black bars.
+        result.frame = BuildFrameLayout(input.video_rect, canvas);
         result.buffer_size.cx = canvas.right - canvas.left;
         result.buffer_size.cy = canvas.bottom - canvas.top;
         result.canvas_active = result.canvas.uses_display_area;
