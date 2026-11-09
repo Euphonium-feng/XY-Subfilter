@@ -104,18 +104,27 @@
 - HLG 当前与 PQ 共用 HDR 证据分类，个人范围不做专用映射或专项验收；文档不得把
   HLG 观感描述为已验证。
 - “按显示器区域排版字幕”默认关闭；关闭时不得改变任何现有输出。开启后文本
-  与 PGS/SUP/DVB 位图都使用完整显示画布；位图内容保持原始坐标，不缩放。
+  与 PGS/SUP/DVB 位图都使用完整显示画布；位图内容保持流内坐标，不缩放。
 - 位图字幕在 consumer 侧必须保持 `isMovable=false`，且 `RequestFrame` 不得把
   非文本流重新标记为可移动：坐标由 PGS/DVB 流决定，允许重定位会让 madVR 把
   内容压回视频矩形，破坏黑边布置。
+- 位图帧的 `GetOutputRect` 是 consumer 缩放用的视频参考矩形，不是渲染缓冲区
+  尺寸。完整显示画布必须按源像素比例表示（1920×800 视频 + 2560×1440 显示 →
+  1920×1080 画布），不得把物理显示尺寸 2560×1440 直接写成 output，否则 madVR
+  会把整幅画布再次缩回视频矩形并造成压扁。
+- 单张 bitmap 不得同时覆盖视频带与黑边。现有实机结果（`32127f8` 的
+  `bitmap0=690,790,1230,880` 完全不可见）只能用“跨界 bitmap 被 consumer
+  丢弃或按视频边界裁剪”解释；madVR 的精确裁剪规则未从源码确认。发布前必须
+  按视频带上下边界拆分 dirty rect，每块单独作为一张 bitmap，位置与尺寸使用
+  同一画布空间。若拆分后仍不可见，下一步查 consumer 对黑边 bitmap 的
+  alpha/色空间/ID 处理，不再改 output/clip 几何。
 - 当前位图完整画布实现尚未通过实机验收：Auto/16:9 不可见、关闭时压扁。
   在该问题闭环前，不得把云端三矩阵或 `xy-bitmap-frame/1` 存在记录当作
   位图字幕已生效。
-- 2026-11-09 14:15 日志显示对象确实绘制，但发布几何把画布底栏的
-  `bitmap0=660,790,1260,880` 放进只有 `1920×800` 的 output；该越界位置
-  不能视为有效帧。修正前不得仅凭 `canvasActive=1` 或 `drawnObjects=1`
-  判定画面已生效。`fff048c` 已把位图帧改为画布尺寸的 output/clip；在用户
-  重新提供 madVR 实机结果前，仍不得记为已验收。
+- 2026-11-09 19:28 日志显示对象确实绘制，但单张跨界 bitmap
+  `bitmap0=690,790,1230,880` 同时覆盖视频底边与下黑边，画面仍不可见。
+  `canvasActive=1` 或 `drawnObjects=1` 不能证明画面生效；必须看到
+  `partitionCount=2` 且每张 bitmap 不跨 `videoInCanvas` 边界才算几何正确。
 - 显示尺寸优先取 `SIZE_DISPLAY_AREA`（属性页在 UI 线程用 `GetSystemMetrics`
   读取，持久化到 `General\display_area_width/height`）；其次取 consumer 的
   `fullscreenRect`（须完整包含并严格大于 `videoOutputRect`）。
@@ -130,8 +139,9 @@
   （`RTS::RenderEx` 会因此返回 `E_NOTIMPL`，整帧不交付）。
 - `GetOutputRect`、`GetClipRect`、`GetBitmap.position` 必须处于同一坐标系；
   `GetClipRect` 允许超出 output 并含负值，但不得混入屏幕/桌面绝对坐标。
-- 位图画布帧的 `GetOutputRect`、`GetClipRect` 必须描述实际渲染缓冲区；
-  不得用视频尺寸 output 配合画布原点偏移来发布黑边对象。
+- 位图画布帧沿用文本路径已验证的几何：`GetOutputRect` 为零基视频尺寸，
+  `GetClipRect` 为减去视频原点后的画布，`GetBitmap.position` 减去同一个
+  video 原点。三者必须处于同一坐标系，不得混入屏幕/桌面绝对坐标。
 - 显示区域或画布改变时必须丢弃当前字幕区间的缓存帧：文本侧 wrapper
   `Invalidate()` 与 `RTS::Init()` 清空 libass 的 `m_last_frame`；位图侧
   除 `m_canvas_cached` 外还必须清 `m_pSubPic`/`m_xy_sub_render_frame`，

@@ -292,6 +292,7 @@ namespace SubtitleDisplayLayout
     {
         buffer_size.cx = 0;
         buffer_size.cy = 0;
+        video_in_canvas = RECT();
     }
 
     BitmapFrameResult ResolveBitmapFrame(const BitmapFrameInput& input)
@@ -308,12 +309,113 @@ namespace SubtitleDisplayLayout
             ? result.canvas.canvas_rect : input.video_rect;
         // Match the verified text path exactly: the output stays the video
         // reference rect, the clip is the centred canvas extending into the
-        // bars, and bitmap positions are moved by the canvas origin. With
-        // isMovable=true the consumer maps this geometry into the black bars.
+        // bars, and bitmap positions are moved by the canvas origin. Each
+        // bitmap must also stay entirely inside the video band or one of the
+        // bars; see PartitionBitmapRects.
         result.frame = BuildFrameLayout(input.video_rect, canvas);
         result.buffer_size.cx = canvas.right - canvas.left;
         result.buffer_size.cy = canvas.bottom - canvas.top;
+        result.video_in_canvas = RECT{
+            input.video_rect.left - canvas.left,
+            input.video_rect.top - canvas.top,
+            input.video_rect.right - canvas.left,
+            input.video_rect.bottom - canvas.top
+        };
         result.canvas_active = result.canvas.uses_display_area;
+        return result;
+    }
+
+    int PartitionBitmapRects(
+        const RECT& dirty, const RECT& canvas_bounds,
+        const RECT& video_in_canvas, RECT out[3])
+    {
+        if (!out || !IsPositiveSize(dirty) || !IsPositiveSize(canvas_bounds)) {
+            return 0;
+        }
+
+        RECT clipped = dirty;
+        if (clipped.left < canvas_bounds.left) {
+            clipped.left = canvas_bounds.left;
+        }
+        if (clipped.top < canvas_bounds.top) {
+            clipped.top = canvas_bounds.top;
+        }
+        if (clipped.right > canvas_bounds.right) {
+            clipped.right = canvas_bounds.right;
+        }
+        if (clipped.bottom > canvas_bounds.bottom) {
+            clipped.bottom = canvas_bounds.bottom;
+        }
+        if (!IsPositiveSize(clipped)) {
+            return 0;
+        }
+
+        // An empty or inverted video band means there is no split point.
+        if (!IsPositiveSize(video_in_canvas)) {
+            out[0] = clipped;
+            return 1;
+        }
+
+        int count = 0;
+        const LONG video_top = video_in_canvas.top;
+        const LONG video_bottom = video_in_canvas.bottom;
+
+        // Above the video.
+        if (clipped.top < video_top) {
+            RECT upper = clipped;
+            if (upper.bottom > video_top) {
+                upper.bottom = video_top;
+            }
+            if (IsPositiveSize(upper)) {
+                out[count++] = upper;
+            }
+        }
+
+        // The video band itself. Horizontal extent is left untouched so a
+        // bitmap in a side bar is never dropped; the consumer clips it.
+        if (clipped.bottom > video_top && clipped.top < video_bottom) {
+            RECT middle = clipped;
+            if (middle.top < video_top) {
+                middle.top = video_top;
+            }
+            if (middle.bottom > video_bottom) {
+                middle.bottom = video_bottom;
+            }
+            if (IsPositiveSize(middle)) {
+                out[count++] = middle;
+            }
+        }
+
+        // Below the video.
+        if (clipped.bottom > video_bottom) {
+            RECT lower = clipped;
+            if (lower.top < video_bottom) {
+                lower.top = video_bottom;
+            }
+            if (IsPositiveSize(lower)) {
+                out[count++] = lower;
+            }
+        }
+
+        return count;
+    }
+
+    BitmapSlice::BitmapSlice()
+    {
+        position.x = 0;
+        position.y = 0;
+        size.cx = 0;
+        size.cy = 0;
+    }
+
+    BitmapSlice ResolveBitmapSlice(
+        const RECT& bitmap_rect, const POINT& bitmap_offset)
+    {
+        BitmapSlice result;
+        result.position.x = bitmap_rect.left + bitmap_offset.x;
+        result.position.y = bitmap_rect.top + bitmap_offset.y;
+        result.size.cx = bitmap_rect.right - bitmap_rect.left;
+        result.size.cy = bitmap_rect.bottom - bitmap_rect.top;
         return result;
     }
 }

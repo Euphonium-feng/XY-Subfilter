@@ -44,6 +44,7 @@ private :
     RECT m_canvas_publish_output;
     RECT m_canvas_publish_clip;
     RECT m_canvas_rect;
+    RECT m_canvas_video_in_canvas;
     POINT m_canvas_bitmap_offset;
     bool m_canvas_active;
     int m_canvas_fallback;
@@ -53,6 +54,7 @@ private :
     ULONGLONG m_diag_bitmap_id;
     int m_diag_bitmap_count;
     RECT m_diag_bitmap_rect;
+    RECT m_diag_bitmap_rects[3];
     SIZE m_diag_buffer_size;
     RECT m_diag_output;
     RECT m_diag_clip;
@@ -61,6 +63,9 @@ private :
     int m_diag_drawn_objects;
     int m_diag_skipped_objects;
     bool m_diag_canvas_active;
+    RECT m_diag_video_in_canvas;
+    int m_diag_partition_count;
+    RECT m_diag_partitions[3];
 
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;

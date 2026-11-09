@@ -80,6 +80,8 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_diag_drawn_objects(0)
     , m_diag_skipped_objects(0)
     , m_diag_canvas_active(false)
+    , m_diag_video_in_canvas()
+    , m_diag_partition_count(0)
 {
     m_cur_output_size.cx = 0;
     m_cur_output_size.cy = 0;
@@ -95,6 +97,7 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_canvas_publish_output = RECT();
     m_canvas_publish_clip = RECT();
     m_canvas_rect = RECT();
+    m_canvas_video_in_canvas = RECT();
     m_canvas_bitmap_offset.x = 0;
     m_canvas_bitmap_offset.y = 0;
     m_diag_bitmap_rect = RECT();
@@ -104,6 +107,11 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_diag_clip = RECT();
     m_diag_offset.x = 0;
     m_diag_offset.y = 0;
+    m_diag_video_in_canvas = RECT();
+    for (int i = 0; i < 3; ++i) {
+        m_diag_bitmap_rects[i] = RECT();
+        m_diag_partitions[i] = RECT();
+    }
 }
 
 HdmvSubtitleProviderImpl::~HdmvSubtitleProviderImpl( void )
@@ -217,6 +225,7 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_canvas_publish_clip = frame.frame.clip_rect;
         m_canvas_rect = frame.canvas.uses_display_area
             ? frame.canvas.canvas_rect : video_rect;
+        m_canvas_video_in_canvas = frame.video_in_canvas;
         m_canvas_bitmap_offset = frame.frame.bitmap_offset;
         m_canvas_fallback = int(frame.canvas.fallback_reason);
         m_canvas_input = input;
@@ -277,25 +286,42 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
     int bitmap_count = 0;
     ULONGLONG bitmap_id = 0;
     RECT bitmap_rect = {};
-    SIZE bitmap_size = {};
+    RECT bitmap_rects[3] = {};
     if (m_xy_sub_render_frame) {
         m_xy_sub_render_frame->GetBitmapCount(&bitmap_count);
-        if (bitmap_count > 0) {
+        const int wanted = bitmap_count < 3 ? bitmap_count : 3;
+        for (int i = 0; i < wanted; ++i) {
             POINT position = {};
+            SIZE bitmap_size = {};
             m_xy_sub_render_frame->GetBitmap(
-                0, &bitmap_id, &position, &bitmap_size, NULL, NULL);
-            bitmap_rect = {
+                i, i == 0 ? &bitmap_id : NULL, &position, &bitmap_size,
+                NULL, NULL);
+            bitmap_rects[i] = {
                 position.x, position.y,
                 position.x + bitmap_size.cx,
                 position.y + bitmap_size.cy
             };
         }
+        bitmap_rect = bitmap_rects[0];
+    }
+
+    RECT partitions[3] = {};
+    int partition_count = 0;
+    if (m_canvas_active && dirty_rect) {
+        const RECT canvas_bounds = {
+            0, 0, m_render_size.cx, m_render_size.cy
+        };
+        partition_count = SubtitleDisplayLayout::PartitionBitmapRects(
+            *dirty_rect, canvas_bounds, m_canvas_video_in_canvas,
+            partitions);
     }
 
     if (m_diag_valid
         && m_diag_bitmap_id == bitmap_id
         && m_diag_bitmap_count == bitmap_count
         && EqualRect(&m_diag_bitmap_rect, &bitmap_rect)
+        && EqualRect(&m_diag_bitmap_rects[1], &bitmap_rects[1])
+        && EqualRect(&m_diag_bitmap_rects[2], &bitmap_rects[2])
         && m_diag_buffer_size.cx == m_render_size.cx
         && m_diag_buffer_size.cy == m_render_size.cy
         && EqualRect(&m_diag_output, &m_canvas_publish_output)
@@ -305,6 +331,11 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         && m_diag_object_count == object_count
         && m_diag_drawn_objects == drawn_objects
         && m_diag_skipped_objects == skipped_objects
+        && EqualRect(&m_diag_video_in_canvas, &m_canvas_video_in_canvas)
+        && m_diag_partition_count == partition_count
+        && EqualRect(&m_diag_partitions[0], &partitions[0])
+        && EqualRect(&m_diag_partitions[1], &partitions[1])
+        && EqualRect(&m_diag_partitions[2], &partitions[2])
         && m_diag_canvas_active == m_canvas_active) {
         return;
     }
@@ -313,6 +344,9 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
     m_diag_bitmap_id = bitmap_id;
     m_diag_bitmap_count = bitmap_count;
     m_diag_bitmap_rect = bitmap_rect;
+    m_diag_bitmap_rects[0] = bitmap_rects[0];
+    m_diag_bitmap_rects[1] = bitmap_rects[1];
+    m_diag_bitmap_rects[2] = bitmap_rects[2];
     m_diag_buffer_size = m_render_size;
     m_diag_output = m_canvas_publish_output;
     m_diag_clip = m_canvas_publish_clip;
@@ -321,6 +355,11 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
     m_diag_drawn_objects = drawn_objects;
     m_diag_skipped_objects = skipped_objects;
     m_diag_canvas_active = m_canvas_active;
+    m_diag_video_in_canvas = m_canvas_video_in_canvas;
+    m_diag_partition_count = partition_count;
+    for (int i = 0; i < 3; ++i) {
+        m_diag_partitions[i] = partitions[i];
+    }
 
     CStringW diagnostic;
     diagnostic.Format(
@@ -335,6 +374,12 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         L"dirtyRect=%ld,%ld,%ld,%ld "
         L"objectCount=%d drawnObjects=%d skippedObjects=%d "
         L"bitmapCount=%d bitmap0=%ld,%ld,%ld,%ld "
+        L"bitmap1=%ld,%ld,%ld,%ld bitmap2=%ld,%ld,%ld,%ld "
+        L"videoInCanvas=%ld,%ld,%ld,%ld "
+        L"partitionCount=%d "
+        L"partition0=%ld,%ld,%ld,%ld "
+        L"partition1=%ld,%ld,%ld,%ld "
+        L"partition2=%ld,%ld,%ld,%ld "
         L"canvasFallback=%d\r\n",
         event ? event : L"frame",
         now,
@@ -362,6 +407,19 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         bitmap_count,
         bitmap_rect.left, bitmap_rect.top,
         bitmap_rect.right, bitmap_rect.bottom,
+        bitmap_rects[1].left, bitmap_rects[1].top,
+        bitmap_rects[1].right, bitmap_rects[1].bottom,
+        bitmap_rects[2].left, bitmap_rects[2].top,
+        bitmap_rects[2].right, bitmap_rects[2].bottom,
+        m_canvas_video_in_canvas.left, m_canvas_video_in_canvas.top,
+        m_canvas_video_in_canvas.right, m_canvas_video_in_canvas.bottom,
+        m_diag_partition_count,
+        m_diag_partitions[0].left, m_diag_partitions[0].top,
+        m_diag_partitions[0].right, m_diag_partitions[0].bottom,
+        m_diag_partitions[1].left, m_diag_partitions[1].top,
+        m_diag_partitions[1].right, m_diag_partitions[1].bottom,
+        m_diag_partitions[2].left, m_diag_partitions[2].top,
+        m_diag_partitions[2].right, m_diag_partitions[2].bottom,
         m_canvas_fallback);
     AppendXyDiagnostic(diagnostic.GetString());
 }
@@ -494,9 +552,29 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     {
         if (m_canvas_active)
         {
-            m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
-                mem_subpic, m_canvas_publish_output, m_canvas_publish_clip,
-                now, &hr, m_canvas_bitmap_offset);
+            const RECT canvas_bounds = {
+                0, 0, m_render_size.cx, m_render_size.cy
+            };
+            RECT partitions[3] = {};
+            const int partition_count =
+                SubtitleDisplayLayout::PartitionBitmapRects(
+                    dirty_rect, canvas_bounds, m_canvas_video_in_canvas,
+                    partitions);
+            if (partition_count > 0) {
+                HRESULT wrapper_hr = S_OK;
+                m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
+                    mem_subpic, m_canvas_publish_output,
+                    m_canvas_publish_clip, now, partitions,
+                    partition_count, &wrapper_hr, m_canvas_bitmap_offset);
+                if (FAILED(wrapper_hr)) {
+                    m_xy_sub_render_frame = NULL;
+                    hr = wrapper_hr;
+                }
+            } else {
+                m_xy_sub_render_frame = NULL;
+                dirty_rect.SetRectEmpty();
+                hr = S_FALSE;
+            }
         }
         else
         {

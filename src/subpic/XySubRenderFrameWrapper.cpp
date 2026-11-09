@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "XySubRenderFrameWrapper.h"
+#include "subtitle_display_layout.h"
 #include "diagnostic_log.h"
 
 namespace
@@ -76,12 +77,62 @@ XySubRenderFrameWrapper::XySubRenderFrameWrapper( CMemSubPic * inner_obj, const 
     , m_clip_rect(clip_rect)
     , m_id(id)
     , m_bitmap_offset(bitmap_offset)
+    , m_has_bitmap_rects(false)
 {
     ASSERT(m_inner_obj);
     if (!m_inner_obj && phr)
     {
         *phr = E_FAIL;
     }
+}
+
+XySubRenderFrameWrapper::XySubRenderFrameWrapper(
+    CMemSubPic * inner_obj, const CRect& output_rect, const CRect& clip_rect,
+    ULONGLONG id, const RECT* bitmap_rects, int bitmap_count,
+    HRESULT *phr/*=NULL*/, POINT bitmap_offset/*=POINT()*/)
+    : CUnknown(NAME("XySubRenderFrameWrapper"), NULL, phr)
+    , m_inner_obj(inner_obj)
+    , m_output_rect(output_rect)
+    , m_clip_rect(clip_rect)
+    , m_id(id)
+    , m_bitmap_offset(bitmap_offset)
+    , m_has_bitmap_rects(false)
+{
+    ASSERT(m_inner_obj);
+    if (!m_inner_obj) {
+        if (phr) {
+            *phr = E_FAIL;
+        }
+        return;
+    }
+    const HRESULT hr = InitMultiBitmap(bitmap_rects, bitmap_count);
+    if (FAILED(hr)) {
+        if (phr) {
+            *phr = hr;
+        }
+        return;
+    }
+    m_has_bitmap_rects = true;
+}
+
+HRESULT XySubRenderFrameWrapper::InitMultiBitmap(
+    const RECT* bitmap_rects, int bitmap_count)
+{
+    if (!bitmap_rects || bitmap_count <= 0) {
+        m_has_bitmap_rects = false;
+        return E_INVALIDARG;
+    }
+    m_bitmap_rects.assign(bitmap_rects, bitmap_rects + bitmap_count);
+    for (int i = 0; i < bitmap_count; ++i) {
+        const RECT& rect = m_bitmap_rects[
+            static_cast<std::vector<RECT>::size_type>(i)];
+        if (rect.right <= rect.left || rect.bottom <= rect.top) {
+            m_bitmap_rects.clear();
+            m_has_bitmap_rects = false;
+            return E_INVALIDARG;
+        }
+    }
+    return S_OK;
 }
 
 STDMETHODIMP XySubRenderFrameWrapper::NonDelegatingQueryInterface( REFIID riid, void** ppv )
@@ -126,19 +177,21 @@ STDMETHODIMP XySubRenderFrameWrapper::GetXyColorSpace( int *xyColorSpace )
 
 STDMETHODIMP XySubRenderFrameWrapper::GetBitmapCount( int *count )
 {
-    TRACE_SUB_RENDER_FRAME(count<<" "<<1);
     if (!count)
     {
         return S_FALSE;
     }
-    *count = 1;
+    *count = m_has_bitmap_rects
+        ? static_cast<int>(m_bitmap_rects.size()) : 1;
+    TRACE_SUB_RENDER_FRAME(count<<" "<<*count);
     return S_OK;
 }
 
 STDMETHODIMP XySubRenderFrameWrapper::GetBitmap( int index, ULONGLONG *id, POINT *position, SIZE *size
     , LPCVOID *pixels, int *pitch )
 {
-    if (index!=0)
+    if (index < 0 || index >= (m_has_bitmap_rects
+            ? static_cast<int>(m_bitmap_rects.size()) : 1))
     {
         return E_INVALIDARG;
     }
@@ -148,23 +201,30 @@ STDMETHODIMP XySubRenderFrameWrapper::GetBitmap( int index, ULONGLONG *id, POINT
     }
     if (id)
     {
-        *id = m_id;
+        *id = m_id + static_cast<ULONGLONG>(index);
     }
-    CRect dirty_rect;
-    HRESULT hr = m_inner_obj->GetDirtyRect(&dirty_rect);
-    if (FAILED(hr))
-    {
-        return hr;
+    CRect bitmap_rect;
+    if (m_has_bitmap_rects) {
+        bitmap_rect = m_bitmap_rects[
+            static_cast<std::vector<RECT>::size_type>(index)];
+    } else {
+        const HRESULT hr = m_inner_obj->GetDirtyRect(&bitmap_rect);
+        if (FAILED(hr))
+        {
+            return hr;
+        }
     }
     if (position)
     {
-        *position = dirty_rect.TopLeft();
-        position->x += m_bitmap_offset.x;
-        position->y += m_bitmap_offset.y;
+        const SubtitleDisplayLayout::BitmapSlice slice =
+            SubtitleDisplayLayout::ResolveBitmapSlice(
+                bitmap_rect, m_bitmap_offset);
+        *position = slice.position;
     }
     if (size)
     {
-        *size = dirty_rect.Size();
+        *size = SubtitleDisplayLayout::ResolveBitmapSlice(
+            bitmap_rect, m_bitmap_offset).size;
     }
     if (pitch)
     {
@@ -173,17 +233,19 @@ STDMETHODIMP XySubRenderFrameWrapper::GetBitmap( int index, ULONGLONG *id, POINT
     if (pixels)
     {
         ASSERT(m_inner_obj->m_spd.bpp==32);
-        *pixels = (BYTE*)(m_inner_obj->m_spd.bits) + dirty_rect.top * m_inner_obj->m_spd.pitch 
-            + dirty_rect.left * (32/8);
+        *pixels = (BYTE*)(m_inner_obj->m_spd.bits)
+            + bitmap_rect.top * m_inner_obj->m_spd.pitch
+            + bitmap_rect.left * (32/8);
     }
-    TRACE_SUB_RENDER_FRAME(index<<" id: "<<m_id<<" "<<dirty_rect<<" pitch:"<<m_inner_obj->m_spd.pitch<<" pixels:"<<(pixels?*pixels:NULL)
+    TRACE_SUB_RENDER_FRAME(index<<" id: "<<(m_id + index)<<" "<<bitmap_rect<<" pitch:"<<m_inner_obj->m_spd.pitch<<" pixels:"<<(pixels?*pixels:NULL)
         <<XY_LOG_VAR_2_STR(m_inner_obj->m_spd.bits) );
     return S_OK;
 }
 
 STDMETHODIMP XySubRenderFrameWrapper::GetBitmapExtra( int index, LPVOID extra_info )
 {
-    if (index!=0)
+    if (index < 0 || index >= (m_has_bitmap_rects
+            ? static_cast<int>(m_bitmap_rects.size()) : 1))
     {
         return E_INVALIDARG;
     }

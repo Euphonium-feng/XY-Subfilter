@@ -18,11 +18,13 @@ Auto；正在增加可保留的运行态诊断，以区分属性页未下发、�
 当前活动任务（分支 `codex/display-area-subtitle-layout`）：让文本与
 PGS/SUP/DVB 位图字幕都按完整显示画布排版。用户确认的目标是：16:9 显示器
 全屏播放 21:9 视频时，母版字幕继续按完整显示区域排版，不随活动画面缩小。
-文本路径已验收；位图路径使用同一画布，对象坐标不缩放、不重排。
+文本路径已验收；位图路径使用同一画布，对象坐标不缩放、不重排，但单张 bitmap
+不得跨越视频带与黑边（D46）。
 
-**当前阻塞：位图完整画布不生效，尚未解决。** 用户针对本轮修复的实机结果为：
+**当前阻塞：位图完整画布尚未通过实机验收。** 用户针对既有修复的实机结果为：
 Auto/16:9 看不到位图字幕；关闭能看到，但整体被压扁并挤在画面内。用户已明确
 反馈“位图就是不生效，本次修复并没有修复”。云端三矩阵全绿不代表画面通过。
+D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确认。
 
 第一版在实机失败：选择“自动/16:9”后字幕全部消失，“关闭”仍正常。
 只读调研结论（三路独立核对，均指向同一根因）：
@@ -161,9 +163,23 @@ Auto/16:9 看不到位图字幕；关闭能看到，但整体被压扁并挤在�
     被缩回 800，字幕压扁。
   - `0940012` 的 `output=1920×800` + `clip=0,0,1920,1080` 使
     `bitmap0=780,930,1140,1020` 落在 output 高度之外，字幕完全不可见。
-  当前提交改为与已验收文本路径同构的几何：`output=video`、
-  `clip=canvas-videoOrigin`（居中，含负值）、`bitmapOffset=canvasOrigin`，
-  并在画布启用时保持 `isMovable=true`。该组合尚未实机验证。
+  `32127f8` 恢复文本几何（`output=video`、`clip=canvas-videoOrigin`、
+  `bitmapOffset=canvasOrigin`）后仍然不可见；根因是单张 bitmap
+  `690,790,1230,880` 同时跨越视频底边与下黑边。该结论已由 D46 收口。
+- 2026-11-09 新实现（D46）：保持 `output=video`、`clip=canvas-videoOrigin`、
+  `bitmapOffset=canvasOrigin`，`isMovable=false`；provider 在 `Unlock` 后按
+  `videoInCanvas` 把 dirty rect 拆成最多 3 张 bitmap，每张不跨界，
+  `XySubRenderFrameWrapper` 支持多 bitmap 零拷贝发布。
+  `xy-bitmap-frame/1` 新增 `videoInCanvas`、`partitionCount`、`partition0..2`、
+  `bitmap0..2`；`xy-hdr-config/1` 新增 `isMovable`。
+  **云端三矩阵与实机验收均未完成。**
+  下一步唯一动作：提交并推送，等三矩阵全绿后由用户复测；日志必须出现
+  `bufferSize=1920,1080`、`publishOutput=0,0,1920,800`、
+  `publishClip=0,-140,1920,940`、`bitmapOffset=0,-140`、
+  `partitionCount=2`、`bitmapCount=2`，且 `bitmap0/1` 不跨
+  `videoInCanvas`。若 `bitmapCount=2` 但画面仍不可见，下一轮只查 consumer
+  对黑边 bitmap 的 alpha/色空间/ID 处理，不再改 output/clip 几何；
+  若 `bitmapCount=1`，先修拆分。
 - run `42470777553`（提交 `3acfdb5`）在 `Install VSNASM` / `Install VSYASM`
   阶段失败：安装脚本从 `github.com/Microsoft/vswhere/releases` 下载
   `vswhere.exe` 解析失败，重跑仍复现。工作流现在先复制 runner 自带的

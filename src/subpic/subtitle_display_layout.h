@@ -111,12 +111,40 @@ namespace SubtitleDisplayLayout
         CanvasResult canvas;
         FrameLayout frame;
         SIZE buffer_size;
+        // The video rect expressed in canvas-local coordinates. A bitmap
+        // frame is published as separate bitmap bands on either side of this
+        // rect so no single bitmap straddles the video/letterbox boundary.
+        RECT video_in_canvas;
         bool canvas_active;
 
         BitmapFrameResult();
     };
 
     BitmapFrameResult ResolveBitmapFrame(const BitmapFrameInput& input);
+
+    // Splits a canvas-local dirty rect into at most three horizontal bands:
+    // the area above the video, the video band itself and the area below it.
+    // Each returned rect is clipped to canvas_bounds and strictly non-empty.
+    // Returns the number of rects written to out[3].
+    int PartitionBitmapRects(
+        const RECT& dirty, const RECT& canvas_bounds,
+        const RECT& video_in_canvas, RECT out[3]);
+
+    // Resolves the published position and size of one partitioned bitmap:
+    // the rect is a pixel sub-range of the canvas buffer, so its position is
+    // canvasOrigin + rect.topLeft and its size is rect.Size(). The canvas
+    // origin is encoded by bitmap_offset, which is already relative to the
+    // zero-based video output.
+    struct BitmapSlice
+    {
+        POINT position;
+        SIZE size;
+
+        BitmapSlice();
+    };
+
+    BitmapSlice ResolveBitmapSlice(
+        const RECT& bitmap_rect, const POINT& bitmap_offset);
 
     // Builds the published text frame geometry from the consumer's video rect
     // and the resolved canvas. Text positions are shifted by

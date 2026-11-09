@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "../subtitles/flyweight_base_types.h"
 
 class CMemSubPic;
@@ -8,9 +10,16 @@ interface IXySubRenderFrame;
 class XySubRenderFrameWrapper : public CUnknown, public IXySubRenderFrame
 {
 public:
-    XySubRenderFrameWrapper(CMemSubPic * inner_obj, const CRect& output_rect, const CRect& clip_rect, 
+    XySubRenderFrameWrapper(CMemSubPic * inner_obj, const CRect& output_rect, const CRect& clip_rect,
         ULONGLONG id,
         HRESULT *phr=NULL, POINT bitmap_offset = POINT());
+    // Publishes several non-overlapping sub-rects of the same inner object as
+    // separate bitmaps. Each entry is a rect in the inner buffer's local
+    // coordinates; bitmap_offset is added to every position.
+    XySubRenderFrameWrapper(CMemSubPic * inner_obj, const CRect& output_rect,
+        const CRect& clip_rect, ULONGLONG id, const RECT* bitmap_rects,
+        int bitmap_count, HRESULT *phr=NULL,
+        POINT bitmap_offset = POINT());
     virtual ~XySubRenderFrameWrapper(){}
 
     DECLARE_IUNKNOWN;
@@ -27,6 +36,9 @@ private:
     CRect m_output_rect, m_clip_rect;
     ULONGLONG m_id;
     POINT m_bitmap_offset;
+    std::vector<RECT> m_bitmap_rects;
+    bool m_has_bitmap_rects;
+    HRESULT InitMultiBitmap(const RECT* bitmap_rects, int bitmap_count);
 };
 
 class XySubRenderFrameWrapper2 : public CUnknown, public IXySubRenderFrame

@@ -698,11 +698,6 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     case BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES:
     case SIZE_DISPLAY_AREA:
         {
-            if (dynamic_cast<HdmvSubtitleProvider*>(m_curSubStream) != NULL ||
-                dynamic_cast<SupFileSubtitleProvider*>(m_curSubStream) != NULL) {
-                m_xy_bool_opt[BOOL_IS_MOVABLE] =
-                    m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
-            }
             bool deferred = false;
             {
                 CAutoLock cAutoLock(&m_csHdrRefresh);
@@ -2233,6 +2228,7 @@ void XySubFilter::LogHdrConfiguration(
         diagnostic.Format(
             L"schema=xy-hdr-config/1\r\n"
             L"event=%ls field=%u backend=%ls isBitmap=%d "
+            L"isMovable=%d "
             L"requestedBitmap=%d requestedText=%d white=%d "
             L"resolvedBitmap=%d resolvedText=%d generation=%llu "
             L"graph=%d container=%d nameHdr=%d sideData=%d "
@@ -2247,6 +2243,7 @@ void XySubFilter::LogHdrConfiguration(
             field,
             backend_name,
             m_xy_bool_opt[BOOL_IS_BITMAP] ? 1 : 0,
+            m_xy_bool_opt[BOOL_IS_MOVABLE] ? 1 : 0,
             pgs_mode,
             text_mode,
             white_nits,
@@ -2538,8 +2535,7 @@ void XySubFilter::SetSubtitle( ISubStream* pSubStream, bool fApplyDefStyle /*= t
             pVSS->SetAlignment(m_xy_bool_opt[BOOL_OVERRIDE_PLACEMENT], m_xy_size_opt[SIZE_PLACEMENT_PERC].cx, m_xy_size_opt[SIZE_PLACEMENT_PERC].cy, 1, 1);
             pVSS->m_fOnlyShowForcedSubs = m_xy_bool_opt[BOOL_VOBSUBSETTINGS_ONLY_SHOW_FORCED_SUBS];
             m_xy_bool_opt[BOOL_IS_BITMAP] = true;
-            m_xy_bool_opt[BOOL_IS_MOVABLE] =
-                m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
+            m_xy_bool_opt[BOOL_IS_MOVABLE] = false;
         }
         else if(clsid == __uuidof(CVobSubStream))
         {
@@ -2548,8 +2544,7 @@ void XySubFilter::SetSubtitle( ISubStream* pSubStream, bool fApplyDefStyle /*= t
             pVSS->SetAlignment(m_xy_bool_opt[BOOL_OVERRIDE_PLACEMENT], m_xy_size_opt[SIZE_PLACEMENT_PERC].cx, m_xy_size_opt[SIZE_PLACEMENT_PERC].cy, 1, 1);
             pVSS->m_fOnlyShowForcedSubs = m_xy_bool_opt[BOOL_VOBSUBSETTINGS_ONLY_SHOW_FORCED_SUBS];
             m_xy_bool_opt[BOOL_IS_BITMAP] = true;
-            m_xy_bool_opt[BOOL_IS_MOVABLE] =
-                m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
+            m_xy_bool_opt[BOOL_IS_MOVABLE] = false;
         }
         else if(clsid == __uuidof(CRenderedTextSubtitle))
         {
@@ -2702,8 +2697,7 @@ void XySubFilter::SetSubtitle( ISubStream* pSubStream, bool fApplyDefStyle /*= t
                 sub->SetYuvType(color_type, range_type);
             }
             m_xy_bool_opt[BOOL_IS_BITMAP] = true;
-            m_xy_bool_opt[BOOL_IS_MOVABLE] =
-                m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
+            m_xy_bool_opt[BOOL_IS_MOVABLE] = false;
         }
     }
 

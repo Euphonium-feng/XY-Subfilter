@@ -191,9 +191,11 @@ generation 和当前 HDR 证据。断开连接只追加事件，不再用全零�
 位图 provider 另写有界的 `xy-bitmap-frame/1` 事件，只在几何、位图 ID 或渲染统计
 变化时追加。字段包括 `canvasActive`、`bufferSize`、`publishOutput`、
 `publishClip`、`bitmapOffset`、`dirtyRect`、`objectCount`、`drawnObjects`、
-`skippedObjects`、`bitmapCount` 和首个 `bitmap0`，用于区分“没有位图对象”、
-“对象被缓冲区裁空”和“consumer 丢帧”。`render-empty`、`alloc-failed`、
-`flip-failed` 也会记录。
+`skippedObjects`、`bitmapCount`、`bitmap0..2`、`videoInCanvas`、
+`partitionCount` 与 `partition0..2`，用于区分“没有位图对象”、
+“对象被缓冲区裁空”、“拆分未生效”和“consumer 丢帧”。`render-empty`、
+`alloc-failed`、`flip-failed` 也会记录。`xy-hdr-config/1` 同时记录 `isMovable`，
+用于确认位图流没有被重新标记为可移动。
 
 文本与位图共用 `DirectVobSubImpl::ResolveHdrMode()`、同一个 consumer HDR 信号和
 `INT_PGS_HDR_WHITE_NITS`，但模式选项仍然独立。属性页将二者明确标为
@@ -255,20 +257,33 @@ PGS/SUP/DVB 的位图对象按流内坐标绘制，provider 不做缩放、留�
 像素由 `Rasterizer::FillSolidRect` 与各 dirty-rect 计算裁剪。位图流固定
 `isMovable=false`；它表示 consumer 不得把绝对画布坐标重新定位或缩放。
 
-上述位图完整画布路径已修正为发布画布尺寸的帧（`fff048c`），云端三矩阵
-run `42582772438` 全绿，但**新版本尚未通过实机验收**；此前的 Auto/16:9
-不可见、关闭时压扁仍是最后一个已知实机结果。不能把云端构建当作画面通过。
+位图帧沿用文本路径的发布几何：`GetOutputRect` 是零基视频尺寸（consumer 用它
+把帧映射到 `videoOutputRect`），`GetClipRect` 与 `GetBitmap.position` 减去同一
+video 原点，因此可以进入黑边。不能把物理显示尺寸（2560×1440）直接写成
+`GetOutputRect`：那会把整幅画布当成视频参考帧，被 consumer 缩回 1920×800，
+造成压扁（`fff048c` 的实机结果）。
+
+单张 bitmap 不能跨越视频带边界（依据 `32127f8` 的实机现象推断，madVR 精确
+规则未从源码确认）。`PartitionBitmapRects()` 把 dirty rect 按
+`videoInCanvas`（`0,140,1920,940`）的上下沿切成最多三块
+（上黑边、视频带、下黑边），
+`XySubRenderFrameWrapper` 的多 bitmap 构造为每块发布
+`position = rect.TopLeft() + bitmapOffset`、`size = rect.Size()`、
+`pixels = bits + rect.top*pitch + rect.left*4`，共享同一 `CMemSubPic` 且零拷贝。
+画布关闭时仍是单 bitmap，几何与改动前一致。
 
 2026-11-09 14:15 的 `xy-bitmap-frame/1` 日志把发布错误固定下来：
 `publishOutput=(0,0,1920,800)`、`publishClip=(0,-140,1920,940)`、
 `bitmapOffset=(0,-140)`，而 `bitmap0=(660,790,1260,880)`。画布底栏对象
 发布到只有 800 行的 output 之外，只剩约 10 行与视频底边重叠。
 
-位图帧因此不再与文本共用 `BuildFrameLayout()`。`BuildBitmapFrameLayout()`
-把位图缓冲区的画布直接作为 `GetOutputRect`，`GetClipRect` 与 `output` 相同，
-`bitmapOffset` 为零；对象保持画布内原始坐标。文本路径仍使用
-`BuildFrameLayout()` 的视频尺寸 output 契约。`CHdmvSub::Render` 不再要求
-对象完整落在 `spd` 内，只要求与缓冲区相交。
+`ResolveBitmapFrame()` 因此重新使用 `BuildFrameLayout()`，并额外给出
+`videoInCanvas`（视频带在画布本地坐标中的位置）。provider 在 `Unlock` 后
+把 dirty rect 拆成不跨界的 bitmap；`CHdmvSub::Render` 仍只要求对象与缓冲区
+相交，不要求完整落在 `spd` 内。
+
+**验证状态（2026-11-09）：** 多 bitmap 拆分与发布代码尚未经实机验证。
+最新的 `fff048c`/`0940012`/`32127f8` 实机结果均未闭环，文档不得写成已修复。
 
 画布缓存只在输入变化时重算，`Invalidate()` 与 `Connect()` 会使其失效。
 画布或发布几何变化还会丢弃当前 `m_pSubPic`，因为 `Render()` 在字幕区间未变时

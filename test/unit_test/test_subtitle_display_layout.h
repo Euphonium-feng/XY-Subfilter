@@ -202,6 +202,7 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameUsesTheFullDisplayCanvas)
     EXPECT_EQ(-140, frame.frame.bitmap_offset.y);
     EXPECT_EQ(1920, frame.buffer_size.cx);
     EXPECT_EQ(1080, frame.buffer_size.cy);
+    ExpectRectEquals(RECT{ 0, 140, 1920, 940 }, frame.video_in_canvas);
 }
 
 TEST(SubtitleDisplayLayoutTest, BitmapFrameIgnoresDesignResolution)
@@ -289,6 +290,157 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameKeepsCanvasWhenDesignDiffers)
     EXPECT_EQ(1920, frame.buffer_size.cx);
     EXPECT_EQ(1080, frame.buffer_size.cy);
     ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.frame.clip_rect);
+}
+
+TEST(SubtitleDisplayLayoutTest, PartitionKeepsVideoOnlyDirtyRectWhole)
+{
+    RECT parts[3] = {};
+    const int count = SubtitleDisplayLayout::PartitionBitmapRects(
+        RECT{ 100, 200, 400, 260 },
+        RECT{ 0, 0, 1920, 1080 },
+        RECT{ 0, 140, 1920, 940 },
+        parts);
+
+    ASSERT_EQ(1, count);
+    ExpectRectEquals(RECT{ 100, 200, 400, 260 }, parts[0]);
+}
+
+TEST(SubtitleDisplayLayoutTest, PartitionKeepsLowerBarOnlyDirtyRectWhole)
+{
+    RECT parts[3] = {};
+    const int count = SubtitleDisplayLayout::PartitionBitmapRects(
+        RECT{ 100, 950, 400, 1030 },
+        RECT{ 0, 0, 1920, 1080 },
+        RECT{ 0, 140, 1920, 940 },
+        parts);
+
+    ASSERT_EQ(1, count);
+    ExpectRectEquals(RECT{ 100, 950, 400, 1030 }, parts[0]);
+}
+
+TEST(SubtitleDisplayLayoutTest, PartitionSplitsDirtyRectAtLowerVideoEdge)
+{
+    // The current clip: a bottom-bar object overlaps the last 10 video rows.
+    RECT parts[3] = {};
+    const int count = SubtitleDisplayLayout::PartitionBitmapRects(
+        RECT{ 690, 930, 1230, 1020 },
+        RECT{ 0, 0, 1920, 1080 },
+        RECT{ 0, 140, 1920, 940 },
+        parts);
+
+    ASSERT_EQ(2, count);
+    ExpectRectEquals(RECT{ 690, 930, 1230, 940 }, parts[0]);
+    ExpectRectEquals(RECT{ 690, 940, 1230, 1020 }, parts[1]);
+}
+
+TEST(SubtitleDisplayLayoutTest, PartitionSplitsDirtyRectAtUpperVideoEdge)
+{
+    RECT parts[3] = {};
+    const int count = SubtitleDisplayLayout::PartitionBitmapRects(
+        RECT{ 500, 100, 900, 200 },
+        RECT{ 0, 0, 1920, 1080 },
+        RECT{ 0, 140, 1920, 940 },
+        parts);
+
+    ASSERT_EQ(2, count);
+    ExpectRectEquals(RECT{ 500, 100, 900, 140 }, parts[0]);
+    ExpectRectEquals(RECT{ 500, 140, 900, 200 }, parts[1]);
+}
+
+TEST(SubtitleDisplayLayoutTest, PartitionSplitsAcrossBothBars)
+{
+    RECT parts[3] = {};
+    const int count = SubtitleDisplayLayout::PartitionBitmapRects(
+        RECT{ 10, 100, 300, 1000 },
+        RECT{ 0, 0, 1920, 1080 },
+        RECT{ 0, 140, 1920, 940 },
+        parts);
+
+    ASSERT_EQ(3, count);
+    ExpectRectEquals(RECT{ 10, 100, 300, 140 }, parts[0]);
+    ExpectRectEquals(RECT{ 10, 140, 300, 940 }, parts[1]);
+    ExpectRectEquals(RECT{ 10, 940, 300, 1000 }, parts[2]);
+}
+
+TEST(SubtitleDisplayLayoutTest, PartitionDropsRectTouchingVideoEdge)
+{
+    RECT parts[3] = {};
+    const int count = SubtitleDisplayLayout::PartitionBitmapRects(
+        RECT{ 100, 940, 400, 1000 },
+        RECT{ 0, 0, 1920, 1080 },
+        RECT{ 0, 140, 1920, 940 },
+        parts);
+
+    ASSERT_EQ(1, count);
+    ExpectRectEquals(RECT{ 100, 940, 400, 1000 }, parts[0]);
+}
+
+TEST(SubtitleDisplayLayoutTest, PartitionClipsDirtyRectToCanvas)
+{
+    RECT parts[3] = {};
+    const int count = SubtitleDisplayLayout::PartitionBitmapRects(
+        RECT{ -50, -20, 2000, 1200 },
+        RECT{ 0, 0, 1920, 1080 },
+        RECT{ 0, 140, 1920, 940 },
+        parts);
+
+    ASSERT_EQ(3, count);
+    ExpectRectEquals(RECT{ 0, 0, 1920, 140 }, parts[0]);
+    ExpectRectEquals(RECT{ 0, 140, 1920, 940 }, parts[1]);
+    ExpectRectEquals(RECT{ 0, 940, 1920, 1080 }, parts[2]);
+}
+
+TEST(SubtitleDisplayLayoutTest, PartitionRejectsEmptyDirtyRect)
+{
+    RECT parts[3] = {};
+    EXPECT_EQ(0, SubtitleDisplayLayout::PartitionBitmapRects(
+        RECT{ 100, 100, 100, 200 },
+        RECT{ 0, 0, 1920, 1080 },
+        RECT{ 0, 140, 1920, 940 },
+        parts));
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapSliceMapsCanvasRectIntoOutputSpace)
+{
+    // Canvas origin y=-140, so a canvas-local y=140..940 slice starts at 0
+    // in the zero-based video output.
+    const SubtitleDisplayLayout::BitmapSlice upper =
+        SubtitleDisplayLayout::ResolveBitmapSlice(
+            RECT{ 690, 930, 1230, 940 }, POINT{ 0, -140 });
+    EXPECT_EQ(690, upper.position.x);
+    EXPECT_EQ(790, upper.position.y);
+    EXPECT_EQ(540, upper.size.cx);
+    EXPECT_EQ(10, upper.size.cy);
+
+    const SubtitleDisplayLayout::BitmapSlice lower =
+        SubtitleDisplayLayout::ResolveBitmapSlice(
+            RECT{ 690, 940, 1230, 1020 }, POINT{ 0, -140 });
+    EXPECT_EQ(690, lower.position.x);
+    EXPECT_EQ(800, lower.position.y);
+    EXPECT_EQ(540, lower.size.cx);
+    EXPECT_EQ(80, lower.size.cy);
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapSlicesStayInsideTheirOwnBand)
+{
+    RECT parts[3] = {};
+    const int count = SubtitleDisplayLayout::PartitionBitmapRects(
+        RECT{ 690, 930, 1230, 1020 },
+        RECT{ 0, 0, 1920, 1080 },
+        RECT{ 0, 140, 1920, 940 },
+        parts);
+    ASSERT_EQ(2, count);
+
+    const POINT offset = { 0, -140 };
+    const SubtitleDisplayLayout::BitmapSlice upper =
+        SubtitleDisplayLayout::ResolveBitmapSlice(parts[0], offset);
+    const SubtitleDisplayLayout::BitmapSlice lower =
+        SubtitleDisplayLayout::ResolveBitmapSlice(parts[1], offset);
+
+    // The video band in output space is 0..800. The upper slice must end at
+    // 800 and the lower slice must start at 800.
+    EXPECT_EQ(800, upper.position.y + upper.size.cy);
+    EXPECT_EQ(800, lower.position.y);
 }
 
 
