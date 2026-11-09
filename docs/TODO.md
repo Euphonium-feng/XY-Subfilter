@@ -189,8 +189,9 @@ D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确�
   `ClassifyConsumer()` 为纯函数，未知名称归为 `CONSUMER_UNKNOWN` 并走
   真实位图路径。`xy-bitmap-frame/1` 已加入 consumer 自述、呈现标志、
   `maxBitmapCount` 与三块 consumer 矩形。
-  **代码与云端构建尚未验证，MPC VR 实机尚未取证。**
-  下一步唯一动作：提交推送并等三矩阵全绿，然后由用户在 MPC VR 下用
+  云端三矩阵 run `42647295557` 全绿（`release-win32`、`release-x64`、
+  `debug-x64`）；**MPC VR 实机尚未取证。**
+  下一步唯一动作：由用户在 MPC VR 下用
   Auto 与 16:9 各播放一次并回传日志。判定顺序：`presentedBitmap=1` 且可见
   → 路径 A 收口；`presentedBitmap=0` 且可见 → 路径 B 收口；都不可见 →
   进入路径 C，不再改 output/clip 几何。
