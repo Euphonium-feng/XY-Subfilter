@@ -72,10 +72,11 @@ private :
     int m_diag_presented_bitmap;
     int m_diag_presented_movable;
     int m_diag_max_bitmap_count;
+    int m_bitmap_partition_limit;
+    RECT m_diag_consumer_video_output;
     RECT m_diag_consumer_fullscreen;
     SIZE m_diag_consumer_display_mode;
     RECT m_diag_consumer_subtitle_target;
-    bool m_diag_consumer_pending;
 
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;

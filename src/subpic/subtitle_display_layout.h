@@ -130,6 +130,12 @@ namespace SubtitleDisplayLayout
         const RECT& dirty, const RECT& canvas_bounds,
         const RECT& video_in_canvas, RECT out[3]);
 
+    // Merges adjacent partition rects until at most max_count remain. A limit
+    // of 1 returns the union of everything as a single rect. Used to honour
+    // the consumer's announced maxBitmapCount without changing geometry.
+    int MergePartitionsToLimit(
+        const RECT* parts, int count, int max_count, RECT out[3]);
+
     // Resolves the published position and size of one partitioned bitmap:
     // the rect is a pixel sub-range of the canvas buffer, so its position is
     // canvasOrigin + rect.topLeft and its size is rect.Size(). The canvas

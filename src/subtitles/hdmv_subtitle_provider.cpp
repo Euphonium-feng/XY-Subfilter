@@ -85,7 +85,6 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_diag_presented_bitmap(-1)
     , m_diag_presented_movable(-1)
     , m_diag_max_bitmap_count(-1)
-    , m_diag_consumer_pending(true)
 {
     m_cur_output_size.cx = 0;
     m_cur_output_size.cy = 0;
@@ -117,6 +116,7 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
         m_diag_partitions[i] = RECT();
     }
     m_diag_consumer_fullscreen = RECT();
+    m_diag_consumer_video_output = RECT();
     m_diag_consumer_display_mode.cx = 0;
     m_diag_consumer_display_mode.cy = 0;
     m_diag_consumer_subtitle_target = RECT();
@@ -135,7 +135,7 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
         m_consumer = consumer;
         m_canvas_cached = false;
         m_diag_valid = false;
-        m_diag_consumer_pending = true;
+        RefreshConsumerDiagnostics();
     }
     else
     {
@@ -151,6 +151,7 @@ void HdmvSubtitleProviderImpl::RefreshConsumerDiagnostics()
     m_diag_presented_bitmap = -1;
     m_diag_presented_movable = -1;
     m_diag_max_bitmap_count = -1;
+    m_bitmap_partition_limit = 1;
     m_diag_consumer_fullscreen = RECT();
     m_diag_consumer_display_mode.cx = 0;
     m_diag_consumer_display_mode.cy = 0;
@@ -202,6 +203,7 @@ void HdmvSubtitleProviderImpl::RefreshConsumerDiagnostics()
             DirectVobSubXyOptions::INT_MAX_BITMAP_COUNT2,
             &max_bitmap_count))) {
         m_diag_max_bitmap_count = max_bitmap_count;
+        m_bitmap_partition_limit = max_bitmap_count > 0 ? max_bitmap_count : 1;
     }
     RECT fullscreen = {};
     if (SUCCEEDED(m_consumer->XyGetRect(
@@ -218,7 +220,11 @@ void HdmvSubtitleProviderImpl::RefreshConsumerDiagnostics()
             DirectVobSubXyOptions::RECT_SUBTITLE_TARGET, &subtitle_target))) {
         m_diag_consumer_subtitle_target = subtitle_target;
     }
-    m_diag_consumer_pending = false;
+    RECT video_output = {};
+    if (SUCCEEDED(m_consumer->XyGetRect(
+            DirectVobSubXyOptions::RECT_VIDEO_OUTPUT, &video_output))) {
+        m_diag_consumer_video_output = video_output;
+    }
 }
 
 STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRenderFrame, REFERENCE_TIME now )
@@ -241,10 +247,6 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
     if (!pos)
     {
         return S_FALSE;
-    }
-
-    if (m_diag_consumer_pending) {
-        RefreshConsumerDiagnostics();
     }
 
     bool use_dst_alpha = false;
@@ -470,10 +472,12 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         L"partition0=%ld,%ld,%ld,%ld "
         L"partition1=%ld,%ld,%ld,%ld "
         L"partition2=%ld,%ld,%ld,%ld "
+        L"bitmapLimit=%d "
         L"consumer=%ls consumerVersion=%ls "
         L"presentedBitmap=%d presentedMovable=%d maxBitmapCount=%d "
         L"consumerFullscreen=%ld,%ld,%ld,%ld "
         L"consumerDisplayMode=%ld,%ld "
+        L"consumerVideoOutput=%ld,%ld,%ld,%ld "
         L"consumerSubtitleTarget=%ld,%ld,%ld,%ld "
         L"canvasFallback=%d\r\n",
         event ? event : L"frame",
@@ -515,6 +519,7 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         m_diag_partitions[1].right, m_diag_partitions[1].bottom,
         m_diag_partitions[2].left, m_diag_partitions[2].top,
         m_diag_partitions[2].right, m_diag_partitions[2].bottom,
+        m_bitmap_partition_limit,
         m_diag_consumer_name.IsEmpty() ? L"?" : m_diag_consumer_name.GetString(),
         m_diag_consumer_version.IsEmpty() ? L"?" : m_diag_consumer_version.GetString(),
         m_diag_presented_bitmap,
@@ -523,6 +528,8 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         m_diag_consumer_fullscreen.left, m_diag_consumer_fullscreen.top,
         m_diag_consumer_fullscreen.right, m_diag_consumer_fullscreen.bottom,
         m_diag_consumer_display_mode.cx, m_diag_consumer_display_mode.cy,
+        m_diag_consumer_video_output.left, m_diag_consumer_video_output.top,
+        m_diag_consumer_video_output.right, m_diag_consumer_video_output.bottom,
         m_diag_consumer_subtitle_target.left,
         m_diag_consumer_subtitle_target.top,
         m_diag_consumer_subtitle_target.right,
@@ -667,12 +674,17 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
                 SubtitleDisplayLayout::PartitionBitmapRects(
                     dirty_rect, canvas_bounds, m_canvas_video_in_canvas,
                     partitions);
-            if (partition_count > 0) {
+            RECT publish[3] = {};
+            const int publish_count =
+                SubtitleDisplayLayout::MergePartitionsToLimit(
+                    partitions, partition_count, m_bitmap_partition_limit,
+                    publish);
+            if (publish_count > 0) {
                 HRESULT wrapper_hr = S_OK;
                 m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
                     mem_subpic, m_canvas_publish_output,
-                    m_canvas_publish_clip, now, partitions,
-                    partition_count, &wrapper_hr, m_canvas_bitmap_offset);
+                    m_canvas_publish_clip, now, publish,
+                    publish_count, &wrapper_hr, m_canvas_bitmap_offset);
                 if (FAILED(wrapper_hr)) {
                     m_xy_sub_render_frame = NULL;
                     hr = wrapper_hr;

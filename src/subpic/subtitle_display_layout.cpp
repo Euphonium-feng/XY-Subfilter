@@ -403,6 +403,64 @@ namespace SubtitleDisplayLayout
         return count;
     }
 
+    int MergePartitionsToLimit(
+        const RECT* parts, int count, int max_count, RECT out[3])
+    {
+        if (!parts || !out || count <= 0) {
+            return 0;
+        }
+        if (count > 3) {
+            count = 3;
+        }
+        if (max_count <= 0) {
+            max_count = 1;
+        }
+        if (count <= max_count) {
+            for (int i = 0; i < count; ++i) {
+                out[i] = parts[i];
+            }
+            return count;
+        }
+
+        // Merge the closest pair repeatedly. Keeping the union tight avoids
+        // handing the consumer a bitmap much larger than the painted content,
+        // but a single allowed bitmap still spans the video band and bar.
+        RECT merged[3] = {};
+        for (int i = 0; i < count; ++i) {
+            merged[i] = parts[i];
+        }
+        int remaining = count;
+        while (remaining > max_count) {
+            int best = 0;
+            LONG best_distance = LONG_MAX;
+            for (int i = 0; i + 1 < remaining; ++i) {
+                const LONG distance = merged[i + 1].top - merged[i].bottom;
+                if (distance < best_distance) {
+                    best_distance = distance;
+                    best = i;
+                }
+            }
+            RECT combined = merged[best];
+            combined.left = combined.left < merged[best + 1].left
+                ? combined.left : merged[best + 1].left;
+            combined.top = combined.top < merged[best + 1].top
+                ? combined.top : merged[best + 1].top;
+            combined.right = combined.right > merged[best + 1].right
+                ? combined.right : merged[best + 1].right;
+            combined.bottom = combined.bottom > merged[best + 1].bottom
+                ? combined.bottom : merged[best + 1].bottom;
+            merged[best] = combined;
+            for (int i = best + 1; i < remaining - 1; ++i) {
+                merged[i] = merged[i + 1];
+            }
+            --remaining;
+        }
+        for (int i = 0; i < remaining; ++i) {
+            out[i] = merged[i];
+        }
+        return remaining;
+    }
+
     BitmapSlice::BitmapSlice()
     {
         position.x = 0;
