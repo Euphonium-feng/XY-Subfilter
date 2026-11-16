@@ -1488,13 +1488,13 @@ CDirectVobSub::CDirectVobSub( const Option *options, CCritSec * pLock )
     }
     m_xy_int_opt[INT_BITMAP_SCALE_FILTER] = theApp.GetProfileInt(
         ResStr(IDS_R_GENERAL), ResStr(IDS_RG_BITMAP_SCALE_FILTER),
-        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36);
+        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR);
     if (m_xy_int_opt[INT_BITMAP_SCALE_FILTER]
             < DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36
         || m_xy_int_opt[INT_BITMAP_SCALE_FILTER]
             >= DirectVobSubXyOptions::BITMAP_SCALE_FILTER_COUNT) {
         m_xy_int_opt[INT_BITMAP_SCALE_FILTER] =
-            DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+            DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR;
     }
     // The display size is a machine constant, so it is captured once by the
     // property page and reused by every later playback. Without this the
@@ -1936,13 +1936,13 @@ CDVS4XySubFilter::CDVS4XySubFilter( const Option *options, CCritSec * pLock )
     }
     m_xy_int_opt[INT_BITMAP_SCALE_FILTER] = theApp.GetProfileInt(
         ResStr(IDS_R_GENERAL), ResStr(IDS_RG_BITMAP_SCALE_FILTER),
-        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36);
+        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR);
     if (m_xy_int_opt[INT_BITMAP_SCALE_FILTER]
             < DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36
         || m_xy_int_opt[INT_BITMAP_SCALE_FILTER]
             >= DirectVobSubXyOptions::BITMAP_SCALE_FILTER_COUNT) {
         m_xy_int_opt[INT_BITMAP_SCALE_FILTER] =
-            DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+            DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR;
     }
     {
         const int display_width = theApp.GetProfileInt(

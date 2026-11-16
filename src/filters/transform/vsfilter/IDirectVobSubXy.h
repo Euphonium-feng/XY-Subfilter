@@ -250,6 +250,8 @@ namespace DirectVobSubXyOptions
     };
     enum BitmapScaleFilter
     {
+        // Enum values are an ABI: keep them fixed even when the default
+        // filter changes. Existing external consumers may pass either value.
         BITMAP_SCALE_FILTER_SPLINE36 = 0,
         BITMAP_SCALE_FILTER_BILINEAR,
         BITMAP_SCALE_FILTER_COUNT

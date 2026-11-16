@@ -268,8 +268,8 @@ PGS/SUP/DVB 的位图对象先在设计画布（PGS `video_descriptor`、DVB
 设计画布区域（留白永不写入）。`MapDirtyRectToTarget()` 与像素内核共用同一
 几何公式，provider 以该返回值作为 `SetDirtyRect`/`FlipAlphaValue`/分区发布的
 唯一目标区域。
-`Spline36` 是分离式 3-lobe 三次样条，`Bilinear` 是备用路径；两者都按预乘
-alpha 的四通道滤波，并保证 `color <= 255 - alpha`。滚动字幕每帧重新缩放。
+`Bilinear` 是默认路径，`Spline36` 是可选的分离式 3-lobe 三次样条；两者都按
+预乘 alpha 的四通道滤波，并保证 `color <= 255 - alpha`。滚动字幕每帧重新缩放。
 水平/垂直卷积均有 SSE2 快路径和标量参考路径；工作集为两行 float 缓冲，不分配
 整帧中间图像。缩放、`SetDirtyRect`、`FlipAlphaValue`、分区与零拷贝发布都在
 同一次 `Lock`/`Unlock` 窗口内完成，避免解锁后写入 provider 已放弃的缓冲。

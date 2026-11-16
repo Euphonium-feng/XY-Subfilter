@@ -127,7 +127,7 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_design_spd_size.cy = 0;
     m_design_spd_valid = false;
     m_scale_design_canvas = false;
-    m_scale_filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+    m_scale_filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR;
     m_diag_scale_filter = 0;
     m_diag_design_canvas.cx = 0;
     m_diag_design_canvas.cy = 0;
@@ -346,12 +346,12 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_frame_geometry_dirty = true;
     }
 
-    int filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+    int filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR;
     if (FAILED(m_consumer->XyGetInt(
             DirectVobSubXyOptions::INT_BITMAP_SCALE_FILTER, &filter))
         || filter < DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36
         || filter >= DirectVobSubXyOptions::BITMAP_SCALE_FILTER_COUNT) {
-        filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+        filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR;
     }
     if (m_scale_filter != filter) {
         m_scale_filter = filter;

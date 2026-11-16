@@ -113,6 +113,9 @@
   - 重采样只能写 `MapDirtyRectToTarget()` 返回的区域；该区域已包含滤波支撑并
     排除画布留白。provider 不得按未扩展的映射矩形调用 `SetDirtyRect` 或
     `FlipAlphaValue`，也不得在 `Unlock` 之后写缓冲。
+  - 默认位图滤波器为 Bilinear。2026-11-16 Release x64 的两行字幕脏区实测
+    Bilinear `3.28 ms`、Spline36 `10.58 ms`，均高于 2 ms/帧目标；Spline36
+    只能作为用户显式选项，不得在没有新基准的情况下改回默认。
   - 位图字幕在 consumer 侧必须保持 `isMovable=false`，且 `RequestFrame` 不得把
     非文本流重新标记为可移动：坐标由 PGS/DVB 流决定，允许重定位会让 madVR 把
     内容压回视频矩形，破坏黑边布置。

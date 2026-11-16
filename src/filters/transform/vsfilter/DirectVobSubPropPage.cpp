@@ -2182,7 +2182,7 @@ CXySubFilterMorePPage::CXySubFilterMorePPage(LPUNKNOWN pUnk, HRESULT* phr)
     , m_text_hdr_mode(DirectVobSubXyOptions::PGS_HDR_MODE_AUTO)
     , m_subtitle_display_aspect(DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF)
     , m_bitmap_scale_filter(
-        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36)
+        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR)
 {
     BindControl(IDC_SPINPathCache, m_path_cache);
     BindControl(IDC_SPINScanlineCache, m_scanline_cache);
@@ -2584,7 +2584,7 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         else
         {
             m_bitmap_scale_filter =
-                DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+                DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR;
         }
 
         m_render_to_original_video_size = !!m_checkbox_render_to_original_video_size.GetCheck();
@@ -2706,7 +2706,7 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
                 >= DirectVobSubXyOptions::BITMAP_SCALE_FILTER_COUNT)
         {
             m_bitmap_scale_filter =
-                DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+                DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR;
         }
         PopulateBitmapScaleFilterCombo(
             m_combo_bitmap_scale_filter, m_bitmap_scale_filter);
