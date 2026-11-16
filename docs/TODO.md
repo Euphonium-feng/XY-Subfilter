@@ -7,9 +7,10 @@
 默认 Bilinear，属性页可切 Spline36（3-lobe 三次样条），PGS/SUP 与 DVB 共用。
 缩放只启用字幕显示区域时生效；关闭布局保持基线。代码与单测已落地，包含
 锁内缩放、脏区外扩/留白裁剪和 SSE2/标量双路径。2026-11-16 云端三矩阵
-run `43891249824` 全绿（`release-win32`、`release-x64`、`debug-x64`）。
-Release x64 两行字幕脏区实测 Bilinear `3.28 ms`、Spline36 `10.58 ms`，均未达
-到 2 ms 门槛；按计划已把默认回退 Bilinear，Spline36 保留为可切选项。
+run `43893876527` 全绿（`release-win32`、`release-x64`、`debug-x64`）。
+Release x64 两行字幕脏区多次实测 Bilinear `3.28–7.07 ms`、Spline36
+`5.08–10.58 ms`，均未达到 2 ms 门槛；按计划已把默认回退 Bilinear，
+Spline36 保留为可切选项。
 **尚未取得用户 madVR 实机验收**。下一步：实机确认 4K 视频 + 1080p SUP 的
 Auto/16:9 进入黑边、字号正常、无左上角定位，并回归关闭模式、Bilinear/
 Spline36 切换与滚动字幕。
