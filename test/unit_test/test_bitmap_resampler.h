@@ -314,19 +314,36 @@ TEST(BitmapResamplerTest, FourKSubtitleDirtyRegionReportsTiming)
     std::vector<BYTE> output((size_t)target.cx * target.cy * 4, 0);
     const RECT subtitle = { 160, 946, 1760, 1058 };
 
-    const auto start = std::chrono::steady_clock::now();
-    ASSERT_TRUE(BitmapResampler::ScalePremultipliedRgba(
-        source.data(), design.cx * 4, design,
-        output.data(), target.cx * 4, target,
-        subtitle, FILTER_SPLINE36));
-    const auto stop = std::chrono::steady_clock::now();
-    const double elapsed_ms =
-        std::chrono::duration<double, std::milli>(stop - start).count();
-    std::cout << "spline36 1080p subtitle -> 4K: " << elapsed_ms << " ms"
-              << std::endl;
+    const BitmapResampler::Filter filters[] = {
+        FILTER_BILINEAR, FILTER_SPLINE36
+    };
+    for (BitmapResampler::Filter filter : filters) {
+        // Warm the destination pages and the per-call row cache once; real
+        // playback reuses both buffers.
+        ASSERT_TRUE(BitmapResampler::ScalePremultipliedRgba(
+            source.data(), design.cx * 4, design,
+            output.data(), target.cx * 4, target,
+            subtitle, filter));
+        double best_ms = 1e9;
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            const auto start = std::chrono::steady_clock::now();
+            ASSERT_TRUE(BitmapResampler::ScalePremultipliedRgba(
+                source.data(), design.cx * 4, design,
+                output.data(), target.cx * 4, target,
+                subtitle, filter));
+            const auto stop = std::chrono::steady_clock::now();
+            const double elapsed_ms =
+                std::chrono::duration<double, std::milli>(stop - start).count();
+            if (elapsed_ms < best_ms) {
+                best_ms = elapsed_ms;
+            }
+        }
+        std::cout << (filter == FILTER_BILINEAR ? "bilinear" : "spline36")
+                  << " 1080p subtitle -> 4K: " << best_ms << " ms"
+                  << std::endl;
+    }
     // Printed for the per-frame budget evaluation; keep CI deterministic
     // rather than gating on a shared-runner wall clock.
-    EXPECT_GE(elapsed_ms, 0.0);
 #endif
 }
 
