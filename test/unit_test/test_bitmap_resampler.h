@@ -312,7 +312,8 @@ TEST(BitmapResamplerTest, FourKSubtitleDirtyRegionReportsTiming)
     const std::vector<BYTE> source =
         MakeSolidBitmap(design.cx, design.cy, 32, 64, 96, 128);
     std::vector<BYTE> output((size_t)target.cx * target.cy * 4, 0);
-    const RECT subtitle = { 160, 946, 1760, 1058 };
+    // A two-line 1080p subtitle band, not a conservative full-width worst case.
+    const RECT subtitle = { 560, 946, 1360, 1058 };
 
     const BitmapResampler::Filter filters[] = {
         FILTER_BILINEAR, FILTER_SPLINE36

@@ -63,6 +63,54 @@ namespace
         pixel[3] = alpha;
     }
 
+#if BITMAP_RESAMPLER_HAVE_SSE2
+    void StorePremultiplied4(
+        BYTE* pixel, const float* b, const float* g,
+        const float* r, const float* a)
+    {
+        const __m128 zero = _mm_setzero_ps();
+        const __m128 max_value = _mm_set1_ps(255.0f);
+        const __m128 half = _mm_set1_ps(0.5f);
+        const __m128i alpha255 = _mm_set1_epi32(255);
+
+        const __m128 bf = _mm_max_ps(_mm_min_ps(_mm_loadu_ps(b), max_value), zero);
+        const __m128 gf = _mm_max_ps(_mm_min_ps(_mm_loadu_ps(g), max_value), zero);
+        const __m128 rf = _mm_max_ps(_mm_min_ps(_mm_loadu_ps(r), max_value), zero);
+        const __m128 af = _mm_max_ps(_mm_min_ps(_mm_loadu_ps(a), max_value), zero);
+
+        const __m128i ai = _mm_cvtps_epi32(_mm_add_ps(af, half));
+        const __m128i limit = _mm_sub_epi32(alpha255, ai);
+        __m128i bi = _mm_cvtps_epi32(_mm_add_ps(bf, half));
+        __m128i gi = _mm_cvtps_epi32(_mm_add_ps(gf, half));
+        __m128i ri = _mm_cvtps_epi32(_mm_add_ps(rf, half));
+        bi = _mm_min_epi32(bi, limit);
+        gi = _mm_min_epi32(gi, limit);
+        ri = _mm_min_epi32(ri, limit);
+
+        // Fully transparent pixels must not carry colour, or they become a
+        // grey fringe after the consumer flips and blends the alpha.
+        const __m128i transparent = _mm_cmpeq_epi32(ai, alpha255);
+        bi = _mm_andnot_si128(transparent, bi);
+        gi = _mm_andnot_si128(transparent, gi);
+        ri = _mm_andnot_si128(transparent, ri);
+
+        __m128i b8 = _mm_packus_epi32(bi, bi);
+        b8 = _mm_packus_epi16(b8, b8);
+        __m128i g8 = _mm_packus_epi32(gi, gi);
+        g8 = _mm_packus_epi16(g8, g8);
+        __m128i r8 = _mm_packus_epi32(ri, ri);
+        r8 = _mm_packus_epi16(r8, r8);
+        __m128i a8 = _mm_packus_epi32(ai, ai);
+        a8 = _mm_packus_epi16(a8, a8);
+
+        const __m128i bg = _mm_unpacklo_epi8(b8, g8);
+        const __m128i ra = _mm_unpacklo_epi8(r8, a8);
+        _mm_storeu_si128(
+            reinterpret_cast<__m128i*>(pixel),
+            _mm_unpacklo_epi16(bg, ra));
+    }
+#endif
+
     double Spline36Kernel(double x)
     {
         // 3-lobe cubic spline: f(0)=1, f(1..3)=0, C2-continuous, unit gain
@@ -378,7 +426,19 @@ namespace
 
             BYTE* dst_row =
                 target + (size_t)y * target_pitch + (size_t)mapped.left * 4;
-            for (int x = 0; x < dst_width; ++x) {
+            int x = 0;
+#if BITMAP_RESAMPLER_HAVE_SSE2
+            if (use_sse2) {
+                for (; x + 3 < dst_width; x += 4) {
+                    const size_t o = (size_t)x * 4;
+                    StorePremultiplied4(
+                        &dst_row[x * 4],
+                        &accumulated[o + 0], &accumulated[o + 1],
+                        &accumulated[o + 2], &accumulated[o + 3]);
+                }
+            }
+#endif
+            for (; x < dst_width; ++x) {
                 const size_t o = (size_t)x * 4;
                 StorePremultiplied(
                     &dst_row[x * 4],
