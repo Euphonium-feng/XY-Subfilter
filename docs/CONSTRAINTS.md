@@ -107,9 +107,15 @@
     与 PGS/SUP/DVB 位图都使用完整显示画布。位图先在设计画布（PGS
     `video_descriptor`、DVB `display.width/height`）内按流内坐标绘制，再以单一
     等比因子缩放到显示画布；比例不一致时居中留透明边，不裁切、不非等比拉伸。
-- 位图字幕在 consumer 侧必须保持 `isMovable=false`，且 `RequestFrame` 不得把
-  非文本流重新标记为可移动：坐标由 PGS/DVB 流决定，允许重定位会让 madVR 把
-  内容压回视频矩形，破坏黑边布置。
+  - 位图画布启用时，缩放内核必须在 `MSP_RGBA` 尚未翻转的缓冲上工作：
+    `alpha=0` 不透明、`alpha=255` 透明，RGB 预乘且必须满足
+    `RGB <= 255 - alpha`。不得按“0=透明”的网络式 RGBA 语义解释该缓冲。
+  - 重采样只能写 `MapDirtyRectToTarget()` 返回的区域；该区域已包含滤波支撑并
+    排除画布留白。provider 不得按未扩展的映射矩形调用 `SetDirtyRect` 或
+    `FlipAlphaValue`，也不得在 `Unlock` 之后写缓冲。
+  - 位图字幕在 consumer 侧必须保持 `isMovable=false`，且 `RequestFrame` 不得把
+    非文本流重新标记为可移动：坐标由 PGS/DVB 流决定，允许重定位会让 madVR 把
+    内容压回视频矩形，破坏黑边布置。
 - 位图帧的 `GetOutputRect` 是 consumer 缩放用的视频参考矩形，不是渲染缓冲区
   尺寸。完整显示画布必须按源像素比例表示（1920×800 视频 + 2560×1440 显示 →
   1920×1080 画布），不得把物理显示尺寸 2560×1440 直接写成 output，否则 madVR

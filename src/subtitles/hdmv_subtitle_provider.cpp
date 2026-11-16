@@ -514,6 +514,7 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
     m_diag_drawn_objects = drawn_objects;
     m_diag_skipped_objects = skipped_objects;
     m_diag_canvas_active = m_canvas_active;
+    m_diag_scale_filter = m_scale_filter;
     m_diag_video_in_canvas = m_canvas_video_in_canvas;
     m_diag_partition_count = partition_count;
     for (int i = 0; i < 3; ++i) {
@@ -670,7 +671,7 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
         return S_FALSE;
     }
 
-    if(!m_scale_design_canvas && m_pSubPic
+    if(m_pSubPic
         && m_pSubPic->GetStart() <= now && now < m_pSubPic->GetStop())
     {
         return S_OK;
@@ -690,7 +691,7 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
 
     HRESULT hr = E_FAIL;
 
-    CRect dirty_rect;
+    CRect dirty_rect(0, 0, 0, 0);
     CMemSubPic * mem_subpic = dynamic_cast<CMemSubPic*>((ISubPicEx *)m_pSubPic);
     ASSERT(mem_subpic);
     SubPicDesc spd;
@@ -700,12 +701,14 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
         DWORD color = 0xFF000000;
         if(SUCCEEDED(m_pSubPic->ClearDirtyRect(color)))
         {
+            dirty_rect.SetRectEmpty();
             if (m_scale_design_canvas) {
                 SubPicDesc design_spd = m_design_spd;
                 memsetd(
                     design_spd.bits, 0xFF000000,
                     (size_t)design_spd.pitch * design_spd.h);
                 m_pSub->Render(design_spd, now, dirty_rect);
+                m_diag_source_dirty = dirty_rect;
             } else {
                 m_pSub->Render(spd, now, dirty_rect);
             }
@@ -714,6 +717,35 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
 
             m_pSubPic->SetStart(start);
             m_pSubPic->SetStop(stop);
+
+            if (m_scale_design_canvas && !dirty_rect.IsRectEmpty()) {
+                RECT target_dirty = {};
+                const BitmapResampler::ScaleGeometry geometry =
+                    BitmapResampler::ResolveScaleGeometry(
+                        m_design_spd_size, m_render_size);
+                const BitmapResampler::Filter filter =
+                    m_scale_filter ==
+                        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR
+                        ? BitmapResampler::FILTER_BILINEAR
+                        : BitmapResampler::FILTER_SPLINE36;
+                if (!BitmapResampler::MapDirtyRectToTarget(
+                        dirty_rect, geometry, filter, &target_dirty)
+                    || !BitmapResampler::ScalePremultipliedRgba(
+                        m_design_spd.bits, m_design_spd.pitch,
+                        m_design_spd_size,
+                        spd.bits, spd.pitch, m_render_size,
+                        dirty_rect, filter)) {
+                    m_xy_sub_render_frame = NULL;
+                    LogBitmapFrame(
+                        L"scale-failed", now, E_FAIL, &dirty_rect,
+                        lock_hr, alloc_hr);
+                    m_pSubPic->Unlock(NULL);
+                    return E_FAIL;
+                }
+                m_diag_source_dirty = dirty_rect;
+                m_diag_scaled_dirty = target_dirty;
+                dirty_rect = target_dirty;
+            }
         }
         hr = m_pSubPic->Unlock(&dirty_rect);
         ASSERT(SUCCEEDED(hr));
@@ -726,34 +758,6 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
         {
             hr = m_pSubPic->GetDirtyRect(&dirty_rect);
             ASSERT(SUCCEEDED(hr));
-            if (m_scale_design_canvas) {
-                RECT target_dirty = {};
-                const BitmapResampler::ScaleGeometry geometry =
-                    BitmapResampler::ResolveScaleGeometry(
-                        m_design_spd_size, m_render_size);
-                if (!BitmapResampler::MapRectToTarget(
-                        dirty_rect, geometry, &target_dirty)
-                    || !BitmapResampler::ScalePremultipliedRgba(
-                        m_design_spd.bits, m_design_spd.pitch,
-                        m_design_spd_size,
-                        spd.bits, spd.pitch, m_render_size,
-                        dirty_rect,
-                        m_scale_filter ==
-                            DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR
-                            ? BitmapResampler::FILTER_BILINEAR
-                            : BitmapResampler::FILTER_SPLINE36)) {
-                    m_xy_sub_render_frame = NULL;
-                    LogBitmapFrame(
-                        L"scale-failed", now, E_FAIL, &dirty_rect,
-                        lock_hr, alloc_hr);
-                    return E_FAIL;
-                }
-                m_diag_source_dirty = dirty_rect;
-                m_diag_scaled_dirty = target_dirty;
-                dirty_rect = target_dirty;
-                hr = m_pSubPic->SetDirtyRect(&dirty_rect);
-                ASSERT(SUCCEEDED(hr));
-            }
             if (!m_use_dst_alpha)
             {
                 hr = mem_subpic->FlipAlphaValue(dirty_rect);//fixme: mem_subpic.type is now MSP_RGBA_F, not MSP_RGBA

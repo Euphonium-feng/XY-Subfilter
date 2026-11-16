@@ -264,11 +264,15 @@ PGS/SUP/DVB 的位图对象先在设计画布（PGS `video_descriptor`、DVB
 内容可以落在上下黑边。位图流固定 `isMovable=false`；它表示 consumer 不得把
 绝对画布坐标重新定位或缩放。
 
-缩放只重采样脏区：源脏区映射到目标坐标后向外扩滤波器支撑并裁剪到画布。
+缩放只重采样脏区：源脏区映射到目标坐标后向外扩滤波器支撑，并裁剪到缩放后的
+设计画布区域（留白永不写入）。`MapDirtyRectToTarget()` 与像素内核共用同一
+几何公式，provider 以该返回值作为 `SetDirtyRect`/`FlipAlphaValue`/分区发布的
+唯一目标区域。
 `Spline36` 是分离式 3-lobe 三次样条，`Bilinear` 是备用路径；两者都按预乘
 alpha 的四通道滤波，并保证 `color <= 255 - alpha`。滚动字幕每帧重新缩放。
-缩放完成后 provider 用目标脏区更新 `SetDirtyRect`，再执行 `FlipAlphaValue`、
-分区与零拷贝发布。
+水平/垂直卷积均有 SSE2 快路径和标量参考路径；工作集为两行 float 缓冲，不分配
+整帧中间图像。缩放、`SetDirtyRect`、`FlipAlphaValue`、分区与零拷贝发布都在
+同一次 `Lock`/`Unlock` 窗口内完成，避免解锁后写入 provider 已放弃的缓冲。
 
 位图帧沿用文本路径的发布几何：`GetOutputRect` 是零基视频尺寸（consumer 用它
 把帧映射到 `videoOutputRect`），`GetClipRect` 与 `GetBitmap.position` 减去同一

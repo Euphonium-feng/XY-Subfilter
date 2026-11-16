@@ -860,6 +860,7 @@ BEGIN
     IDS_RG_SUBTITLE_DISPLAY_ASPECT      "subtitle_display_aspect"
     IDS_RG_DISPLAY_AREA_WIDTH           "display_area_width"
     IDS_RG_DISPLAY_AREA_HEIGHT          "display_area_height"
+    IDS_RG_BITMAP_SCALE_FILTER          "bitmap_scale_filter"
     IDS_RG_SUPPORTED_VERSION "supported_version"
     IDS_RG_VERSION          "version"
 #else
@@ -911,6 +912,7 @@ BEGIN
     IDS_RG_SUBTITLE_DISPLAY_ASPECT      "SUBTITLE_DISPLAY_ASPECT"
     IDS_RG_DISPLAY_AREA_WIDTH           "DISPLAY_AREA_WIDTH"
     IDS_RG_DISPLAY_AREA_HEIGHT          "DISPLAY_AREA_HEIGHT"
+    IDS_RG_BITMAP_SCALE_FILTER          "BITMAP_SCALE_FILTER"
     IDS_RG_SUPPORTED_VERSION "Supported Version"
     IDS_RG_VERSION          "Version"
 #endif
@@ -1804,6 +1806,7 @@ BEGIN
     IDS_RG_SUBTITLE_DISPLAY_ASPECT      "subtitle_display_aspect"
     IDS_RG_DISPLAY_AREA_WIDTH           "display_area_width"
     IDS_RG_DISPLAY_AREA_HEIGHT          "display_area_height"
+    IDS_RG_BITMAP_SCALE_FILTER          "bitmap_scale_filter"
     IDS_RG_SUPPORTED_VERSION "supported_version"
     IDS_RG_VERSION          "version"
 #else
@@ -1855,6 +1858,7 @@ BEGIN
     IDS_RG_SUBTITLE_DISPLAY_ASPECT      "SUBTITLE_DISPLAY_ASPECT"
     IDS_RG_DISPLAY_AREA_WIDTH           "DISPLAY_AREA_WIDTH"
     IDS_RG_DISPLAY_AREA_HEIGHT          "DISPLAY_AREA_HEIGHT"
+    IDS_RG_BITMAP_SCALE_FILTER          "BITMAP_SCALE_FILTER"
     IDS_RG_SUPPORTED_VERSION "Supported Version"
     IDS_RG_VERSION          "Version"
 #endif

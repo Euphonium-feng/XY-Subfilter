@@ -46,9 +46,22 @@ namespace BitmapResampler
     bool NeedsResample(
         const SIZE& design_size, const SIZE& target_size);
 
+    // Computes the destination rect a dirty source rect can touch, including
+    // the filter support. The result is clipped to the target canvas and is
+    // exactly the region ScalePremultipliedRgba writes. Returns false when no
+    // destination pixel can be affected.
+    bool MapDirtyRectToTarget(
+        const RECT& source_dirty, const ScaleGeometry& geometry,
+        Filter filter, RECT* target_dirty);
+
     // Scales a premultiplied RGBA source into a premultiplied RGBA target.
-    // Pixels are B,G,R,A bytes. Only destination pixels touched by
-    // source_dirty are written; source_dirty is in design-canvas coordinates.
+    // Pixels are B,G,R,A bytes. The buffer is in pre-flip MSP_RGBA form:
+    // alpha 0 is fully opaque and alpha 255 is fully transparent, while RGB
+    // is premultiplied by coverage (RGB <= 255 - alpha).
+    //
+    // Only destination pixels touched by source_dirty are written;
+    // source_dirty is in design-canvas coordinates. Destination pixels
+    // outside the scaled design rect (letterbox padding) are not written.
     // The caller must keep both buffers alive for the duration of the call.
     bool ScalePremultipliedRgba(
         const BYTE* source, int source_pitch,
@@ -68,4 +81,7 @@ namespace BitmapResampler
         const SIZE& target_size,
         const RECT& source_dirty,
         Filter filter);
+
+    // True when this translation unit was built with the SSE2 kernel.
+    bool HasSse2Kernel();
 }

@@ -254,7 +254,7 @@ try {
 
     Invoke-UnitTestPhase `
         -Name 'unit-tests' `
-        -Filter 'OverallTest.*:LibassBitmapTest.*:LibassRegressionTest.*:LibassRegressionUtilityTest.*:*-OverallTest.*'
+        -Filter 'OverallTest.*:LibassBitmapTest.*:LibassRegressionTest.*:LibassRegressionUtilityTest.*:BitmapResamplerTest.*:*-OverallTest.*'
 } finally {
     Pop-Location
 }
