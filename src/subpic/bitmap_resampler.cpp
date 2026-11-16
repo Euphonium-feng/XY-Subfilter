@@ -44,15 +44,20 @@ namespace
     // RGB <= 255 - alpha. Project the filtered result back onto that
     // invariant; fully transparent pixels (alpha 255) carry zero RGB.
     void StorePremultiplied(
-        BYTE* pixel, double b, double g, double r, double a)
+        BYTE* pixel, float b, float g, float r, float a)
     {
-        const BYTE alpha = ClampByte(a);
-        const double limit = 255.0 - alpha;
+        const BYTE alpha = static_cast<BYTE>(
+            a < 0.0f ? 0.0f : (a > 255.0f ? 255.0f : a + 0.5f));
+        const float limit = 255.0f - alpha;
         BYTE color[3] = {
-            ClampByte(b), ClampByte(g), ClampByte(r)
+            static_cast<BYTE>(b < 0.0f ? 0.0f : (b > 255.0f ? 255.0f : b + 0.5f)),
+            static_cast<BYTE>(g < 0.0f ? 0.0f : (g > 255.0f ? 255.0f : g + 0.5f)),
+            static_cast<BYTE>(r < 0.0f ? 0.0f : (r > 255.0f ? 255.0f : r + 0.5f))
         };
         for (int i = 0; i < 3; ++i) {
-            color[i] = (BYTE)ClampDouble(color[i], 0.0, limit);
+            if (color[i] > limit) {
+                color[i] = static_cast<BYTE>(limit);
+            }
         }
         if (alpha == 255) {
             color[0] = color[1] = color[2] = 0;
@@ -91,7 +96,7 @@ namespace
     struct Tap
     {
         int index;
-        double weight;
+        float weight;
     };
 
     int BuildTaps(
@@ -116,16 +121,17 @@ namespace
                     : LinearKernel((center - sample) * filter_scale);
                 taps[k].index = ClampInt(
                     (int)floor(sample + 0.5), 0, source_size - 1);
-                taps[k].weight = weight;
+                taps[k].weight = static_cast<float>(weight);
                 total += weight;
             }
             if (total == 0.0) {
                 for (int k = 0; k < capacity; ++k) {
-                    taps[k].weight = 1.0 / capacity;
+                    taps[k].weight = 1.0f / capacity;
                 }
             } else {
+                const float inv_total = static_cast<float>(1.0 / total);
                 for (int k = 0; k < capacity; ++k) {
-                    taps[k].weight /= total;
+                    taps[k].weight *= inv_total;
                 }
             }
             return capacity;
@@ -143,18 +149,19 @@ namespace
                 continue;
             }
             taps[count].index = ClampInt(i, 0, source_size - 1);
-            taps[count].weight = weight;
+            taps[count].weight = static_cast<float>(weight);
             total += weight;
             ++count;
         }
         if (total == 0.0) {
             taps[0].index = ClampInt(
                 (int)floor(center + 0.5), 0, source_size - 1);
-            taps[0].weight = 1.0;
+            taps[0].weight = 1.0f;
             return 1;
         }
+        const float inv_total = static_cast<float>(1.0 / total);
         for (int i = 0; i < count; ++i) {
-            taps[i].weight /= total;
+            taps[i].weight *= inv_total;
         }
         return count;
     }
@@ -203,7 +210,7 @@ namespace
                 __m128i words = _mm_unpacklo_epi8(bytes, zero);
                 __m128i dwords = _mm_unpacklo_epi16(words, zero);
                 const __m128 values = _mm_cvtepi32_ps(dwords);
-                const __m128 weight = _mm_set1_ps((float)tap.weight);
+                const __m128 weight = _mm_set1_ps(tap.weight);
                 sum = _mm_add_ps(sum, _mm_mul_ps(values, weight));
             }
             _mm_storeu_ps(output + (size_t)x * 4, sum);
@@ -234,7 +241,7 @@ namespace
             for (int t = start; t < end; ++t) {
                 const Tap& tap = x_taps[(size_t)t];
                 const BYTE* px = source_row + (size_t)tap.index * 4;
-                const float w = (float)tap.weight;
+                const float w = tap.weight;
                 b += px[0] * w;
                 g += px[1] * w;
                 r += px[2] * w;
@@ -362,7 +369,7 @@ namespace
                     }
                     ring_rows[(size_t)slot] = source_row;
                 }
-                const float wy = (float)y_taps[ty].weight;
+                const float wy = y_taps[ty].weight;
                 const float* row = &ring_cache[(size_t)slot * row_stride];
 #if BITMAP_RESAMPLER_HAVE_SSE2
                 if (use_sse2) {
