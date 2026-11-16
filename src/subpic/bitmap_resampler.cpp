@@ -63,46 +63,6 @@ namespace
         pixel[3] = alpha;
     }
 
-#if BITMAP_RESAMPLER_HAVE_SSE2
-    void StorePremultiplied4(
-        BYTE* pixel, const float* b, const float* g,
-        const float* r, const float* a)
-    {
-        const __m128 zero = _mm_setzero_ps();
-        const __m128 max_value = _mm_set1_ps(255.0f);
-        const __m128 half = _mm_set1_ps(0.5f);
-        const __m128i alpha255 = _mm_set1_epi32(255);
-
-        const __m128 bf = _mm_max_ps(_mm_min_ps(_mm_loadu_ps(b), max_value), zero);
-        const __m128 gf = _mm_max_ps(_mm_min_ps(_mm_loadu_ps(g), max_value), zero);
-        const __m128 rf = _mm_max_ps(_mm_min_ps(_mm_loadu_ps(r), max_value), zero);
-        const __m128 af = _mm_max_ps(_mm_min_ps(_mm_loadu_ps(a), max_value), zero);
-
-        const __m128i ai = _mm_cvtps_epi32(_mm_add_ps(af, half));
-        const __m128i limit = _mm_sub_epi32(alpha255, ai);
-        __m128i bi = _mm_cvtps_epi32(_mm_add_ps(bf, half));
-        __m128i gi = _mm_cvtps_epi32(_mm_add_ps(gf, half));
-        __m128i ri = _mm_cvtps_epi32(_mm_add_ps(rf, half));
-        bi = _mm_min_epi32(bi, limit);
-        gi = _mm_min_epi32(gi, limit);
-        ri = _mm_min_epi32(ri, limit);
-
-        // Fully transparent pixels must not carry colour, or they become a
-        // grey fringe after the consumer flips and blends the alpha.
-        const __m128i transparent = _mm_cmpeq_epi32(ai, alpha255);
-        bi = _mm_andnot_si128(transparent, bi);
-        gi = _mm_andnot_si128(transparent, gi);
-        ri = _mm_andnot_si128(transparent, ri);
-
-        // One 32-bit lane per pixel: B | G<<8 | R<<16 | A<<24.
-        __m128i packed = bi;
-        packed = _mm_or_si128(packed, _mm_slli_epi32(gi, 8));
-        packed = _mm_or_si128(packed, _mm_slli_epi32(ri, 16));
-        packed = _mm_or_si128(packed, _mm_slli_epi32(ai, 24));
-        _mm_storeu_si128(reinterpret_cast<__m128i*>(pixel), packed);
-    }
-#endif
-
     double Spline36Kernel(double x)
     {
         // 3-lobe cubic spline: f(0)=1, f(1..3)=0, C2-continuous, unit gain
@@ -418,19 +378,7 @@ namespace
 
             BYTE* dst_row =
                 target + (size_t)y * target_pitch + (size_t)mapped.left * 4;
-            int x = 0;
-#if BITMAP_RESAMPLER_HAVE_SSE2
-            if (use_sse2) {
-                for (; x + 3 < dst_width; x += 4) {
-                    const size_t o = (size_t)x * 4;
-                    StorePremultiplied4(
-                        &dst_row[x * 4],
-                        &accumulated[o + 0], &accumulated[o + 1],
-                        &accumulated[o + 2], &accumulated[o + 3]);
-                }
-            }
-#endif
-            for (; x < dst_width; ++x) {
+            for (int x = 0; x < dst_width; ++x) {
                 const size_t o = (size_t)x * 4;
                 StorePremultiplied(
                     &dst_row[x * 4],
