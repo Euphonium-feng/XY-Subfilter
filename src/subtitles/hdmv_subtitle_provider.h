@@ -2,6 +2,7 @@
 
 #include "Rasterizer.h"
 #include "../SubPic/SubPicProviderImpl.h"
+#include "../subpic/bitmap_resampler.h"
 #include "../subpic/subtitle_display_layout.h"
 #include "HdmvSub.h"
 #include "BaseSub.h"
@@ -80,6 +81,18 @@ private :
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;
     CComPtr<IXySubRenderFrame>  m_xy_sub_render_frame;
+
+    SubPicDesc m_design_spd;
+    SIZE m_design_spd_size;
+    bool m_design_spd_valid;
+    bool m_scale_design_canvas;
+    int m_scale_filter;
+    int m_diag_scale_filter;
+    SIZE m_diag_design_canvas;
+    SIZE m_diag_scale_canvas;
+    double m_diag_scale_factor;
+    RECT m_diag_source_dirty;
+    RECT m_diag_scaled_dirty;
 };
 
 //This is for embedded subtitles

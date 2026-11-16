@@ -65,6 +65,9 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 9. 全屏画布的呈现契约按 consumer 区分：madVR 使用已验证覆盖层契约
    （`isBitmap` 读为 false）；MPC VR 与未知 consumer 先保持真实
    `isBitmap=true`。关闭布局开关时输出与基线一致。
+10. 4K 视频配 1080p SUP 时，位图按设计画布等比缩放到显示画布，字号与位置
+    正确；Spline36 为默认，Bilinear 可在属性页切换。比例不一致时透明留边，
+    不裁切、不非等比拉伸。缩放仅在显示画布启用时生效。
 
 ## 当前状态
 

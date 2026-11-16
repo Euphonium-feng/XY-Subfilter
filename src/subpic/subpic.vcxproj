@@ -55,6 +55,9 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="alpha_blender.cpp" />
+    <ClCompile Include="bitmap_resampler.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="color_conv_table.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -95,6 +98,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="alpha_blender.h" />
+    <ClInclude Include="bitmap_resampler.h" />
     <ClInclude Include="color_conv_table.h" />
     <ClInclude Include="CoordGeom.h" />
     <ClInclude Include="CRect2.h" />

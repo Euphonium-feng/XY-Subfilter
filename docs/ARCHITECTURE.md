@@ -257,11 +257,18 @@ consumer 把零基 output 映射到 `videoOutputRect`，因此该布局在屏幕
 `RTS::Init()` 在布局变化时清空 `m_last_frame`，避免 libass 在“文本未变、
 仅几何变化”时复用旧布局帧。
 
-PGS/SUP/DVB 的位图对象按流内坐标绘制，provider 不做缩放、留白或重排。
-`ResolveBitmapFrame()` 按显示宽高比构造画布，位图渲染缓冲区直接使用该画布尺寸，
-因此 PGS/DVB 行可以落在画布的上下黑边。对象坐标不随画布变化；超出缓冲区的
-像素由 `Rasterizer::FillSolidRect` 与各 dirty-rect 计算裁剪。位图流固定
-`isMovable=false`；它表示 consumer 不得把绝对画布坐标重新定位或缩放。
+PGS/SUP/DVB 的位图对象先在设计画布（PGS `video_descriptor`、DVB
+`display.width/height`）内按流内坐标绘制，再由 `BitmapResampler` 以单一
+等比因子缩放到完整显示画布并居中。比例不一致时保留透明边，不裁切、不非等比
+拉伸。`ResolveBitmapFrame()` 仍按显示宽高比构造发布画布，因此缩放后的底栏
+内容可以落在上下黑边。位图流固定 `isMovable=false`；它表示 consumer 不得把
+绝对画布坐标重新定位或缩放。
+
+缩放只重采样脏区：源脏区映射到目标坐标后向外扩滤波器支撑并裁剪到画布。
+`Spline36` 是分离式 3-lobe 三次样条，`Bilinear` 是备用路径；两者都按预乘
+alpha 的四通道滤波，并保证 `color <= 255 - alpha`。滚动字幕每帧重新缩放。
+缩放完成后 provider 用目标脏区更新 `SetDirtyRect`，再执行 `FlipAlphaValue`、
+分区与零拷贝发布。
 
 位图帧沿用文本路径的发布几何：`GetOutputRect` 是零基视频尺寸（consumer 用它
 把帧映射到 `videoOutputRect`），`GetClipRect` 与 `GetBitmap.position` 减去同一

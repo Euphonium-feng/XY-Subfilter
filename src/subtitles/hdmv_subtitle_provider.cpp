@@ -4,8 +4,10 @@
 #include "hdmv_subtitle_provider.h"
 #include "../subpic/XySubRenderFrameWrapper.h"
 #include "../subpic/diagnostic_log.h"
+#include "../subpic/bitmap_resampler.h"
 #include "../subpic/subtitle_display_layout.h"
 #include "IDirectVobSubXy.h"
+#include "xy_malloc.h"
 
 #if ENABLE_XY_LOG_HDMVSUB
 #define TRACE_SUB_PROVIDER(msg)		XY_LOG_TRACE(msg)
@@ -120,10 +122,28 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_diag_consumer_display_mode.cx = 0;
     m_diag_consumer_display_mode.cy = 0;
     m_diag_consumer_subtitle_target = RECT();
+    m_design_spd = SubPicDesc();
+    m_design_spd_size.cx = 0;
+    m_design_spd_size.cy = 0;
+    m_design_spd_valid = false;
+    m_scale_design_canvas = false;
+    m_scale_filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+    m_diag_scale_filter = 0;
+    m_diag_design_canvas.cx = 0;
+    m_diag_design_canvas.cy = 0;
+    m_diag_scale_canvas.cx = 0;
+    m_diag_scale_canvas.cy = 0;
+    m_diag_scale_factor = 1.0;
+    m_diag_source_dirty = RECT();
+    m_diag_scaled_dirty = RECT();
 }
 
 HdmvSubtitleProviderImpl::~HdmvSubtitleProviderImpl( void )
 {
+    if (m_design_spd_valid) {
+        xy_free(m_design_spd.bits);
+        m_design_spd.bits = NULL;
+    }
 }
 
 STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
@@ -307,9 +327,8 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         ReadBitmapCanvasInput(m_consumer, video_rect, &input);
         const SubtitleDisplayLayout::BitmapFrameResult frame =
             SubtitleDisplayLayout::ResolveBitmapFrame(input);
-        // The bitmap renderer gets the complete display canvas. Its objects
-        // are painted at their stream coordinates and clipped to the buffer;
-        // no scaling, padding or reflow is applied.
+        // The display canvas is the publication surface. The stream's design
+        // canvas is rendered at its own coordinates and then scaled into it.
         m_canvas_active = frame.canvas_active;
         m_canvas_publish_output = frame.frame.output_rect;
         m_canvas_publish_clip = frame.frame.clip_rect;
@@ -327,12 +346,32 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_frame_geometry_dirty = true;
     }
 
-    // The display canvas is the painting surface. Bitmap objects stay at
-    // their stream coordinates and are clipped by the renderer.
+    int filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+    if (FAILED(m_consumer->XyGetInt(
+            DirectVobSubXyOptions::INT_BITMAP_SCALE_FILTER, &filter))
+        || filter < DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36
+        || filter >= DirectVobSubXyOptions::BITMAP_SCALE_FILTER_COUNT) {
+        filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+    }
+    if (m_scale_filter != filter) {
+        m_scale_filter = filter;
+        m_pSubPic = NULL;
+        m_xy_sub_render_frame = NULL;
+        m_frame_geometry_dirty = true;
+    }
+
+    // The display canvas is the publication surface. Bitmap objects are
+    // rendered into the stream's design canvas and scaled into it below.
     const SIZE render_size = m_canvas_active
         ? SIZE{ m_canvas_rect.right - m_canvas_rect.left,
                 m_canvas_rect.bottom - m_canvas_rect.top }
         : design_size;
+    const bool resample_design =
+        m_canvas_active && BitmapResampler::NeedsResample(design_size, render_size);
+    m_diag_design_canvas = design_size;
+    m_diag_scale_canvas = render_size;
+    m_diag_scale_factor =
+        BitmapResampler::ResolveScaleGeometry(design_size, render_size).scale;
     if (!m_allocator
         || m_render_size.cx != render_size.cx
         || m_render_size.cy != render_size.cy)
@@ -343,6 +382,35 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_frame_geometry_dirty = true;
         hr = ResetAllocator();
         ASSERT(SUCCEEDED(hr));
+    }
+    if (resample_design
+        && (!m_design_spd_valid
+            || m_design_spd_size.cx != design_size.cx
+            || m_design_spd_size.cy != design_size.cy)) {
+        if (m_design_spd_valid) {
+            xy_free(m_design_spd.bits);
+            m_design_spd = SubPicDesc();
+            m_design_spd_valid = false;
+        }
+        SubPicDesc source;
+        source.type = MSP_RGBA;
+        source.w = design_size.cx;
+        source.h = design_size.cy;
+        source.bpp = 32;
+        source.pitch = source.w * 4;
+        source.bits = reinterpret_cast<BYTE*>(
+            xy_malloc((size_t)source.pitch * source.h));
+        source.vidrect = CRect(CPoint(0, 0), CSize(design_size.cx, design_size.cy));
+        if (source.bits) {
+            m_design_spd = source;
+            m_design_spd_size = design_size;
+            m_design_spd_valid = true;
+        }
+    }
+    m_scale_design_canvas = resample_design && m_design_spd_valid;
+    if (resample_design && !m_design_spd_valid) {
+        XY_LOG_ERROR("Failed to allocate design canvas");
+        return E_FAIL;
     }
     if (m_frame_geometry_dirty) {
         // Render() returns S_OK early when m_pSubPic still covers this
@@ -414,6 +482,7 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         && EqualRect(&m_diag_bitmap_rects[2], &bitmap_rects[2])
         && m_diag_buffer_size.cx == m_render_size.cx
         && m_diag_buffer_size.cy == m_render_size.cy
+        && m_diag_scale_filter == m_scale_filter
         && EqualRect(&m_diag_output, &m_canvas_publish_output)
         && EqualRect(&m_diag_clip, &m_canvas_publish_clip)
         && m_diag_offset.x == m_canvas_bitmap_offset.x
@@ -458,6 +527,9 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         L"designSize=%ld,%ld videoSize=%ld,%ld "
         L"displaySource=%d "
         L"displayArea=%ld,%ld canvasRect=%ld,%ld,%ld,%ld "
+        L"designCanvas=%ld,%ld scaleCanvas=%ld,%ld scaleFactor=%.3f "
+        L"scaleFilter=%d sourceDirty=%ld,%ld,%ld,%ld "
+        L"scaledDirty=%ld,%ld,%ld,%ld "
         L"canvasActive=%d bufferSize=%ld,%ld "
         L"publishOutput=%ld,%ld,%ld,%ld "
         L"publishClip=%ld,%ld,%ld,%ld bitmapOffset=%ld,%ld "
@@ -487,6 +559,14 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         m_canvas_display_area.cx, m_canvas_display_area.cy,
         m_canvas_rect.left, m_canvas_rect.top,
         m_canvas_rect.right, m_canvas_rect.bottom,
+        m_diag_design_canvas.cx, m_diag_design_canvas.cy,
+        m_diag_scale_canvas.cx, m_diag_scale_canvas.cy,
+        m_diag_scale_factor,
+        (int)m_scale_filter,
+        m_diag_source_dirty.left, m_diag_source_dirty.top,
+        m_diag_source_dirty.right, m_diag_source_dirty.bottom,
+        m_diag_scaled_dirty.left, m_diag_scaled_dirty.top,
+        m_diag_scaled_dirty.right, m_diag_scaled_dirty.bottom,
         m_canvas_active ? 1 : 0,
         m_render_size.cx, m_render_size.cy,
         m_canvas_publish_output.left, m_canvas_publish_output.top,
@@ -590,7 +670,8 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
         return S_FALSE;
     }
 
-    if(m_pSubPic && m_pSubPic->GetStart() <= now && now < m_pSubPic->GetStop())
+    if(!m_scale_design_canvas && m_pSubPic
+        && m_pSubPic->GetStart() <= now && now < m_pSubPic->GetStop())
     {
         return S_OK;
     }
@@ -619,7 +700,15 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
         DWORD color = 0xFF000000;
         if(SUCCEEDED(m_pSubPic->ClearDirtyRect(color)))
         {
-            m_pSub->Render(spd, now, dirty_rect);
+            if (m_scale_design_canvas) {
+                SubPicDesc design_spd = m_design_spd;
+                memsetd(
+                    design_spd.bits, 0xFF000000,
+                    (size_t)design_spd.pitch * design_spd.h);
+                m_pSub->Render(design_spd, now, dirty_rect);
+            } else {
+                m_pSub->Render(spd, now, dirty_rect);
+            }
 
             TRACE_SUB_PROVIDER(XY_LOG_VAR_2_STR(start)<<XY_LOG_VAR_2_STR(stop));
 
@@ -637,6 +726,34 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
         {
             hr = m_pSubPic->GetDirtyRect(&dirty_rect);
             ASSERT(SUCCEEDED(hr));
+            if (m_scale_design_canvas) {
+                RECT target_dirty = {};
+                const BitmapResampler::ScaleGeometry geometry =
+                    BitmapResampler::ResolveScaleGeometry(
+                        m_design_spd_size, m_render_size);
+                if (!BitmapResampler::MapRectToTarget(
+                        dirty_rect, geometry, &target_dirty)
+                    || !BitmapResampler::ScalePremultipliedRgba(
+                        m_design_spd.bits, m_design_spd.pitch,
+                        m_design_spd_size,
+                        spd.bits, spd.pitch, m_render_size,
+                        dirty_rect,
+                        m_scale_filter ==
+                            DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR
+                            ? BitmapResampler::FILTER_BILINEAR
+                            : BitmapResampler::FILTER_SPLINE36)) {
+                    m_xy_sub_render_frame = NULL;
+                    LogBitmapFrame(
+                        L"scale-failed", now, E_FAIL, &dirty_rect,
+                        lock_hr, alloc_hr);
+                    return E_FAIL;
+                }
+                m_diag_source_dirty = dirty_rect;
+                m_diag_scaled_dirty = target_dirty;
+                dirty_rect = target_dirty;
+                hr = m_pSubPic->SetDirtyRect(&dirty_rect);
+                ASSERT(SUCCEEDED(hr));
+            }
             if (!m_use_dst_alpha)
             {
                 hr = mem_subpic->FlipAlphaValue(dirty_rect);//fixme: mem_subpic.type is now MSP_RGBA_F, not MSP_RGBA

@@ -305,6 +305,7 @@ class CXySubFilterMorePPage : public CDVSBasePPage
     int m_yuv_matrix, m_yuv_range, m_rgb_level;
     int m_pgs_hdr_mode, m_pgs_hdr_white_nits;
     int m_subtitle_display_aspect;
+    int m_bitmap_scale_filter;
     int m_ui_language;
     int m_text_hdr_mode;
     SIZE m_layout_size;
@@ -327,6 +328,7 @@ class CXySubFilterMorePPage : public CDVSBasePPage
     CComboBox m_combo_yuv_matrix, m_combo_yuv_range, m_combo_rgb_level;
     CComboBox m_combo_pgs_hdr_mode;
     CComboBox m_combo_subtitle_display_area;
+    CComboBox m_combo_bitmap_scale_filter;
     CComboBox m_combo_ui_language;
     CComboBox m_combo_text_hdr_mode;
     CStatic m_hdrStatusLabel;

@@ -220,6 +220,17 @@ void PopulateSubtitleDisplayAreaCombo(CComboBox& combo, int selected)
     PopulateCombo(combo, entries, _countof(entries), selected);
 }
 
+void PopulateBitmapScaleFilterCombo(CComboBox& combo, int selected)
+{
+    const ComboEntry entries[] = {
+        { IDS_XY_UI_BITMAP_SCALE_SPLINE36,
+          DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36 },
+        { IDS_XY_UI_BITMAP_SCALE_BILINEAR,
+          DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR },
+    };
+    PopulateCombo(combo, entries, _countof(entries), selected);
+}
+
 CString FormatCachesMessage(
     const DirectVobSubXyOptions::CachesInfo& caches_info,
     const DirectVobSubXyOptions::XyFlyWeightInfo& xy_fw_info)
@@ -2170,6 +2181,8 @@ CXySubFilterMorePPage::CXySubFilterMorePPage(LPUNKNOWN pUnk, HRESULT* phr)
     , m_ui_language(DirectVobSubXyOptions::UI_LANGUAGE_AUTO)
     , m_text_hdr_mode(DirectVobSubXyOptions::PGS_HDR_MODE_AUTO)
     , m_subtitle_display_aspect(DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF)
+    , m_bitmap_scale_filter(
+        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36)
 {
     BindControl(IDC_SPINPathCache, m_path_cache);
     BindControl(IDC_SPINScanlineCache, m_scanline_cache);
@@ -2194,6 +2207,7 @@ CXySubFilterMorePPage::CXySubFilterMorePPage(LPUNKNOWN pUnk, HRESULT* phr)
     BindControl(IDC_COMBO_UI_LANGUAGE, m_combo_ui_language);
     BindControl(IDC_COMBO_TEXT_HDR_MODE, m_combo_text_hdr_mode);
     BindControl(IDC_COMBO_SUBTITLE_DISPLAY_AREA, m_combo_subtitle_display_area);
+    BindControl(IDC_COMBO_BITMAP_SCALE_FILTER, m_combo_bitmap_scale_filter);
     BindControl(IDC_HDR_STATUS, m_hdrStatusLabel);
     BindControl(IDC_HDR_DIAG_OPEN, m_openHdrDiagnostic);
     BindControl(IDC_EDIT_PGS_HDR_WHITE_NITS, m_edit_pgs_hdr_white_nits);
@@ -2372,6 +2386,10 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
             DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
             m_subtitle_display_aspect);
         CHECK_N_LOG(hr, "Failed to set option");
+        hr = m_pDirectVobSubXy->XySetInt(
+            DirectVobSubXyOptions::INT_BITMAP_SCALE_FILTER,
+            m_bitmap_scale_filter);
+        CHECK_N_LOG(hr, "Failed to set option");
 
         if (dvs_impl) {
             dvs_impl->EndHdrOptionBatch();
@@ -2432,6 +2450,10 @@ void CXySubFilterMorePPage::UpdateObjectData(bool fSave)
         hr = m_pDirectVobSubXy->XyGetInt(
             DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
             &m_subtitle_display_aspect);
+        CHECK_N_LOG(hr, "Failed to get option");
+        hr = m_pDirectVobSubXy->XyGetInt(
+            DirectVobSubXyOptions::INT_BITMAP_SCALE_FILTER,
+            &m_bitmap_scale_filter);
         CHECK_N_LOG(hr, "Failed to get option");
         if (!use_display_area) {
             m_subtitle_display_aspect =
@@ -2553,6 +2575,17 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
             m_subtitle_display_aspect =
                 DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
         }
+        if (m_combo_bitmap_scale_filter.GetCurSel() != CB_ERR)
+        {
+            m_bitmap_scale_filter = static_cast<int>(
+                m_combo_bitmap_scale_filter.GetItemData(
+                    m_combo_bitmap_scale_filter.GetCurSel()));
+        }
+        else
+        {
+            m_bitmap_scale_filter =
+                DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+        }
 
         m_render_to_original_video_size = !!m_checkbox_render_to_original_video_size.GetCheck();
 
@@ -2666,6 +2699,17 @@ void CXySubFilterMorePPage::UpdateControlData(bool fSave)
         }
         PopulateSubtitleDisplayAreaCombo(
             m_combo_subtitle_display_area, m_subtitle_display_aspect);
+
+        if (m_bitmap_scale_filter
+                < DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36
+            || m_bitmap_scale_filter
+                >= DirectVobSubXyOptions::BITMAP_SCALE_FILTER_COUNT)
+        {
+            m_bitmap_scale_filter =
+                DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+        }
+        PopulateBitmapScaleFilterCombo(
+            m_combo_bitmap_scale_filter, m_bitmap_scale_filter);
 
         m_spin_pgs_hdr_white_nits.SetRange32(50, 1000);
         CString hdr_white_str;

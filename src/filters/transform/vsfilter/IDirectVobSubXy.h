@@ -165,6 +165,7 @@ namespace DirectVobSubXyOptions
         INT_SUBTITLE_DISPLAY_ASPECT, //see @SubtitleDisplayAspect
         RECT_FULLSCREEN,             //consumer fullscreen rect, appended for ABI
         SIZE_DISPLAY_AREA,           //provider -> wrappers: real display size
+        INT_BITMAP_SCALE_FILTER,     //see @BitmapScaleFilter
 
         OPTION_COUNT
     };
@@ -247,6 +248,12 @@ namespace DirectVobSubXyOptions
         SUBTITLE_DISPLAY_ASPECT_4_3,
         SUBTITLE_DISPLAY_ASPECT_COUNT
     };
+    enum BitmapScaleFilter
+    {
+        BITMAP_SCALE_FILTER_SPLINE36 = 0,
+        BITMAP_SCALE_FILTER_BILINEAR,
+        BITMAP_SCALE_FILTER_COUNT
+    };
     struct TextSettings {
         void* lf;
         int lflen;
@@ -304,6 +311,7 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_CONSUMER_IS_FULLSCREEN},
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_SUBTITLE_DISPLAY_ASPECT},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_BITMAP_SCALE_FILTER},
 
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ORIGINAL_VIDEO},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ASS_PLAY_RESOLUTION},
@@ -408,6 +416,7 @@ namespace DirectVobSubXyOptions
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_CONSUMER_IS_FULLSCREEN},
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES},
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_SUBTITLE_DISPLAY_ASPECT},
+        {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_BITMAP_SCALE_FILTER},
 
         {XyOptionsImpl::OPTION_TYPE_INT   , XyOptionsImpl::OPTION_MODE_RW, INT_MAX_BITMAP_COUNT},
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_RW, BOOL_COMBINE_BITMAPS},

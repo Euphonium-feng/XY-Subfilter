@@ -834,6 +834,7 @@ HRESULT DirectVobSubImpl::OnOptionChanged( unsigned field )
         || field == INT_PGS_HDR_WHITE_NITS
         || field == INT_TEXT_HDR_MODE
         || field == INT_SUBTITLE_DISPLAY_ASPECT
+        || field == INT_BITMAP_SCALE_FILTER
         || field == BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES) {
         InterlockedIncrement(&m_hdr_generation);
     }
@@ -1485,6 +1486,16 @@ CDirectVobSub::CDirectVobSub( const Option *options, CCritSec * pLock )
         m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT] =
             DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
     }
+    m_xy_int_opt[INT_BITMAP_SCALE_FILTER] = theApp.GetProfileInt(
+        ResStr(IDS_R_GENERAL), ResStr(IDS_RG_BITMAP_SCALE_FILTER),
+        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36);
+    if (m_xy_int_opt[INT_BITMAP_SCALE_FILTER]
+            < DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36
+        || m_xy_int_opt[INT_BITMAP_SCALE_FILTER]
+            >= DirectVobSubXyOptions::BITMAP_SCALE_FILTER_COUNT) {
+        m_xy_int_opt[INT_BITMAP_SCALE_FILTER] =
+            DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+    }
     // The display size is a machine constant, so it is captured once by the
     // property page and reused by every later playback. Without this the
     // option looked like it did nothing until it was re-applied.
@@ -1638,6 +1649,9 @@ STDMETHODIMP CDirectVobSub::UpdateRegistry()
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
         ResStr(IDS_RG_SUBTITLE_DISPLAY_ASPECT),
         m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_BITMAP_SCALE_FILTER),
+        m_xy_int_opt[INT_BITMAP_SCALE_FILTER]);
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
         ResStr(IDS_RG_DISPLAY_AREA_WIDTH),
         m_xy_size_opt[SIZE_DISPLAY_AREA].cx);
@@ -1920,6 +1934,16 @@ CDVS4XySubFilter::CDVS4XySubFilter( const Option *options, CCritSec * pLock )
         m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT] =
             DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
     }
+    m_xy_int_opt[INT_BITMAP_SCALE_FILTER] = theApp.GetProfileInt(
+        ResStr(IDS_R_GENERAL), ResStr(IDS_RG_BITMAP_SCALE_FILTER),
+        DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36);
+    if (m_xy_int_opt[INT_BITMAP_SCALE_FILTER]
+            < DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36
+        || m_xy_int_opt[INT_BITMAP_SCALE_FILTER]
+            >= DirectVobSubXyOptions::BITMAP_SCALE_FILTER_COUNT) {
+        m_xy_int_opt[INT_BITMAP_SCALE_FILTER] =
+            DirectVobSubXyOptions::BITMAP_SCALE_FILTER_SPLINE36;
+    }
     {
         const int display_width = theApp.GetProfileInt(
             ResStr(IDS_R_GENERAL), ResStr(IDS_RG_DISPLAY_AREA_WIDTH), 0);
@@ -2110,6 +2134,9 @@ STDMETHODIMP CDVS4XySubFilter::UpdateRegistry()
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
         ResStr(IDS_RG_SUBTITLE_DISPLAY_ASPECT),
         m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT]);
+    theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
+        ResStr(IDS_RG_BITMAP_SCALE_FILTER),
+        m_xy_int_opt[INT_BITMAP_SCALE_FILTER]);
 
     theApp.WriteProfileInt(ResStr(IDS_R_GENERAL),
         ResStr(IDS_RG_DISPLAY_AREA_WIDTH),

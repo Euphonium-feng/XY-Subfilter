@@ -695,6 +695,7 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
         }
         break;
     case INT_SUBTITLE_DISPLAY_ASPECT:
+    case INT_BITMAP_SCALE_FILTER:
     case BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES:
     case SIZE_DISPLAY_AREA:
         {
