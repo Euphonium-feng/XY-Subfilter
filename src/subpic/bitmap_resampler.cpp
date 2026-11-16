@@ -94,20 +94,12 @@ namespace
         gi = _mm_andnot_si128(transparent, gi);
         ri = _mm_andnot_si128(transparent, ri);
 
-        __m128i b8 = _mm_packus_epi32(bi, bi);
-        b8 = _mm_packus_epi16(b8, b8);
-        __m128i g8 = _mm_packus_epi32(gi, gi);
-        g8 = _mm_packus_epi16(g8, g8);
-        __m128i r8 = _mm_packus_epi32(ri, ri);
-        r8 = _mm_packus_epi16(r8, r8);
-        __m128i a8 = _mm_packus_epi32(ai, ai);
-        a8 = _mm_packus_epi16(a8, a8);
-
-        const __m128i bg = _mm_unpacklo_epi8(b8, g8);
-        const __m128i ra = _mm_unpacklo_epi8(r8, a8);
-        _mm_storeu_si128(
-            reinterpret_cast<__m128i*>(pixel),
-            _mm_unpacklo_epi16(bg, ra));
+        // One 32-bit lane per pixel: B | G<<8 | R<<16 | A<<24.
+        __m128i packed = bi;
+        packed = _mm_or_si128(packed, _mm_slli_epi32(gi, 8));
+        packed = _mm_or_si128(packed, _mm_slli_epi32(ri, 16));
+        packed = _mm_or_si128(packed, _mm_slli_epi32(ai, 24));
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(pixel), packed);
     }
 #endif
 
