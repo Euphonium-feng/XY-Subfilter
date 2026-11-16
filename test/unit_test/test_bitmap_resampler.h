@@ -50,7 +50,8 @@ TEST(BitmapResamplerTest, ScaleGeometryPadsMismatchedAspect)
         BitmapResampler::ResolveScaleGeometry(
             SIZE{ 1440, 1080 }, SIZE{ 1920, 1080 });
 
-    EXPECT_TRUE(geometry.active);
+    // Equal scale, only horizontal padding: no pixel resample is needed.
+    EXPECT_FALSE(geometry.active);
     EXPECT_DOUBLE_EQ(1.0, geometry.scale);
     EXPECT_EQ(1440, geometry.scaled_size.cx);
     EXPECT_EQ(1080, geometry.scaled_size.cy);
@@ -124,13 +125,15 @@ TEST(BitmapResamplerTest, DirtyRectOnlyWritesMappedRegion)
         target.data(), 16 * 4, SIZE{ 16, 16 },
         RECT{ 2, 2, 4, 4 }, FILTER_BILINEAR));
 
+    // The 2..4 design rect maps to 4..8 in the 2x target. Pixel (0,0) is
+    // outside the filter halo and must stay untouched.
     const BYTE* untouched = &target[0];
     EXPECT_EQ(0xEE, untouched[0]);
     EXPECT_EQ(0xEE, untouched[1]);
     EXPECT_EQ(0xEE, untouched[2]);
     EXPECT_EQ(0xEE, untouched[3]);
 
-    const BYTE* written = &target[((size_t)8 * 16 + 8) * 4];
+    const BYTE* written = &target[((size_t)5 * 16 + 5) * 4];
     EXPECT_NE(0xEE, written[3]);
 }
 

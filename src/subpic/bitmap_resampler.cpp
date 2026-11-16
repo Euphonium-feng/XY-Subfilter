@@ -301,8 +301,12 @@ namespace BitmapResampler
             1, target_size.cy);
         result.offset.x = (target_size.cx - result.scaled_size.cx) / 2;
         result.offset.y = (target_size.cy - result.scaled_size.cy) / 2;
+        // Padding alone also requires the copy path: a 1440x1080 design
+        // centred in 1920x1080 has scale 1 and a non-zero x offset.
         result.active = result.scaled_size.cx != design_size.cx
-            || result.scaled_size.cy != design_size.cy;
+            || result.scaled_size.cy != design_size.cy
+            || result.offset.x != 0
+            || result.offset.y != 0;
         return result;
     }
 
