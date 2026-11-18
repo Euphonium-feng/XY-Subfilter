@@ -479,8 +479,9 @@ D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确�
 
 ### MPCVR 适配（D49–D52）
 
-已实现；云端三矩阵 run `44277722963` 全绿（`release-win32`、`release-x64`、
-`debug-x64`）。实机尚未取证：
+已实现；云端三矩阵 run `44277722963` 与 `44284664363`
+（`isBitmap=false` 伪装）全绿（`release-win32`、`release-x64`、`debug-x64`）。
+实机尚未取证：
 
 1. `SubtitleDisplayLayout::ResolveConsumerContract()` 与
    `ShouldPassThroughSdrForConsumer()`：纯函数，单测覆盖三族 consumer。
