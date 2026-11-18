@@ -124,20 +124,20 @@
   1920×1080 画布），不得把物理显示尺寸 2560×1440 直接写成 output，否则 madVR
   会把整幅画布再次缩回视频矩形并造成压扁。
 - 单张 bitmap 不得同时覆盖视频带与黑边（发布卫生要求，不单独决定可见性）。
-  2026-11-09 22:17 日志已确认 `partitionCount=2`、`bitmapCount=2`，但 Auto/16:9
-  仍不可见；文本路径同样发布跨界 bitmap 却能显示，所以“跨界被丢弃”不是根因。
-  残余差异是 consumer 的 `isBitmap=true` 分支只按视频矩形合成，忽略 clip 的
-  黑边部分。当前实验为：画布启用时仅对 consumer 把 `isBitmap` 报为 false，
-  `isMovable` 保持 false，内部位图标志与 HDR 选择不变。该实验未实机确认前，
-  不得把位图黑边显示记为已修复。
+  2026-11-09 22:17 日志已确认 `partitionCount=2`、`bitmapCount=2`，但当时
+  Auto/16:9 仍不可见；文本路径同样发布跨界 bitmap 却能显示，所以“跨界被丢弃”
+  不是根因。残余差异是 consumer 的 `isBitmap=true` 分支只按视频矩形合成，
+  忽略 clip 的黑边部分。画布启用时仅对 madVR 把 `isBitmap` 报为 false，
+  `isMovable` 保持 false，内部位图标志与 HDR 选择不变；该路径已于
+  2026-11-18 通过用户实机验收。
 - 呈现契约必须按 consumer 区分，不得全局伪装。当前只对名称包含 `madVR` 的
   consumer 把 `isBitmap` 读为 false；MPC VR 与未知名称保持真实
   `isBitmap=true`、`isMovable=false`。内部 `BOOL_IS_BITMAP` 与 HDR 选择不变。
   任何新增 consumer 的例外都必须先有该 consumer 的实机证据，不得按“应该可以”
   推测加入。
-- 当前位图完整画布实现尚未通过实机验收：Auto/16:9 不可见、关闭时压扁。
-  在该问题闭环前，不得把云端三矩阵或 `xy-bitmap-frame/1` 存在记录当作
-  位图字幕已生效。
+- 位图完整画布与设计画布缩放在 PotPlayer + madVR 下已于 2026-11-18 通过
+  用户实机验收；云端三矩阵和 `xy-bitmap-frame/1` 仍只是辅助证据，不能替代
+  其他 consumer 的实机取证。
 - 2026-11-09 19:28 日志显示对象确实绘制，但单张跨界 bitmap
   `bitmap0=690,790,1230,880` 同时覆盖视频底边与下黑边，画面仍不可见。
   `canvasActive=1` 或 `drawnObjects=1` 不能证明画面生效；必须看到

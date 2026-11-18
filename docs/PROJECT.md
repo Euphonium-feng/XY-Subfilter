@@ -15,7 +15,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 5. **深层 Auto HDR 探测** —— 沿活动视频路径读取嵌套媒体类型；文件名未提示 HDR 时，
    有界读取本地 MKV 的 Colour/mastering 元数据作为兜底。
 6. **按显示器区域排版字幕** —— 文本字幕已按完整显示画布排版并通过实机使用；
-   PGS/SUP/DVB 位图的完整显示画布实现已落地，但**尚未通过实机验收**。
+   PGS/SUP/DVB 位图的完整显示画布与设计画布缩放已通过 PotPlayer + madVR
+   实机验收（2026-11-18）。
 
 ## 需求
 
@@ -68,7 +69,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 10. 4K 视频配 1080p SUP 时，位图按设计画布等比缩放到显示画布，字号与位置
     正确；云端 Release 基准显示两者均未达到每帧 2 ms，因此 Bilinear 为默认，
     Spline36 可在属性页切换。比例不一致时透明留边，不裁切、不非等比拉伸。
-    缩放仅在显示画布启用时生效。
+    缩放仅在显示画布启用时生效。2026-11-18 用户已在 PotPlayer + madVR 下
+    确认该画面验收通过。
 
 ## 当前状态
 
@@ -114,3 +116,7 @@ Auto 与手动 PQ 均未呈现预期映射。已排除 CSRI；当前保存的 `t
 16:9 均把位图字幕正确放入下黑边，比例正常。关键条件是画布启用时对 madVR
 把 `isBitmap` 读为 false。MPC VR 是独立实现，没有同样的实测证据；当前
 `D47` 让 MPC VR 与未知 consumer 保持真实 `isBitmap=true`，等待实机取证。
+
+2026-11-18 用户确认“验收通过”：4K 视频配 1080p SUP 时，字幕不再挤在左上角，
+位图缩放功能实机验收关闭。剩余未验证范围为 MPC VR/未知 consumer；Release
+性能仍高于 2 ms/帧目标，作为独立性能事项保留，不否定画面验收结论。
