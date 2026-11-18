@@ -866,6 +866,16 @@ HRESULT XySubFilter::DoGetField( unsigned field, void *value )
             }
         }
         break;
+    case BOOL_INTERNAL_IS_BITMAP:
+        {
+            // Read-only alias of the real subtitle type. BOOL_IS_BITMAP is a
+            // presentation flag that may be masked for overlay consumers;
+            // this value never is.
+            CAutoLock cAutolock(&m_csProviderFields);
+            *static_cast<bool*>(value) = m_xy_bool_opt[BOOL_IS_BITMAP];
+            hr = S_OK;
+        }
+        break;
     case INT_LANGUAGE_COUNT:
         {
             CAutoLock cAutoLock(&m_csFilter);

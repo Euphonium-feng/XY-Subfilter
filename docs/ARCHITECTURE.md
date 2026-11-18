@@ -306,10 +306,13 @@ video 原点，因此可以进入黑边。不能把物理显示尺寸（2560×14
 ## Consumer 呈现契约
 
 `SubtitleDisplayLayout::ResolveConsumerContract()` 是纯函数，按 consumer 名称
-给出三个标志：`present_oversized_bitmap`（madVR：画布启用时伪装
+给出三个标志：`present_oversized_bitmap`（madVR 与 MPCVR：画布启用时伪装
 `isBitmap=false`）、`prefer_single_bitmap`（MPCVR：只发布第 0 张整幅画布）、
 `hdr_owned_by_consumer`（MPCVR：自行把 SDR 字幕转 PQ）。未知 consumer 三项
 全为 false，保持真实位图路径。所有调用点共用该函数。
+
+属性页与状态文本需要真实身份时读取只读的 `BOOL_INTERNAL_IS_BITMAP`；
+`BOOL_IS_BITMAP` 是呈现标志，可能被契约伪装。
 
 MPCVR 分支的位图帧：
 

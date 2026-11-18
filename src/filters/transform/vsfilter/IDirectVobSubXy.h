@@ -166,6 +166,7 @@ namespace DirectVobSubXyOptions
         RECT_FULLSCREEN,             //consumer fullscreen rect, appended for ABI
         SIZE_DISPLAY_AREA,           //provider -> wrappers: real display size
         INT_BITMAP_SCALE_FILTER,     //see @BitmapScaleFilter
+        BOOL_INTERNAL_IS_BITMAP,     //true bitmap identity, unaffected by presentation
 
         OPTION_COUNT
     };
@@ -426,6 +427,7 @@ namespace DirectVobSubXyOptions
 
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_READ, BOOL_IS_MOVABLE},
         {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_READ, BOOL_IS_BITMAP},
+        {XyOptionsImpl::OPTION_TYPE_BOOL  , XyOptionsImpl::OPTION_MODE_READ, BOOL_INTERNAL_IS_BITMAP},
 
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ORIGINAL_VIDEO},
         {XyOptionsImpl::OPTION_TYPE_SIZE  , XyOptionsImpl::OPTION_MODE_READ, SIZE_ASS_PLAY_RESOLUTION},
