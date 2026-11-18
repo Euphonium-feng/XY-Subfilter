@@ -479,7 +479,8 @@ D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确�
 
 ### MPCVR 适配（D49–D52）
 
-已实现、待云端三矩阵与实机取证：
+已实现；云端三矩阵 run `44277722963` 全绿（`release-win32`、`release-x64`、
+`debug-x64`）。实机尚未取证：
 
 1. `SubtitleDisplayLayout::ResolveConsumerContract()` 与
    `ShouldPassThroughSdrForConsumer()`：纯函数，单测覆盖三族 consumer。
@@ -490,10 +491,12 @@ D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确�
    `(consumer PQ)` / `hdrOwner=consumer`。
 5. 报告：`docs/mpcvr-adaptation.md`。
 
-下一步：提交并走云端三矩阵；随后由用户在 PotPlayer + MPCVR 复测
-4K+1080p SUP 与 1920×800 ASS，回传 `%TEMP%\xy_hdr_diag.txt`。
+下一步：由用户在 PotPlayer + MPCVR 复测 4K+1080p SUP 与 1920×800 ASS、
+以及 HDR 输出下的字幕亮度，回传 `%TEMP%\xy_hdr_diag.txt`。
 判定顺序：`contract=mpcvr-texture`、`presentedBitmap=1`、
 `usesOversizedBitmap=1`、`hdrOwner=consumer`。
+MPCVR 黑边布局按源码推断不可达（目标矩形恒为画面矩形）；若实机画面
+仍被压回视频区，记录该限制，不改用 `isBitmap=false` 伪装。
 
 ### 深层 Auto HDR
 
