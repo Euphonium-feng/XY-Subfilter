@@ -109,8 +109,7 @@
 | `INT_UI_LANGUAGE` | 99 |
 | `INT_TEXT_HDR_MODE` | 100 |
 
-其后继续追加的 `BOOL_VIDEO_IS_HDR` 至 `INT_BITMAP_SCALE_FILTER` 为 101–107，
-`BOOL_INTERNAL_IS_BITMAP` 为 108。
+其后继续追加的 `BOOL_VIDEO_IS_HDR` 至 `INT_BITMAP_SCALE_FILTER` 为 101–107。
 上表数值由 `IDirectVobSubXy.h` 的枚举顺序计数得出；新增项只能继续追加，
 不得改变这些既有值。
 
@@ -651,17 +650,18 @@ madVR 的成功依赖 `isBitmap=false`，MPCVR 的语义完全不同：它不读
 
 新增 `SubtitleDisplayLayout::ResolveConsumerContract()`，返回三个布尔：
 `present_oversized_bitmap`、`prefer_single_bitmap`、
-`hdr_owned_by_consumer`。madVR 与 MPCVR 都在画布启用且位图时置第一个；
-MPCVR 位图另置第二个、两种字幕置第三个；未知 consumer 全部为 false。
-`XySubFilter`、`XySubRenderProviderWrapper2`、`HdmvSubtitleProviderImpl`
-共用该函数。
+`hdr_owned_by_consumer`。madVR 只在画布启用且位图时置第一个；MPCVR 位图
+置第二个、两种字幕置第三个；未知 consumer 全部为 false。`XySubFilter`、
+`XySubRenderProviderWrapper2`、`HdmvSubtitleProviderImpl` 共用该函数。
 
-2026-11-18 用户决定：MPCVR 同样使用 `isBitmap=false` 伪装，与 madVR 的覆盖层
-呈现保持一致。必须写明的事实：MPCVR-Plus 0.11.1 的 `ISubRenderOptions::GetBool`
-无条件返回 `E_INVALIDARG`（`Source/VideoRenderer.h:367`），它不读取该字段，
-因此伪装只改变 provider 对 consumer 的声明，不改变该版本的实际合成路径，
-也不会因此让黑边出现。属性页的“实际后端”改用新增的只读
-`BOOL_INTERNAL_IS_BITMAP`，避免把位图字幕误显示为文本后端。
+被否方案：为 MPCVR 复用 madVR 的 `isBitmap=false`。这会把位图交给 MPCVR 的
+文本覆盖层路径，几何与 HDR 都不可控，且与实测无关。
+
+2026-11-18 曾按用户要求实际实现过 MPCVR 的 `isBitmap=false` 伪装并让它通过
+三矩阵（run `44284664363`），随后撤回。撤回依据不是构建失败，而是源码事实：
+MPCVR-Plus 0.11.1 的 `ISubRenderOptions::GetBool` 无条件返回 `E_INVALIDARG`
+（`Source/VideoRenderer.h:367`），它根本不读该字段，因此伪装只改变 provider
+的声明，不改变合成路径，也换不来黑边。这条记录保留下来，避免以后重复尝试。
 
 ## D50：MPCVR 位图发布单张整幅画布
 

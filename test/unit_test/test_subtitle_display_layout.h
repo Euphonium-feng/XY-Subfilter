@@ -571,10 +571,7 @@ TEST(SubtitleDisplayLayoutTest, MpcVrContractOwnsHdrAndPrefersOneBitmap)
         SubtitleDisplayLayout::ResolveConsumerContract(
             SubtitleDisplayLayout::CONSUMER_MPC_VR, true, true);
     // MPCVR reads only bitmap 0 and converts SDR subtitle textures itself.
-    // Canvas frames are also presented with isBitmap=false (user decision);
-    // the current MPCVR-Plus ignores the flag, so this only changes what the
-    // consumer is told.
-    EXPECT_TRUE(bitmap.present_oversized_bitmap);
+    EXPECT_FALSE(bitmap.present_oversized_bitmap);
     EXPECT_TRUE(bitmap.prefer_single_bitmap);
     EXPECT_TRUE(bitmap.hdr_owned_by_consumer);
 
@@ -591,7 +588,6 @@ TEST(SubtitleDisplayLayoutTest, MpcVrContractOwnsHdrAndPrefersOneBitmap)
     const SubtitleDisplayLayout::ConsumerContract no_canvas =
         SubtitleDisplayLayout::ResolveConsumerContract(
             SubtitleDisplayLayout::CONSUMER_MPC_VR, false, true);
-    EXPECT_FALSE(no_canvas.present_oversized_bitmap);
     EXPECT_TRUE(no_canvas.prefer_single_bitmap);
     EXPECT_TRUE(no_canvas.hdr_owned_by_consumer);
 }

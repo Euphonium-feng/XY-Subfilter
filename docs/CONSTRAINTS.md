@@ -30,7 +30,7 @@
 ## 兼容性
 
 - `DirectShow` / `AviSynth` / `VirtualDub` / `CSRI` 四条接入面都要保持可用。
-- 新增选项 ID 必须小于 `XyOptionsImpl::MAX_OPTION_ID`（127）。当前 `OPTION_COUNT = 109`，最大 ID 为 108（`BOOL_INTERNAL_IS_BITMAP`）。
+- 新增选项 ID 必须小于 `XyOptionsImpl::MAX_OPTION_ID`（127）。当前 `OPTION_COUNT = 108`，最大 ID 为 107（`INT_BITMAP_SCALE_FILTER`）。
 - 语言资源不得影响现有英文界面的字符串 ID 与行为。
 - 外部消费者（如 madVR）把自己编译的选项常量传给 provider，既有 ID 数值不得改变。
 
@@ -45,7 +45,7 @@
 
 ## 已验证的实现约束
 
-- 新增选项 ID 必须追加在 `DirectVobSubXyOptions` 枚举末尾、`OPTION_COUNT` 之前。当前新增项为 97–108。
+- 新增选项 ID 必须追加在 `DirectVobSubXyOptions` 枚举末尾、`OPTION_COUNT` 之前。当前新增项为 97–107。
 - PQ 模式下 ARGB/文本路径必须输出全幅范围，否则 PQ 码会被 TV 范围二次压缩、白点被拉低约 9%。
 - `.rc` 中文块以 GBK 存储并配 `#pragma code_page(936)`；英文块保持 ASCII。若编辑器把文件另存为 UTF-8 而 pragma 未改，中文会变成乱码。
 - 中文资源块必须与英文块包含完全相同的控件 ID 与字符串 ID，否则切换语言后控件缺失。
@@ -130,17 +130,18 @@
   忽略 clip 的黑边部分。画布启用时仅对 madVR 把 `isBitmap` 报为 false，
   `isMovable` 保持 false，内部位图标志与 HDR 选择不变；该路径已于
   2026-11-18 通过用户实机验收。
-- 呈现契约必须按 consumer 区分，不得全局伪装。madVR 与 MPCVR 在画布启用且
-  位图时把 `isBitmap` 读为 false；未知 consumer 保持真实 `isBitmap=true`。
-  `isMovable=false`、内部 `BOOL_IS_BITMAP` 与 HDR 选择均不变。
-- MPCVR-Plus 0.11.1 不读取 `isBitmap`（`ISubRenderOptions::GetBool` 返回
-  `E_INVALIDARG`），因此对 MPCVR 的伪装只改变 provider 的声明，
-  不得据此宣称合成路径或黑边行为已改变。
-- 属性页“实际后端”必须读取 `BOOL_INTERNAL_IS_BITMAP`，不得读取会被伪装覆盖的
-  `BOOL_IS_BITMAP`，否则位图字幕会被误标为文本后端。
+- 呈现契约必须按 consumer 区分，不得全局伪装。当前只对名称包含 `madVR` 的
+  consumer 把 `isBitmap` 读为 false；MPC VR 与未知名称保持真实
+  `isBitmap=true`、`isMovable=false`。内部 `BOOL_IS_BITMAP` 与 HDR 选择不变。
+  任何新增 consumer 的例外都必须先有该 consumer 的实机证据，不得按“应该可以”
+  推测加入。
 - MPCVR 的名称分类只允许走源码已核实的纹理契约，不得套用 madVR 的
   `isBitmap=false` 伪装：MPCVR 会按两轴独立缩放把纹理落到 `m_videoRect`，
   且只读取 `GetBitmap(0)`（`docs/mpcvr-adaptation.md`）。
+- MPCVR-Plus 0.11.1 不读取 `isBitmap`（`ISubRenderOptions::GetBool` 无条件返回
+  `E_INVALIDARG`），所以伪装该标志不会改变它的合成路径或黑边行为。
+  2026-11-18 曾实现过一次并在实测语义上确认无效后撤回；不要仅为“保持一致”
+  再次加入，除非 MPCVR-Plus 已实现 `GetBool("isBitmap")`。
 - MPCVR 位图画布必须发布为单张零基整幅纹理：`GetOutputRect = GetClipRect =
   (0,0,canvasW,canvasH)`、bitmap `position=(0,0)`、`size=canvas`。发布分区
   或只带脏区的 bitmap 会让 MPCVR 采到裁切后的纹理。

@@ -2143,10 +2143,7 @@ void CXySubFilterMainPPage::UpdateControlData(bool fSave)
         if (SUCCEEDED(m_pDirectVobSubXy->XyGetInt(DirectVobSubXyOptions::INT_ACTUAL_SUBTITLE_RENDER_BACKEND, &actual_backend))) {
             CString actual_backend_label;
             bool is_bitmap = false;
-            // BOOL_IS_BITMAP is the presentation flag and can be masked for
-            // consumers that take the overlay contract; the backend label must
-            // follow the subtitle's real type.
-            m_pDirectVobSubXy->XyGetBool(DirectVobSubXyOptions::BOOL_INTERNAL_IS_BITMAP, &is_bitmap);
+            m_pDirectVobSubXy->XyGetBool(DirectVobSubXyOptions::BOOL_IS_BITMAP, &is_bitmap);
             if (is_bitmap) {
                 // Bitmap subtitles do not use the text renderer backend.
                 actual_backend_label = ResStr(IDS_XY_UI_ACTUAL_BITMAP);

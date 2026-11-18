@@ -478,12 +478,6 @@ namespace SubtitleDisplayLayout
             // its video rect with independent X/Y factors. A single opaque
             // canvas texture keeps the geometry in one piece; MPCVR converts
             // the SDR subtitle texture to PQ for HDR output itself.
-            // Canvas frames are also presented with isBitmap=false, matching
-            // the madVR overlay contract by user decision. MPCVR-Plus 0.11.1
-            // ignores the flag (GetBool returns E_INVALIDARG), so this changes
-            // what the consumer is told, not how that build composites.
-            contract.present_oversized_bitmap =
-                canvas_active && is_bitmap;
             contract.prefer_single_bitmap = is_bitmap;
             contract.hdr_owned_by_consumer = true;
             break;

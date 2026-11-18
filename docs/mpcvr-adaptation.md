@@ -55,7 +55,7 @@ MPCVR 作为 consumer 暴露 `ISubRenderConsumer2`（`Source/VideoRenderer.h:357
 | `displayModeSize` | consumer → provider | **未实现** | `Source/VideoRenderer.cpp:2575-2592` |
 | `isHdrVideo` | consumer → provider | **未实现**；HDR 由 MPCVR 自己从媒体类型与 side data 判定 | `Source/DX11VideoProcessor.cpp:3051-3092` |
 | `combineBitmaps` | provider → consumer | MPCVR 在 `Connect` 时置 `true` | `Source/VideoRenderer.cpp:2524` |
-| `isBitmap` | provider → consumer | **MPCVR 不读取**（`GetBool` 恒 `E_INVALIDARG`） | `Source/VideoRenderer.h:367` |
+| `isBitmap` | provider → consumer | **MPCVR 不读取**；`ISubRenderOptions::GetBool` 无条件返回 `E_INVALIDARG` | `Source/VideoRenderer.h:367` |
 | `isMovable` | provider → consumer | **MPCVR 不读取** | 无 `GetBool` 实现 |
 | `outputLevels` | provider → consumer | **MPCVR 不读取** | 无 `GetString` 分支 |
 
@@ -179,10 +179,7 @@ x = pow(x, m2)                     // PQ OETF
 - 文本：同样以零基画布发布，让 `VirtualSize` 等于画布。
 - HDR：MPCVR 分类下，位图与文本都返回 `MAP_OFF`，保留 SDR 码值；
   白点由 MPCVR 的 `HdrOsdBrightness` 决定，本项目的 203 nits 不作用于 MPCVR。
-- 呈现：按用户决定，MPCVR 在画布启用且位图时同样把 `isBitmap` 读为 false；
-  `isMovable` 保持 `false`。该版本 `GetBool` 恒返回 `E_INVALIDARG`，
-  所以伪装不改变它的实际合成；真实身份通过 `BOOL_INTERNAL_IS_BITMAP` 提供给
-  属性页与状态文本。
+- 呈现：`isBitmap` 保持真实 `true`，`isMovable` 保持 `false`，不套用 madVR 的伪装。
 
 ### 由 MPCVR 负责
 
