@@ -889,13 +889,42 @@ void DirectVobSubImpl::ApplyActiveUiLanguageToCurrentThread()
     SetThreadUILanguage(GetActiveResourceLanguage());
 }
 
+bool DirectVobSubImpl::IsMpcVrConsumer() const
+{
+    return SubtitleDisplayLayout::ClassifyConsumer(
+        m_xy_str_opt[STRING_CONNECTED_CONSUMER])
+        == SubtitleDisplayLayout::CONSUMER_MPC_VR;
+}
+
+bool DirectVobSubImpl::ConsumerOwnsHdrConversion() const
+{
+    // Verified on MPCVR-Plus 0.11.1: the renderer converts SDR subtitle
+    // textures to PQ on its own HDR output path. Handing it PQ-encoded codes
+    // would apply the transfer function a second time.
+    return SubtitleDisplayLayout::ShouldPassThroughSdrForConsumer(
+        SubtitleDisplayLayout::ClassifyConsumer(
+            m_xy_str_opt[STRING_CONNECTED_CONSUMER]));
+}
+
 HdrColor::Config DirectVobSubImpl::ResolvePgsHdrConfig() const
 {
+    if (ConsumerOwnsHdrConversion()) {
+        return HdrColor::NormalizeConfig(
+            HdrColor::MAP_OFF,
+            double(m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]),
+            GetHdrGeneration());
+    }
     return ResolveHdrMode(m_xy_int_opt[INT_PGS_HDR_MODE]);
 }
 
 HdrColor::Config DirectVobSubImpl::ResolveTextHdrConfig() const
 {
+    if (ConsumerOwnsHdrConversion()) {
+        return HdrColor::NormalizeConfig(
+            HdrColor::MAP_OFF,
+            double(m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]),
+            GetHdrGeneration());
+    }
     return ResolveHdrMode(m_xy_int_opt[INT_TEXT_HDR_MODE]);
 }
 
@@ -985,9 +1014,20 @@ CStringW DirectVobSubImpl::GetHdrStatusText()
         hash = CStringW(sha1.Left(7));
     }
     CStringW value;
-    value.Format(L"%ls: %ls %d | %ls",
-        is_bitmap ? L"Bitmap" : L"Text",
-        mode.GetString(), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS], hash.GetString());
+    if (ConsumerOwnsHdrConversion()) {
+        // The renderer applies the transfer function itself; printing the
+        // provider's PQ/PQ-white wording here would claim an effect the
+        // pipeline does not have.
+        value.Format(L"%ls: %ls (consumer PQ) | %ls",
+            is_bitmap ? L"Bitmap" : L"Text",
+            mode.GetString(), hash.GetString());
+    }
+    else {
+        value.Format(L"%ls: %ls %d | %ls",
+            is_bitmap ? L"Bitmap" : L"Text",
+            mode.GetString(), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS],
+            hash.GetString());
+    }
     return value;
 }
 

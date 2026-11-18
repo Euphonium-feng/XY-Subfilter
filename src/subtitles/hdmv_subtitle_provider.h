@@ -51,6 +51,10 @@ private :
     bool m_canvas_active;
     int m_canvas_fallback;
     bool m_frame_geometry_dirty;
+    // Consumer contract (resolved in RequestFrame): MPCVR reads only the
+    // first bitmap, so canvas frames are published as one canvas-sized
+    // texture instead of the madVR band partition.
+    bool m_prefer_single_bitmap;
 
     bool m_diag_valid;
     ULONGLONG m_diag_bitmap_id;
@@ -76,7 +80,12 @@ private :
     RECT m_diag_consumer_fullscreen;
     SIZE m_diag_consumer_display_mode;
     RECT m_diag_consumer_subtitle_target;
+    CStringW m_diag_contract;
+    int m_diag_oversized_bitmap;
+    double m_diag_consumer_scale_x;
+    double m_diag_consumer_scale_y;
     bool m_diag_consumer_pending;
+    int m_diag_consumer_retries;
 
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;

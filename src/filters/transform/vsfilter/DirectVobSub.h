@@ -28,6 +28,7 @@
 #include "XyOptionsImpl.h"
 #include "../../../subpic/hdr_color.h"
 #include "../../../subpic/hdr_evidence.h"
+#include "../../../subpic/subtitle_display_layout.h"
 
 class DirectVobSubImpl : public IDirectVobSub2, public XyOptionsImpl, public IFilterVersion
 {
@@ -131,6 +132,15 @@ public:
     // Same mapping rules for ASS/SRT text, driven by INT_TEXT_HDR_MODE and the
     // shared white point.
     HdrColor::Config ResolveTextHdrConfig() const;
+
+    // True when the connected consumer converts SDR subtitle textures to its
+    // own HDR output, so the provider must pass the original SDR codes
+    // through. Only names verified on the actual renderer qualify.
+    bool ConsumerOwnsHdrConversion() const;
+
+    // True when the connected consumer's own presentation contract is the
+    // MPCVR texture path (single canvas bitmap, consumer-side PQ conversion).
+    bool IsMpcVrConsumer() const;
 
     // Applies INT_UI_LANGUAGE to the calling thread's resource language.
     static void ApplyUiLanguage(int ui_language);

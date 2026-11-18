@@ -87,7 +87,11 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_diag_presented_bitmap(-1)
     , m_diag_presented_movable(-1)
     , m_diag_max_bitmap_count(-1)
+    , m_diag_oversized_bitmap(-1)
+    , m_diag_consumer_scale_x(0.0)
+    , m_diag_consumer_scale_y(0.0)
     , m_diag_consumer_pending(true)
+    , m_diag_consumer_retries(0)
 {
     m_cur_output_size.cx = 0;
     m_cur_output_size.cy = 0;
@@ -100,6 +104,7 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_canvas_enabled = false;
     m_canvas_display_area.cx = 0;
     m_canvas_display_area.cy = 0;
+    m_prefer_single_bitmap = false;
     m_canvas_publish_output = RECT();
     m_canvas_publish_clip = RECT();
     m_canvas_rect = RECT();
@@ -122,6 +127,10 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_diag_consumer_display_mode.cx = 0;
     m_diag_consumer_display_mode.cy = 0;
     m_diag_consumer_subtitle_target = RECT();
+    m_diag_contract.Empty();
+    m_diag_oversized_bitmap = -1;
+    m_diag_consumer_scale_x = 0.0;
+    m_diag_consumer_scale_y = 0.0;
     m_design_spd = SubPicDesc();
     m_design_spd_size.cx = 0;
     m_design_spd_size.cy = 0;
@@ -156,6 +165,7 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
         m_canvas_cached = false;
         m_diag_valid = false;
         m_diag_consumer_pending = true;
+        m_diag_consumer_retries = 0;
     }
     else
     {
@@ -263,7 +273,15 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         return S_FALSE;
     }
 
-    if (m_diag_consumer_pending) {
+    if (m_diag_consumer_pending
+        || (m_diag_consumer_name.IsEmpty() && m_diag_consumer_retries < 8)) {
+        // The outer filter may not have copied the consumer name into its
+        // options yet when Connect() runs; retry a bounded number of frames
+        // so the presentation contract is not lost, without putting a COM
+        // call on every frame.
+        if (!m_diag_consumer_pending) {
+            ++m_diag_consumer_retries;
+        }
         RefreshConsumerDiagnostics();
     }
 
@@ -358,6 +376,20 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_pSubPic = NULL;
         m_xy_sub_render_frame = NULL;
         m_frame_geometry_dirty = true;
+    }
+
+    // Presentation contract: resolved here, after the canvas decision, from
+    // the consumer name cached at connection time. No per-frame COM call.
+    const SubtitleDisplayLayout::ConsumerContract contract =
+        SubtitleDisplayLayout::ResolveConsumerContract(
+            SubtitleDisplayLayout::ClassifyConsumer(m_diag_consumer_name),
+            m_canvas_active, true);
+    if (m_prefer_single_bitmap != contract.prefer_single_bitmap) {
+        m_prefer_single_bitmap = contract.prefer_single_bitmap;
+        m_frame_geometry_dirty = true;
+        m_pSubPic = NULL;
+        m_xy_sub_render_frame = NULL;
+        m_diag_valid = false;
     }
 
     // The display canvas is the publication surface. Bitmap objects are
@@ -474,6 +506,28 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
             partitions);
     }
 
+    const RECT published_canvas = {
+        0, 0, m_render_size.cx, m_render_size.cy
+    };
+    m_diag_contract = m_prefer_single_bitmap
+        ? CStringW(L"mpcvr-texture") : CStringW(L"default");
+    m_diag_oversized_bitmap = m_prefer_single_bitmap ? 1 : 0;
+    m_diag_consumer_scale_x =
+        m_canvas_video_size.cx > 0
+            ? double(m_render_size.cx) / double(m_canvas_video_size.cx) : 0.0;
+    m_diag_consumer_scale_y =
+        m_canvas_video_size.cy > 0
+            ? double(m_render_size.cy) / double(m_canvas_video_size.cy) : 0.0;
+    const RECT published_output = m_prefer_single_bitmap
+        ? published_canvas : m_canvas_publish_output;
+    const RECT published_clip = m_prefer_single_bitmap
+        ? published_canvas : m_canvas_publish_clip;
+    POINT published_offset = m_canvas_bitmap_offset;
+    if (m_prefer_single_bitmap) {
+        published_offset.x = 0;
+        published_offset.y = 0;
+    }
+
     if (m_diag_valid
         && m_diag_bitmap_id == bitmap_id
         && m_diag_bitmap_count == bitmap_count
@@ -483,10 +537,10 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         && m_diag_buffer_size.cx == m_render_size.cx
         && m_diag_buffer_size.cy == m_render_size.cy
         && m_diag_scale_filter == m_scale_filter
-        && EqualRect(&m_diag_output, &m_canvas_publish_output)
-        && EqualRect(&m_diag_clip, &m_canvas_publish_clip)
-        && m_diag_offset.x == m_canvas_bitmap_offset.x
-        && m_diag_offset.y == m_canvas_bitmap_offset.y
+        && EqualRect(&m_diag_output, &published_output)
+        && EqualRect(&m_diag_clip, &published_clip)
+        && m_diag_offset.x == published_offset.x
+        && m_diag_offset.y == published_offset.y
         && m_diag_object_count == object_count
         && m_diag_drawn_objects == drawn_objects
         && m_diag_skipped_objects == skipped_objects
@@ -507,9 +561,11 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
     m_diag_bitmap_rects[1] = bitmap_rects[1];
     m_diag_bitmap_rects[2] = bitmap_rects[2];
     m_diag_buffer_size = m_render_size;
-    m_diag_output = m_canvas_publish_output;
-    m_diag_clip = m_canvas_publish_clip;
-    m_diag_offset = m_canvas_bitmap_offset;
+    // The diagnostic mirrors what was actually published: the MPCVR path
+    // reports the zero-based canvas, not the madVR partition geometry.
+    m_diag_output = published_output;
+    m_diag_clip = published_clip;
+    m_diag_offset = published_offset;
     m_diag_object_count = object_count;
     m_diag_drawn_objects = drawn_objects;
     m_diag_skipped_objects = skipped_objects;
@@ -548,6 +604,8 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         L"consumerFullscreen=%ld,%ld,%ld,%ld "
         L"consumerDisplayMode=%ld,%ld "
         L"consumerSubtitleTarget=%ld,%ld,%ld,%ld "
+        L"contract=%ls usesOversizedBitmap=%d "
+        L"consumerScale=%.3f,%.3f "
         L"canvasFallback=%d\r\n",
         event ? event : L"frame",
         now,
@@ -608,6 +666,10 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         m_diag_consumer_subtitle_target.top,
         m_diag_consumer_subtitle_target.right,
         m_diag_consumer_subtitle_target.bottom,
+        m_diag_contract.IsEmpty() ? L"default" : m_diag_contract.GetString(),
+        m_diag_oversized_bitmap,
+        m_diag_consumer_scale_x,
+        m_diag_consumer_scale_y,
         m_canvas_fallback);
     AppendXyDiagnostic(diagnostic.GetString());
 }
@@ -698,7 +760,17 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     const HRESULT lock_hr = m_pSubPic->Lock(spd);
     if(SUCCEEDED(lock_hr))
     {
-        DWORD color = 0xFF000000;
+        // Before FlipAlphaValue the surface stores an inverted, premultiplied
+        // alpha: the alpha byte 0 means opaque and 255 means transparent.
+        // 0xFF000000 is therefore the transparent clear, and becomes alpha 0
+        // in the published (normal) domain.
+        const DWORD color = 0xFF000000;
+        if (m_canvas_active && m_prefer_single_bitmap) {
+            // The whole canvas is published, not just the dirty rect, and a
+            // pooled surface may still hold the previous frame. Clear every
+            // pixel so the untouched area becomes transparent once flipped.
+            memsetd(spd.bits, color, (size_t)spd.pitch * spd.h);
+        }
         if(SUCCEEDED(m_pSubPic->ClearDirtyRect(color)))
         {
             dirty_rect.SetRectEmpty();
@@ -760,7 +832,14 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
             ASSERT(SUCCEEDED(hr));
             if (!m_use_dst_alpha)
             {
-                hr = mem_subpic->FlipAlphaValue(dirty_rect);//fixme: mem_subpic.type is now MSP_RGBA_F, not MSP_RGBA
+                // A single published canvas must have transparent alpha over
+                // its entire area; flipping only the dirty rect would leave
+                // the rest of the texture in the inverted (0=opaque) domain.
+                const bool whole_canvas =
+                    m_canvas_active && m_prefer_single_bitmap;
+                const CRect flip_rect = whole_canvas
+                    ? CRect(0, 0, spd.w, spd.h) : CRect(dirty_rect);
+                hr = mem_subpic->FlipAlphaValue(flip_rect);//fixme: mem_subpic.type is now MSP_RGBA_F, not MSP_RGBA
                 ASSERT(SUCCEEDED(hr));
                 if (FAILED(hr))
                 {
@@ -780,28 +859,52 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     {
         if (m_canvas_active)
         {
-            const RECT canvas_bounds = {
-                0, 0, m_render_size.cx, m_render_size.cy
-            };
-            RECT partitions[3] = {};
-            const int partition_count =
-                SubtitleDisplayLayout::PartitionBitmapRects(
-                    dirty_rect, canvas_bounds, m_canvas_video_in_canvas,
-                    partitions);
-            if (partition_count > 0) {
+            if (m_prefer_single_bitmap) {
+                // MPCVR reads only GetBitmap(0) and drops the clip origin, so
+                // the canvas has to be published as one zero-based texture.
+                // Its own GetSourceAndDest then maps that texture onto the
+                // video rect with independent X/Y scale factors.
+                const RECT canvas_rect = {
+                    0, 0, m_render_size.cx, m_render_size.cy
+                };
+                // The wrapper otherwise derives the bitmap rect from the
+                // dirty rect; publishing only the drawn band would hand
+                // MPCVR a cropped texture, so the whole canvas is declared
+                // explicitly.
+                const RECT canvas_rects[1] = { canvas_rect };
                 HRESULT wrapper_hr = S_OK;
                 m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
-                    mem_subpic, m_canvas_publish_output,
-                    m_canvas_publish_clip, now, partitions,
-                    partition_count, &wrapper_hr, m_canvas_bitmap_offset);
+                    mem_subpic, canvas_rect, canvas_rect, now,
+                    canvas_rects, 1, &wrapper_hr);
                 if (FAILED(wrapper_hr)) {
                     m_xy_sub_render_frame = NULL;
                     hr = wrapper_hr;
                 }
-            } else {
-                m_xy_sub_render_frame = NULL;
-                dirty_rect.SetRectEmpty();
-                hr = S_FALSE;
+            }
+            else {
+                const RECT canvas_bounds = {
+                    0, 0, m_render_size.cx, m_render_size.cy
+                };
+                RECT partitions[3] = {};
+                const int partition_count =
+                    SubtitleDisplayLayout::PartitionBitmapRects(
+                        dirty_rect, canvas_bounds, m_canvas_video_in_canvas,
+                        partitions);
+                if (partition_count > 0) {
+                    HRESULT wrapper_hr = S_OK;
+                    m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
+                        mem_subpic, m_canvas_publish_output,
+                        m_canvas_publish_clip, now, partitions,
+                        partition_count, &wrapper_hr, m_canvas_bitmap_offset);
+                    if (FAILED(wrapper_hr)) {
+                        m_xy_sub_render_frame = NULL;
+                        hr = wrapper_hr;
+                    }
+                } else {
+                    m_xy_sub_render_frame = NULL;
+                    dirty_rect.SetRectEmpty();
+                    hr = S_FALSE;
+                }
             }
         }
         else

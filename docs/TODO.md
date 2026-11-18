@@ -468,12 +468,43 @@ D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确�
 3. 位图验收以实际 PGS/SUP 为准：Auto/16:9 进黑边；关闭模式允许保持基线
    的视频内压缩。该项已于 2026-11-18 由用户实机确认通过。
 4. 代理不得启动 PotPlayer 或进行自动实机测试，实机结果由用户提供。
+5. **MPC VR / 未知 consumer 未取证**：当前仍走真实 `isBitmap=true` 路径
+   （D47）。需由用户在 MPC VR 下用 Auto 与 16:9 各复测一次并回传
+   `xy-bitmap-frame/1`；不得套用 madVR 的 `isBitmap=false` 契约。
+6. **性能门槛未通过**：Release x64 两行字幕脏区 Bilinear `3.28–7.07 ms`、
+   Spline36 `5.08–10.58 ms`，均高于 2 ms/帧目标。默认保持 Bilinear，
+   不得把 Spline36 改回默认，也不得声称性能达标。
+7. **未单独复报的回归项**：关闭布局、滤波器切换、滚动字幕连续性只有合成
+   单测覆盖；其中关闭布局与滚动连续性沿基线实现，不得写成用户实机已验证。
+
+### MPCVR 适配（D49–D52）
+
+已实现、待云端三矩阵与实机取证：
+
+1. `SubtitleDisplayLayout::ResolveConsumerContract()` 与
+   `ShouldPassThroughSdrForConsumer()`：纯函数，单测覆盖三族 consumer。
+2. 位图：MPCVR 单张零基整幅画布、整幅清透明与 alpha 翻转、诊断字段
+   `contract`/`usesOversizedBitmap`/`consumerScale`。
+3. 文本：MPCVR 零基画布 output/clip，避免 `GetBitmap.position` 叠加原点。
+4. HDR：MPCVR 下位图与文本均 `MAP_OFF`，状态与日志标注
+   `(consumer PQ)` / `hdrOwner=consumer`。
+5. 报告：`docs/mpcvr-adaptation.md`。
+
+下一步：提交并走云端三矩阵；随后由用户在 PotPlayer + MPCVR 复测
+4K+1080p SUP 与 1920×800 ASS，回传 `%TEMP%\xy_hdr_diag.txt`。
+判定顺序：`contract=mpcvr-texture`、`presentedBitmap=1`、
+`usesOversizedBitmap=1`、`hdrOwner=consumer`。
 
 ### 深层 Auto HDR
 
 阶段一+二代码已合并；run `40658251653` 已确认
 `release-win32`、`release-x64`、`debug-x64` 全绿。本轮按计划只做自动化验收，
 未启动 PotPlayer 或进行人工画面测试。codec extradata 仍不在本轮范围。
+
+**ASS 文本 HDR 遗留项**：2026-10-30 的“文件名去 HDR 后 Auto/手动 PQ 不生效”
+尚未用用户素材复测闭环（run `41018526246` 只证明诊断与选项分流，不证明画面）。
+下一次需取 `%TEMP%\xy_hdr_diag.txt` 的 `Text:` 行，确认请求模式、解析结果、
+generation 与实际后端；在用户确认前不得标记为已修复。
 
 ### 发布后可选人工验证
 

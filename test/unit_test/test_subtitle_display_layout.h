@@ -244,6 +244,61 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameFallsBackWithoutDisplaySize)
         frame.buffer_size.cy);
 }
 
+TEST(SubtitleDisplayLayoutTest, BitmapFrameCanvasSizeDrivesMpcVrVirtualSize)
+{
+    // MPCVR sets VirtualSize from GetClipRect. The canvas is the buffer and
+    // therefore the texture MPCVR receives; its video rect is what the
+    // texture is scaled onto, so the two must be reported independently.
+    SubtitleDisplayLayout::BitmapFrameInput input;
+    input.enabled = true;
+    input.video_rect = RECT{ 0, 0, 3840, 1600 };
+    input.display_area.cx = 3840;
+    input.display_area.cy = 2160;
+
+    const SubtitleDisplayLayout::BitmapFrameResult frame =
+        SubtitleDisplayLayout::ResolveBitmapFrame(input);
+
+    ASSERT_TRUE(frame.canvas.uses_display_area);
+    EXPECT_EQ(3840, frame.buffer_size.cx);
+    EXPECT_EQ(2160, frame.buffer_size.cy);
+    // The concurrent X/Y factors are what MPCVR applies to the single texture.
+    const double scale_x =
+        double(frame.buffer_size.cx) / input.video_rect.right;
+    const double scale_y =
+        double(frame.buffer_size.cy) / input.video_rect.bottom;
+    EXPECT_NEAR(1.0, scale_x, 1e-9);
+    EXPECT_NEAR(1.35, scale_y, 1e-9);
+}
+
+TEST(SubtitleDisplayLayoutTest, MpcVrSingleBitmapPublishesWholeCanvas)
+{
+    // The MPCVR branch publishes the full canvas as bitmap 0. Its position is
+    // the canvas origin (0,0) and its size is the buffer, which is also what
+    // MPCVR reports back as VirtualSize through GetClipRect.
+    SubtitleDisplayLayout::BitmapFrameInput input;
+    input.enabled = true;
+    input.video_rect = RECT{ 0, 0, 1920, 800 };
+    input.display_area.cx = 2560;
+    input.display_area.cy = 1440;
+
+    const SubtitleDisplayLayout::BitmapFrameResult frame =
+        SubtitleDisplayLayout::ResolveBitmapFrame(input);
+    ASSERT_TRUE(frame.canvas_active);
+
+    const RECT canvas = { 0, 0, frame.buffer_size.cx, frame.buffer_size.cy };
+    const SubtitleDisplayLayout::BitmapSlice slice =
+        SubtitleDisplayLayout::ResolveBitmapSlice(canvas, POINT{ 0, 0 });
+    EXPECT_EQ(0, slice.position.x);
+    EXPECT_EQ(0, slice.position.y);
+    EXPECT_EQ(frame.buffer_size.cx, slice.size.cx);
+    EXPECT_EQ(frame.buffer_size.cy, slice.size.cy);
+
+    // The madVR path keeps its video-based output and shifted clip; the two
+    // contracts must not be conflated.
+    ExpectRectEquals(RECT{ 0, 0, 1920, 800 }, frame.frame.output_rect);
+    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.frame.clip_rect);
+}
+
 TEST(SubtitleDisplayLayoutTest, BitmapFrameMapsDesignBottomIntoLowerBar)
 {
     // A bitmap object at the bottom of a 1920x1080 design canvas must land in
@@ -481,6 +536,89 @@ TEST(SubtitleDisplayLayoutTest, ClassifyConsumerPrefersMadVrPrefix)
     // A name mentioning both must not be misrouted to the MPC path.
     EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MADVR,
         SubtitleDisplayLayout::ClassifyConsumer(L"madVR (MPC-HC)"));
+}
+
+TEST(SubtitleDisplayLayoutTest, MadVrContractMasksBitmapOnlyWithCanvas)
+{
+    const SubtitleDisplayLayout::ConsumerContract bitmap =
+        SubtitleDisplayLayout::ResolveConsumerContract(
+            SubtitleDisplayLayout::CONSUMER_MADVR, true, true);
+    EXPECT_TRUE(bitmap.present_oversized_bitmap);
+    EXPECT_FALSE(bitmap.prefer_single_bitmap);
+    EXPECT_FALSE(bitmap.hdr_owned_by_consumer);
+
+    // No canvas: madVR stays on the real bitmap contract with baseline
+    // geometry, exactly as before this change.
+    const SubtitleDisplayLayout::ConsumerContract no_canvas =
+        SubtitleDisplayLayout::ResolveConsumerContract(
+            SubtitleDisplayLayout::CONSUMER_MADVR, false, true);
+    EXPECT_FALSE(no_canvas.present_oversized_bitmap);
+    EXPECT_FALSE(no_canvas.prefer_single_bitmap);
+    EXPECT_FALSE(no_canvas.hdr_owned_by_consumer);
+
+    // Text subtitles never take the bitmap overlay route.
+    const SubtitleDisplayLayout::ConsumerContract text =
+        SubtitleDisplayLayout::ResolveConsumerContract(
+            SubtitleDisplayLayout::CONSUMER_MADVR, true, false);
+    EXPECT_FALSE(text.present_oversized_bitmap);
+    EXPECT_FALSE(text.prefer_single_bitmap);
+    EXPECT_FALSE(text.hdr_owned_by_consumer);
+}
+
+TEST(SubtitleDisplayLayoutTest, MpcVrContractOwnsHdrAndPrefersOneBitmap)
+{
+    const SubtitleDisplayLayout::ConsumerContract bitmap =
+        SubtitleDisplayLayout::ResolveConsumerContract(
+            SubtitleDisplayLayout::CONSUMER_MPC_VR, true, true);
+    // MPCVR reads only bitmap 0 and converts SDR subtitle textures itself.
+    EXPECT_FALSE(bitmap.present_oversized_bitmap);
+    EXPECT_TRUE(bitmap.prefer_single_bitmap);
+    EXPECT_TRUE(bitmap.hdr_owned_by_consumer);
+
+    // The renderer applies its own transfer function for text too, so the
+    // provider must leave both subtitle kinds in SDR.
+    const SubtitleDisplayLayout::ConsumerContract text =
+        SubtitleDisplayLayout::ResolveConsumerContract(
+            SubtitleDisplayLayout::CONSUMER_MPC_VR, true, false);
+    EXPECT_FALSE(text.present_oversized_bitmap);
+    EXPECT_FALSE(text.prefer_single_bitmap);
+    EXPECT_TRUE(text.hdr_owned_by_consumer);
+
+    // Even with the layout off the HDR hand-over is unchanged.
+    const SubtitleDisplayLayout::ConsumerContract no_canvas =
+        SubtitleDisplayLayout::ResolveConsumerContract(
+            SubtitleDisplayLayout::CONSUMER_MPC_VR, false, true);
+    EXPECT_TRUE(no_canvas.prefer_single_bitmap);
+    EXPECT_TRUE(no_canvas.hdr_owned_by_consumer);
+}
+
+TEST(SubtitleDisplayLayoutTest, UnknownConsumerKeepsConservativeContract)
+{
+    const SubtitleDisplayLayout::ConsumerContract bitmap =
+        SubtitleDisplayLayout::ResolveConsumerContract(
+            SubtitleDisplayLayout::CONSUMER_UNKNOWN, true, true);
+    EXPECT_FALSE(bitmap.present_oversized_bitmap);
+    EXPECT_FALSE(bitmap.prefer_single_bitmap);
+    EXPECT_FALSE(bitmap.hdr_owned_by_consumer);
+
+    const SubtitleDisplayLayout::ConsumerContract text =
+        SubtitleDisplayLayout::ResolveConsumerContract(
+            SubtitleDisplayLayout::CONSUMER_UNKNOWN, false, false);
+    EXPECT_FALSE(text.present_oversized_bitmap);
+    EXPECT_FALSE(text.prefer_single_bitmap);
+    EXPECT_FALSE(text.hdr_owned_by_consumer);
+}
+
+TEST(SubtitleDisplayLayoutTest, MpcVrPassesSdrThroughRegardlessOfMode)
+{
+    // MPCVR applies its own SDR-to-PQ conversion, so the provider must keep
+    // the SDR code values even when the user selects PQ or Auto.
+    EXPECT_TRUE(SubtitleDisplayLayout::ShouldPassThroughSdrForConsumer(
+        SubtitleDisplayLayout::CONSUMER_MPC_VR));
+    EXPECT_FALSE(SubtitleDisplayLayout::ShouldPassThroughSdrForConsumer(
+        SubtitleDisplayLayout::CONSUMER_MADVR));
+    EXPECT_FALSE(SubtitleDisplayLayout::ShouldPassThroughSdrForConsumer(
+        SubtitleDisplayLayout::CONSUMER_UNKNOWN));
 }
 
 TEST(SubtitleDisplayLayoutTest, AspectMetadataIsComplete)

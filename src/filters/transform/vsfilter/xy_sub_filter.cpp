@@ -805,14 +805,25 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     return hr;
 }
 
-bool XySubFilter::ShouldMaskBitmapFlagForConsumer() const
+SubtitleDisplayLayout::ConsumerFamily XySubFilter::GetConsumerFamily() const
 {
-    // Only madVR has been field-verified to composite a canvas-positioned
-    // overlay outside the video rectangle. Other consumers (notably MPC VR)
-    // keep the real bitmap flag so the provider's bitmap path stays intact.
     return SubtitleDisplayLayout::ClassifyConsumer(
-        m_xy_str_opt[STRING_CONNECTED_CONSUMER])
-        == SubtitleDisplayLayout::CONSUMER_MADVR;
+        m_xy_str_opt[STRING_CONNECTED_CONSUMER]);
+}
+
+SubtitleDisplayLayout::ConsumerContract
+XySubFilter::ResolvePresentationContract() const
+{
+    // The canvas only matters while a bitmap is actually being presented from
+    // it; the display size is the same gate the provider uses before it
+    // publishes canvas geometry.
+    const bool canvas_active =
+        m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES]
+        && m_xy_size_opt[SIZE_DISPLAY_AREA].cx > 0
+        && m_xy_size_opt[SIZE_DISPLAY_AREA].cy > 0;
+    return SubtitleDisplayLayout::ResolveConsumerContract(
+        GetConsumerFamily(), canvas_active,
+        m_xy_bool_opt[BOOL_IS_BITMAP] != false);
 }
 
 HRESULT XySubFilter::DoGetField( unsigned field, void *value )
@@ -839,12 +850,12 @@ HRESULT XySubFilter::DoGetField( unsigned field, void *value )
         {
             CAutoLock cAutolock(&m_csProviderFields);
             hr = XyOptionsImpl::DoGetField(field, value);
-            if (SUCCEEDED(hr)
-                && m_xy_bool_opt[BOOL_IS_BITMAP]
-                && m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES]
-                && m_xy_size_opt[SIZE_DISPLAY_AREA].cx > 0
-                && m_xy_size_opt[SIZE_DISPLAY_AREA].cy > 0
-                && ShouldMaskBitmapFlagForConsumer()) {
+            if (SUCCEEDED(hr) && m_xy_bool_opt[BOOL_IS_BITMAP]) {
+                const SubtitleDisplayLayout::ConsumerContract contract =
+                    ResolvePresentationContract();
+                if (!contract.present_oversized_bitmap) {
+                    break;
+                }
                 // With the display canvas active the frame is a
                 // pre-positioned overlay in the same space as text. Consumers
                 // that see isBitmap=true composite it only against the video
@@ -2027,7 +2038,8 @@ void XySubFilter::SetRgbOutputLevel()
     {
         // Same reasoning as the bitmap path: PQ code values are absolute, so
         // they must not be rescaled into TV levels afterwards.
-        if (ResolveTextHdrConfig().mode == HdrColor::MAP_PQ)
+        if (ResolveTextHdrConfig().mode == HdrColor::MAP_PQ
+            || ConsumerOwnsHdrConversion())
         {
             sub_frame_creater->SetRgbOutputTvLevel(false);
         }
@@ -2060,8 +2072,12 @@ void XySubFilter::SetRgbOutputLevel()
         // A PQ palette already carries absolute code values. Squeezing it into
         // TV levels would rescale those codes and shift the white point, so the
         // PQ mode always outputs full-range RGB.
-        if (ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ)
+        if (ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ
+            || ConsumerOwnsHdrConversion())
         {
+            // MPCVR reads the subtitle texture as full-range RGB and applies
+            // the transfer function itself; TV-range expansion here would
+            // shift its input.
             CompositionObject::m_output_tv_range_rgb = false;
         }
         else if (m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL]==RGB_OUTPUT_LEVEL_AUTO)
@@ -2198,7 +2214,9 @@ void XySubFilter::LogHdrConfiguration(
             m_xy_bool_opt[BOOL_IS_BITMAP]
             && use_display_area
             && has_display_area;
-        const bool mask_bitmap_flag = ShouldMaskBitmapFlagForConsumer();
+        const SubtitleDisplayLayout::ConsumerContract contract =
+            ResolvePresentationContract();
+        const bool mask_bitmap_flag = contract.present_oversized_bitmap;
         const bool presented_bitmap =
             m_xy_bool_opt[BOOL_IS_BITMAP]
             && !(bitmap_canvas_overlay && mask_bitmap_flag);
@@ -2276,6 +2294,7 @@ void XySubFilter::LogHdrConfiguration(
             L"consumerSubtitleTarget=%ld,%ld,%ld,%ld "
             L"requestedBitmap=%d requestedText=%d white=%d "
             L"resolvedBitmap=%d resolvedText=%d generation=%llu "
+            L"hdrOwner=%ls contract=%ls "
             L"graph=%d container=%d nameHdr=%d sideData=%d "
             L"graph2020=%d container2020=%d yuv=%ls "
             L"videoRect=%ld,%ld,%ld,%ld displayRect=%ld,%ld,%ld,%ld "
@@ -2304,6 +2323,8 @@ void XySubFilter::LogHdrConfiguration(
             bitmap_config.mode,
             text_config.mode,
             GetHdrGeneration(),
+            ConsumerOwnsHdrConversion() ? L"consumer" : L"provider",
+            IsMpcVrConsumer() ? L"mpcvr-texture" : L"default",
             int(m_graph_hdr_signal),
             int(m_container_hdr_signal),
             m_video_filename_hdr ? 1 : 0,
@@ -2386,9 +2407,16 @@ CStringW XySubFilter::GetHdrStatusText()
         m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].IsEmpty()
             ? L"?" : m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
     CStringW value;
-    value.Format(L"%ls: %ls | %ls | clr %ls",
-        is_bitmap ? L"Bitmap" : L"Text",
-        mode.GetString(), signal.GetString(), clear_state);
+    if (ConsumerOwnsHdrConversion()) {
+        value.Format(L"%ls: %ls (consumer PQ) | %ls | clr %ls",
+            is_bitmap ? L"Bitmap" : L"Text",
+            mode.GetString(), signal.GetString(), clear_state);
+    }
+    else {
+        value.Format(L"%ls: %ls | %ls | clr %ls",
+            is_bitmap ? L"Bitmap" : L"Text",
+            mode.GetString(), signal.GetString(), clear_state);
+    }
     return value;
 }
 

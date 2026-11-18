@@ -158,6 +158,32 @@ namespace SubtitleDisplayLayout
     // unrecognized name maps to CONSUMER_UNKNOWN.
     ConsumerFamily ClassifyConsumer(const wchar_t* consumer_name);
 
+    // Presentation contract for one consumer family. Field-verified behaviour
+    // only: madVR composites a canvas-positioned bitmap as an overlay when the
+    // provider reports isBitmap=false, while MPCVR keeps the real bitmap flag
+    // and scales the published texture onto its video rect. Everything else
+    // stays on the conservative real-bitmap path.
+    struct ConsumerContract
+    {
+        // Provider publishes the oversized canvas bitmap and masks isBitmap.
+        bool present_oversized_bitmap;
+        // Provider publishes a single canvas-sized bitmap (consumer reads one).
+        bool prefer_single_bitmap;
+        // Consumer converts SDR subtitle textures to its own HDR output, so the
+        // provider must keep the original SDR code values.
+        bool hdr_owned_by_consumer;
+
+        ConsumerContract();
+    };
+
+    ConsumerContract ResolveConsumerContract(
+        ConsumerFamily family, bool canvas_active, bool is_bitmap);
+
+    // Provider HDR mode resolution for consumers that convert subtitle
+    // textures themselves. Returns true when the caller must keep the SDR
+    // code values regardless of the requested mode.
+    bool ShouldPassThroughSdrForConsumer(ConsumerFamily family);
+
     // Builds the published text frame geometry from the consumer's video rect
     // and the resolved canvas. Text positions are shifted by
     // canvas_rect.topLeft because the text renderer keeps a video-sized output.

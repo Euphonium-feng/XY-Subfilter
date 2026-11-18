@@ -452,4 +452,47 @@ namespace SubtitleDisplayLayout
         }
         return CONSUMER_UNKNOWN;
     }
+
+    ConsumerContract::ConsumerContract()
+        : present_oversized_bitmap(false)
+        , prefer_single_bitmap(false)
+        , hdr_owned_by_consumer(false)
+    {
+    }
+
+    ConsumerContract ResolveConsumerContract(
+        ConsumerFamily family, bool canvas_active, bool is_bitmap)
+    {
+        ConsumerContract contract;
+        switch (family)
+        {
+        case CONSUMER_MADVR:
+            // madVR composites a canvas-positioned bitmap against the video
+            // rect when it is presented as a bitmap, so the verified overlay
+            // contract masks isBitmap while the canvas is active.
+            contract.present_oversized_bitmap =
+                canvas_active && is_bitmap;
+            break;
+        case CONSUMER_MPC_VR:
+            // MPCVR reads only bitmap 0 and scales the published texture onto
+            // its video rect with independent X/Y factors. A single opaque
+            // canvas texture keeps the geometry in one piece; MPCVR converts
+            // the SDR subtitle texture to PQ for HDR output itself.
+            contract.prefer_single_bitmap = is_bitmap;
+            contract.hdr_owned_by_consumer = true;
+            break;
+        case CONSUMER_UNKNOWN:
+        default:
+            break;
+        }
+        return contract;
+    }
+
+    bool ShouldPassThroughSdrForConsumer(ConsumerFamily family)
+    {
+        // MPCVR applies its own SDR-to-PQ conversion on the HDR output path.
+        // Pre-encoding the subtitle would apply the transfer function twice.
+        return ResolveConsumerContract(family, true, true)
+            .hdr_owned_by_consumer;
+    }
 }

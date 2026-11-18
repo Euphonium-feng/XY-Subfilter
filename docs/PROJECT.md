@@ -120,3 +120,9 @@ Auto 与手动 PQ 均未呈现预期映射。已排除 CSRI；当前保存的 `t
 2026-11-18 用户确认“验收通过”：4K 视频配 1080p SUP 时，字幕不再挤在左上角，
 位图缩放功能实机验收关闭。剩余未验证范围为 MPC VR/未知 consumer；Release
 性能仍高于 2 ms/帧目标，作为独立性能事项保留，不否定画面验收结论。
+
+2026-11-18 MPCVR-Plus 适配实施中。源码分析见 `docs/mpcvr-adaptation.md`：
+MPCVR 0.11.1 只读 bitmap 0、把非文本字幕固定缩放到 `m_videoRect`，并在 HDR
+输出时自行把 SDR 字幕转 PQ。因此 provider 侧新增 MPCVR 契约：单张零基画布
+位图、文本同画布发布、HDR 直通（`MAP_OFF`）。MPCVR 实机画面尚未取证，
+在该证据到手前不得写成已修复。

@@ -104,12 +104,14 @@
 
 | 选项 | ID |
 | --- | --- |
-| `INT_PGS_HDR_MODE` | 96 |
-| `INT_PGS_HDR_WHITE_NITS` | 97 |
-| `INT_UI_LANGUAGE` | 98 |
-| `INT_TEXT_HDR_MODE` | 99 |
+| `INT_PGS_HDR_MODE` | 97 |
+| `INT_PGS_HDR_WHITE_NITS` | 98 |
+| `INT_UI_LANGUAGE` | 99 |
+| `INT_TEXT_HDR_MODE` | 100 |
 
-当前 `OPTION_COUNT = 100`，最大 ID 99，仍在 `MAX_OPTION_ID = 127` 之内。
+其后继续追加的 `BOOL_VIDEO_IS_HDR` 至 `INT_BITMAP_SCALE_FILTER` 为 101–107。
+上表数值由 `IDirectVobSubXy.h` 的枚举顺序计数得出；新增项只能继续追加，
+不得改变这些既有值。
 
 ## D15：文本字幕单独一组选项
 
@@ -638,3 +640,75 @@ PotPlayer + madVR 下确认 4K 视频 + 1080p SUP 的缩放画面验收通过，
 Spline36 的画质优势仍未有可量化证据。用户未逐项报告关闭布局、滤波器切换和
 滚动字幕的结果；这些回归项沿用合成单测与既有实现约束，不写成额外实机证据。
 MPC VR 与未知 consumer 未取证。
+
+## D49：Consumer 呈现契约收敛为纯函数
+
+madVR 的成功依赖 `isBitmap=false`，MPCVR 的语义完全不同：它不读
+`isBitmap`，只取 `GetBitmap(0)`，把 clip 尺寸当 `VirtualSize`，并在
+`GetSourceAndDest` 中按两轴独立系数把纹理缩放至 `m_videoRect`。继续在
+多个文件里各写一遍 `if (madVR)` 会让第三个 consumer 到来时必然漏改。
+
+新增 `SubtitleDisplayLayout::ResolveConsumerContract()`，返回三个布尔：
+`present_oversized_bitmap`、`prefer_single_bitmap`、
+`hdr_owned_by_consumer`。madVR 只在画布启用且位图时置第一个；MPCVR 位图
+置第二个、两种字幕置第三个；未知 consumer 全部为 false。`XySubFilter`、
+`XySubRenderProviderWrapper2`、`HdmvSubtitleProviderImpl` 共用该函数。
+
+被否方案：为 MPCVR 复用 madVR 的 `isBitmap=false`。这会把位图交给 MPCVR 的
+文本覆盖层路径，几何与 HDR 都不可控，且与实测无关。
+
+## D50：MPCVR 位图发布单张整幅画布
+
+MPCVR 的 `CXySubPicProvider::Render()` 只复制 `GetBitmap(0)`，把 `position`
+当作源缓冲左上角，丢弃 clip 原点；随后 `GetTextureSize()` 把 clip 尺寸作为
+`VirtualSize`，`GetSourceAndDest()` 用两轴独立系数映射到 `m_videoRect`。
+分区发布会让第 1、2 张 bitmap 被完全忽略，只带脏区的发布则会把纹理裁窄。
+
+因此 MPCVR 分支在画布启用时发布：
+
+```
+GetOutputRect = GetClipRect = (0,0,canvasW,canvasH)
+bitmap 0: position=(0,0), size=(canvasW,canvasH)
+```
+
+并在发布前把整幅缓冲清成透明、翻转整幅 alpha，确保脏区外不会残留上一帧或
+不透明黑块。`isBitmap` 保持 `true`、`isMovable` 保持 `false`。画布关闭、
+显示尺寸缺失或画布无效时回退既有视频内路径。
+
+文本路径同样在该 consumer 下改成零基画布 output/clip（`m_output_rect`
+原点必须为 0，因为 `GetBitmap.position` 会叠加它）。
+
+诊断：`xy-bitmap-frame/1` 增加 `contract`、`usesOversizedBitmap`、
+`consumerScale`；`publishOutput`/`publishClip` 在该分支报告实际发布值，
+不重复打印 madVR 的分区几何。
+
+## D51：MPCVR 下字幕 HDR 由 consumer 负责
+
+MPCVR-Plus 0.11.1 在 HDR 输出时选择 `IDF_PS_11_CONVERT_BITMAP_TO_PQ*`，
+把字幕纹理按 `pow(x,1/0.45)` → BT.709→BT.2020 → 除以 `SDR_peak_lum`
+（默认 100 nits，另有 50/30 档）→ PQ OETF 转成 PQ。若 provider 先做 PQ
+预编码，传递函数会被应用两次，字幕会明显偏暗或偏亮。
+
+因此 `DirectVobSubImpl::ResolvePgsHdrConfig()` 与 `ResolveTextHdrConfig()`
+在 consumer 分类为 MPCVR 时返回 `MAP_OFF`，保留原始 SDR 码值；
+`SetRgbOutputLevel()` 同时强制全幅，避免 TV 范围压缩改变输入。
+`INT_PGS_HDR_WHITE_NITS` 在该分支不生效，状态文本显示 `(consumer PQ)`，
+`xy-hdr-config/1` 写入 `hdrOwner=consumer`，避免误以为 203 nits 已生效。
+
+被否方案：
+
+- 继续 PQ 预编码：与 MPCVR 的转换叠加，亮度错误。
+- 让 MPCVR 跳过转换：需要改 MPCVR-Plus 并新增能力探测字段，超出本轮
+  “只改 XY-SubFilter”的范围。
+
+## D52：MPCVR 黑边布局先做实机取证，不预设结论
+
+MPCVR 的 `subtitleTargetRect` 与 `videoOutputRect` 都等于 `m_videoRect`，
+且非文本字幕的目标矩形固定为 `m_videoRect`（`SubPicImpl.cpp:122`）。
+provider 无法通过 clip 让内容进入黑边；单张整幅画布在比例一致时不会被拉伸，
+比例不一致时会被两轴独立缩放。
+
+因此本轮的验收目标是：MPCVR 下字幕位置与比例正确、视频内不被裁切或压扁；
+黑边内容按源码推断不可达（目标矩形恒为 `m_videoRect`），
+已在 `CONSTRAINTS.md` 与 `docs/mpcvr-adaptation.md` 记录为 MPCVR 侧限制。
+不改用 `isBitmap=false` 伪装，也不在无证据时宣称黑边已支持。

@@ -326,12 +326,13 @@ XySubRenderProviderWrapper2::XySubRenderProviderWrapper2( ISubPicProviderEx2 *pr
     , m_provider(provider)
     , m_consumer(NULL)
     , m_start(0), m_stop(0)
-    , m_fps(0)
-    , m_max_bitmap_count2(0)
     , m_use_dst_alpha(0)
     , m_render_to_original_video_size(0)
     , m_use_display_canvas(false)
     , m_canvas_cached(false)
+    , m_consumer_name_retries(0)
+    , m_fps(0)
+    , m_max_bitmap_count2(0)
 {
     m_canvas_video_rect = RECT();
     m_canvas_target_rect = RECT();
@@ -363,6 +364,16 @@ STDMETHODIMP XySubRenderProviderWrapper2::Connect( IXyOptions *consumer )
     {
         hr = m_consumer != consumer ? S_OK : S_FALSE;
         m_consumer = consumer;
+        m_consumer_name.clear();
+        m_consumer_name_retries = 0;
+        LPWSTR name = NULL;
+        int name_chars = 0;
+        if (SUCCEEDED(consumer->XyGetString(
+                DirectVobSubXyOptions::STRING_CONNECTED_CONSUMER,
+                &name, &name_chars)) && name) {
+            m_consumer_name.assign(name, name_chars);
+            LocalFree(name);
+        }
     }
     else
     {
@@ -377,6 +388,22 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     double fps;
     CheckPointer(subRenderFrame, E_POINTER);
     *subRenderFrame = NULL;
+
+    if (m_consumer_name.empty() && m_consumer
+        && m_consumer_name_retries < 8) {
+        // Connect() can run before the outer filter has copied the consumer
+        // name into its options; retry a bounded number of frames rather than
+        // losing the contract or putting a COM call on every frame.
+        ++m_consumer_name_retries;
+        LPWSTR name = NULL;
+        int name_chars = 0;
+        if (SUCCEEDED(m_consumer->XyGetString(
+                DirectVobSubXyOptions::STRING_CONNECTED_CONSUMER,
+                &name, &name_chars)) && name) {
+            m_consumer_name.assign(name, name_chars);
+            LocalFree(name);
+        }
+    }
 
     HRESULT hr = m_consumer->XyGetDouble(DirectVobSubXyOptions::DOUBLE_FPS, &fps);
     if (FAILED(hr))
@@ -576,10 +603,32 @@ HRESULT XySubRenderProviderWrapper2::Render( REFERENCE_TIME now, POSITION pos )
             dynamic_cast<XySubRenderFrame*>(m_xy_sub_render_frame.p);
         if (xy_frame)
         {
-            xy_frame->m_output_rect = m_frame_layout.output_rect;
-            xy_frame->m_clip_rect = m_frame_layout.clip_rect;
-            xy_frame->m_bitmap_offset_x = m_frame_layout.bitmap_offset.x;
-            xy_frame->m_bitmap_offset_y = m_frame_layout.bitmap_offset.y;
+            if (SubtitleDisplayLayout::ClassifyConsumer(m_consumer_name.c_str())
+                    == SubtitleDisplayLayout::CONSUMER_MPC_VR)
+            {
+                // MPCVR drops the clip origin and maps the whole texture onto
+                // its video rect, so text has to be published as a zero-based
+                // canvas exactly like the bitmap path.
+                // The bitmap position is bitmap.xy + output origin +
+                // bitmap_offset. Render() already laid the text out in the
+                // zero-based canvas, so origin and offset must both be 0.
+                const RECT canvas_rect = {
+                    0, 0,
+                    m_render_target_rect.Width(),
+                    m_render_target_rect.Height()
+                };
+                xy_frame->m_output_rect = canvas_rect;
+                xy_frame->m_clip_rect = canvas_rect;
+                xy_frame->m_bitmap_offset_x = 0;
+                xy_frame->m_bitmap_offset_y = 0;
+            }
+            else
+            {
+                xy_frame->m_output_rect = m_frame_layout.output_rect;
+                xy_frame->m_clip_rect = m_frame_layout.clip_rect;
+                xy_frame->m_bitmap_offset_x = m_frame_layout.bitmap_offset.x;
+                xy_frame->m_bitmap_offset_y = m_frame_layout.bitmap_offset.y;
+            }
         }
     }
 

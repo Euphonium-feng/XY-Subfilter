@@ -5,6 +5,7 @@
 #include "SubRenderIntf.h"
 #include "SubRenderOptionsImpl.h"
 #include "../../../subpic/hdr_color.h"
+#include "../../../subpic/subtitle_display_layout.h"
 #include "../basevideofilter/HdrGraphProbe.h"
 
 class CDirectVobSubFilter;
@@ -91,7 +92,10 @@ private:
     void SetRgbOutputLevel();
     void SetHdrMode();
     void ApplyHdrRefresh();
-    bool ShouldMaskBitmapFlagForConsumer() const;
+    // Presentation contract for the connected consumer, derived from its
+    // self-reported name. All provider-side branches share this resolver.
+    SubtitleDisplayLayout::ConsumerContract ResolvePresentationContract() const;
+    SubtitleDisplayLayout::ConsumerFamily GetConsumerFamily() const;
     HRESULT RefreshConsumerCache();
     void LogHdrConfiguration(const wchar_t* event, unsigned field);
     bool UpdateConsumerHdrSignal(

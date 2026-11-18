@@ -30,7 +30,7 @@
 ## 兼容性
 
 - `DirectShow` / `AviSynth` / `VirtualDub` / `CSRI` 四条接入面都要保持可用。
-- 新增选项 ID 必须小于 `XyOptionsImpl::MAX_OPTION_ID`（127）。当前 `OPTION_COUNT = 100`，最大 ID 为 99。
+- 新增选项 ID 必须小于 `XyOptionsImpl::MAX_OPTION_ID`（127）。当前 `OPTION_COUNT = 108`，最大 ID 为 107（`INT_BITMAP_SCALE_FILTER`）。
 - 语言资源不得影响现有英文界面的字符串 ID 与行为。
 - 外部消费者（如 madVR）把自己编译的选项常量传给 provider，既有 ID 数值不得改变。
 
@@ -45,7 +45,7 @@
 
 ## 已验证的实现约束
 
-- 新增选项 ID 必须追加在 `DirectVobSubXyOptions` 枚举末尾、`OPTION_COUNT` 之前。当前新增项为 96–99。
+- 新增选项 ID 必须追加在 `DirectVobSubXyOptions` 枚举末尾、`OPTION_COUNT` 之前。当前新增项为 97–107。
 - PQ 模式下 ARGB/文本路径必须输出全幅范围，否则 PQ 码会被 TV 范围二次压缩、白点被拉低约 9%。
 - `.rc` 中文块以 GBK 存储并配 `#pragma code_page(936)`；英文块保持 ASCII。若编辑器把文件另存为 UTF-8 而 pragma 未改，中文会变成乱码。
 - 中文资源块必须与英文块包含完全相同的控件 ID 与字符串 ID，否则切换语言后控件缺失。
@@ -135,6 +135,21 @@
   `isBitmap=true`、`isMovable=false`。内部 `BOOL_IS_BITMAP` 与 HDR 选择不变。
   任何新增 consumer 的例外都必须先有该 consumer 的实机证据，不得按“应该可以”
   推测加入。
+- MPCVR 的名称分类只允许走源码已核实的纹理契约，不得套用 madVR 的
+  `isBitmap=false` 伪装：MPCVR 会按两轴独立缩放把纹理落到 `m_videoRect`，
+  且只读取 `GetBitmap(0)`（`docs/mpcvr-adaptation.md`）。
+- MPCVR 位图画布必须发布为单张零基整幅纹理：`GetOutputRect = GetClipRect =
+  (0,0,canvasW,canvasH)`、bitmap `position=(0,0)`、`size=canvas`。发布分区
+  或只带脏区的 bitmap 会让 MPCVR 采到裁切后的纹理。
+- MPCVR 在 HDR 输出时自行把 SDR 字幕纹理转 PQ（`ps_convert_bitmap_to_pq.hlsl`，
+  默认 SDR 白点 100 nits）。provider 在 MPCVR 分类下必须输出 `MAP_OFF`，
+  否则传递函数被应用两次；`INT_PGS_HDR_WHITE_NITS` 对 MPCVR 不生效。
+- MPCVR 不实现 `fullscreenRect`、`displayModeSize`、`supportedLevels`、
+  `outputLevels`、`isHdrVideo`，`videoOutputRect` 与 `subtitleTargetRect`
+  都等于画面矩形；provider 不得据此推断显示区域或 HDR 输出状态。
+- MPCVR 的非文本字幕目标矩形恒为 `m_videoRect`（`SubPicImpl.cpp:122`），
+  provider 无法让它把内容画进黑边。MPCVR 下黑边布局视为不可达，
+  不得用 `isBitmap=false` 伪装或修改 output/clip 来宣称已支持。
 - 位图完整画布与设计画布缩放在 PotPlayer + madVR 下已于 2026-11-18 通过
   用户实机验收；云端三矩阵和 `xy-bitmap-frame/1` 仍只是辅助证据，不能替代
   其他 consumer 的实机取证。

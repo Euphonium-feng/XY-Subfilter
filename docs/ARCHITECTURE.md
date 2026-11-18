@@ -303,6 +303,35 @@ video 原点，因此可以进入黑边。不能把物理显示尺寸（2560×14
 缩放到显示画布均已在 PotPlayer + madVR 下通过用户实机验收；4K 视频配
 1080p SUP 不再挤在左上角。MPC VR 与未知 consumer 的呈现路径仍未取证。
 
+## Consumer 呈现契约
+
+`SubtitleDisplayLayout::ResolveConsumerContract()` 是纯函数，按 consumer 名称
+给出三个标志：`present_oversized_bitmap`（madVR：画布启用时伪装
+`isBitmap=false`）、`prefer_single_bitmap`（MPCVR：只发布第 0 张整幅画布）、
+`hdr_owned_by_consumer`（MPCVR：自行把 SDR 字幕转 PQ）。未知 consumer 三项
+全为 false，保持真实位图路径。所有调用点共用该函数。
+
+MPCVR 分支的位图帧：
+
+```
+GetOutputRect = GetClipRect = (0,0,canvasW,canvasH)
+bitmap 0: position=(0,0), size=canvas
+脏区之外的像素翻转后清为透明
+```
+
+`CXySubPicProvider::Render()` 只读 `GetBitmap(0)`，`GetTextureSize()` 把
+clip 当作 `VirtualSize`，`CSubPicImpl::GetSourceAndDest()` 再按两轴独立系数
+缩放至 `m_videoRect`，因此画布必须整幅发布，否则只会拿到裁切后的纹理。
+由于目标矩形恒为画面矩形，画布内容最终会被压回视频区，黑边在该 consumer
+下不可达。文本路径同样改为零基画布 output/clip，避免 `m_output_rect`
+原点再次偏移。画布关闭时两条路径都回退现有视频内几何。
+
+MPCVR 的 HDR 归属在 `DirectVobSubImpl::ResolvePgsHdrConfig()` /
+`ResolveTextHdrConfig()`：分类命中时返回 `MAP_OFF`；`GetHdrStatusText()` 标注
+`(consumer PQ)`，`xy-hdr-config/1` 写入 `hdrOwner=consumer`。
+
+源码依据与行号见 `docs/mpcvr-adaptation.md`。
+
 画布缓存只在输入变化时重算，`Invalidate()` 与 `Connect()` 会使其失效。
 画布或发布几何变化还会丢弃当前 `m_pSubPic`，因为 `Render()` 在字幕区间未变时
 会提前返回并复用旧帧；仅清画布缓存不足以让属性页切换立即生效。

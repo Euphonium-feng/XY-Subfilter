@@ -3,6 +3,8 @@
 #include "XySubRenderIntf.h"
 #include "subtitle_display_layout.h"
 
+#include <string>
+
 interface ISubPicProviderEx;
 interface IXyOptions;
 interface ISubPicEx;
@@ -72,6 +74,10 @@ private:
     bool m_use_dst_alpha;
     bool m_render_to_original_video_size;
     SubtitleDisplayLayout::CanvasResult m_display_canvas;
+    // Consumer name sampled once per connection; used to pick the
+    // presentation contract without a per-frame COM round trip.
+    std::wstring m_consumer_name;
+    int m_consumer_name_retries;
 
     double m_fps;
 
