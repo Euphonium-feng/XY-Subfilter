@@ -63,6 +63,17 @@ namespace SubtitleDisplayLayout
         CanvasRequest();
     };
 
+    struct CanvasResult
+    {
+        RECT canvas_rect;
+        SIZE layout_size;
+        int resolved_aspect_mode;
+        FallbackReason fallback_reason;
+        bool uses_display_area;
+
+        CanvasResult();
+    };
+
     // Where the display size used for the canvas came from. Diagnostics and
     // the property page must report the same source the renderer used.
     enum DisplaySizeSource
@@ -90,17 +101,6 @@ namespace SubtitleDisplayLayout
     // A consumer fullscreen rect counts only when it is valid, contains the
     // video and is larger on at least one axis.
     CanvasPlan ResolveCanvasRequest(const CanvasRequest& request);
-
-    struct CanvasResult
-    {
-        RECT canvas_rect;
-        SIZE layout_size;
-        int resolved_aspect_mode;
-        FallbackReason fallback_reason;
-        bool uses_display_area;
-
-        CanvasResult();
-    };
 
     // Layout of a published frame in the provider's coordinate space:
     // output is the zero-based video rect, clip may extend into the bars and
