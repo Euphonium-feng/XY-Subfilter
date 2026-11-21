@@ -520,8 +520,10 @@ MPCVR 黑边布局按源码推断不可达（目标矩形恒为画面矩形）�
 实机尚未复测：本次不改变已验收的 madVR 画面逻辑，但位图与文本现在接受
 同一条 fullscreen 判据，需确认 16:9 显示器播放 1920×800 片源时行为未变。
 
-候选 03–05 已实现，已补 `SubtitleDisplayLayoutTest.*` 到云端回归过滤器；尚未取得
-本轮云端结果：
+候选 03–05 已实现，并把 `SubtitleDisplayLayoutTest.*` 补进云端回归过滤器。
+最终云端三矩阵 run `44932324795` 全绿（`release-win32`、`release-x64`、
+`debug-x64`）。首次 run `44931659200` 因新增单测把第二段 bitmap 的左上角
+位置写成右下角而红，已修正测试期望后重跑通过。
 
 1. 候选 03：`BitmapPublication` / `ResolveBitmapPublication()` 成为发布几何
    的唯一来源，`Render()` 与 `LogBitmapFrame()` 共用它。修正了 MPCVR 分支
@@ -537,7 +539,8 @@ MPCVR 黑边布局按源码推断不可达（目标矩形恒为画面矩形）�
 新增单测覆盖 `SingleRect`、`Partitioned`、`SingleCanvas` 与空脏区；
 `xy-bitmap-frame/1` 字段名和顺序保持不变，但 MPCVR 的
 `publishOutput/publishClip/partitionCount/usesOversizedBitmap` 现在反映实际
-发布值。下一动作：提交后 push，盯三矩阵；绿后安排用户实机取证。
+发布值。实机尚未复测：需由用户确认 madVR 的既有画面不变，并回传 MPCVR 的新
+`xy-bitmap-frame/1` 与 `xy-hdr-config/1`。
 
 ### 深层 Auto HDR
 
