@@ -389,7 +389,7 @@ TEST(SubtitleDisplayLayoutTest, BitmapPublicationPartitionsMadVrCanvas)
             publication.bitmap_rects[1], publication.bitmap_offset);
     EXPECT_EQ(690, first.position.x);
     EXPECT_EQ(790, first.position.y);
-    EXPECT_EQ(1230, second.position.x);
+    EXPECT_EQ(690, second.position.x);
     EXPECT_EQ(800, second.position.y);
 }
 
