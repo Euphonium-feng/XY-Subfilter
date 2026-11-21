@@ -31,6 +31,7 @@ void ReadBitmapCanvasInput(
     input->video_rect = video_rect;
     input->display_area.cx = 0;
     input->display_area.cy = 0;
+    input->fullscreen_rect = RECT();
     input->enabled = false;
 
     if (FAILED(consumer->XyGetBool(
@@ -40,26 +41,36 @@ void ReadBitmapCanvasInput(
         return;
     }
 
-    if (SUCCEEDED(consumer->XyGetSize(
-            DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &input->display_area))
-        && input->display_area.cx > 0
-        && input->display_area.cy > 0) {
-        return;
-    }
+    // Only raw values are read here. Whether the fullscreen rect is usable is
+    // decided once, in ResolveCanvasRequest, so bitmaps and text cannot drift.
+    consumer->XyGetSize(
+        DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &input->display_area);
+    consumer->XyGetRect(
+        DirectVobSubXyOptions::RECT_FULLSCREEN, &input->fullscreen_rect);
+}
 
-    RECT fullscreen = {};
-    if (SUCCEEDED(consumer->XyGetRect(
-            DirectVobSubXyOptions::RECT_FULLSCREEN, &fullscreen))
-        && fullscreen.right > fullscreen.left
-        && fullscreen.bottom > fullscreen.top
-        && fullscreen.right - fullscreen.left > video_rect.right - video_rect.left
-        && fullscreen.bottom - fullscreen.top > video_rect.bottom - video_rect.top) {
-        input->display_area.cx = fullscreen.right - fullscreen.left;
-        input->display_area.cy = fullscreen.bottom - fullscreen.top;
-        return;
+// Adapter between IXyOptions and ConsumerIdentity's name reader. The identity
+// module owns classification and the bounded retry.
+bool ReadConsumerName(void* context, wchar_t* buffer, int capacity)
+{
+    IXyOptions* consumer = static_cast<IXyOptions*>(context);
+    if (!consumer || !buffer || capacity <= 1) {
+        return false;
     }
-
-    return;
+    LPWSTR name = NULL;
+    int chars = 0;
+    if (FAILED(consumer->XyGetString(
+            DirectVobSubXyOptions::STRING_CONNECTED_CONSUMER,
+            &name, &chars)) || !name) {
+        return false;
+    }
+    int i = 0;
+    for (; i < chars && name[i] && i < capacity - 1; ++i) {
+        buffer[i] = name[i];
+    }
+    buffer[i] = 0;
+    LocalFree(name);
+    return i > 0;
 }
 }
 
@@ -91,7 +102,7 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_diag_consumer_scale_x(0.0)
     , m_diag_consumer_scale_y(0.0)
     , m_diag_consumer_pending(true)
-    , m_diag_consumer_retries(0)
+    , m_diag_consumer_refresh_budget(8)
 {
     m_cur_output_size.cx = 0;
     m_cur_output_size.cy = 0;
@@ -104,6 +115,7 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_canvas_enabled = false;
     m_canvas_display_area.cx = 0;
     m_canvas_display_area.cy = 0;
+    m_canvas_display_source = 0;
     m_prefer_single_bitmap = false;
     m_canvas_publish_output = RECT();
     m_canvas_publish_clip = RECT();
@@ -165,7 +177,8 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
         m_canvas_cached = false;
         m_diag_valid = false;
         m_diag_consumer_pending = true;
-        m_diag_consumer_retries = 0;
+        m_diag_consumer_refresh_budget = 8;
+        m_consumer_identity.Reset();
     }
     else
     {
@@ -176,7 +189,6 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
 
 void HdmvSubtitleProviderImpl::RefreshConsumerDiagnostics()
 {
-    m_diag_consumer_name.Empty();
     m_diag_consumer_version.Empty();
     m_diag_presented_bitmap = -1;
     m_diag_presented_movable = -1;
@@ -189,20 +201,7 @@ void HdmvSubtitleProviderImpl::RefreshConsumerDiagnostics()
         return;
     }
 
-    LPWSTR name = NULL;
-    int name_chars = 0;
-    if (SUCCEEDED(m_consumer->XyGetString(
-            DirectVobSubXyOptions::STRING_CONNECTED_CONSUMER,
-            &name, &name_chars)) && name) {
-        m_diag_consumer_name = name;
-        LocalFree(name);
-        for (int i = 0; i < m_diag_consumer_name.GetLength(); ++i) {
-            const wchar_t ch = m_diag_consumer_name[i];
-            if (ch == L' ' || ch == L'\t' || ch == L'\r' || ch == L'\n') {
-                m_diag_consumer_name.SetAt(i, L'_');
-            }
-        }
-    }
+    m_consumer_identity.Refresh(ReadConsumerName, m_consumer);
     LPWSTR version = NULL;
     int version_chars = 0;
     if (SUCCEEDED(m_consumer->XyGetString(
@@ -248,7 +247,6 @@ void HdmvSubtitleProviderImpl::RefreshConsumerDiagnostics()
             DirectVobSubXyOptions::RECT_SUBTITLE_TARGET, &subtitle_target))) {
         m_diag_consumer_subtitle_target = subtitle_target;
     }
-    m_diag_consumer_pending = false;
 }
 
 STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRenderFrame, REFERENCE_TIME now )
@@ -273,16 +271,18 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         return S_FALSE;
     }
 
-    if (m_diag_consumer_pending
-        || (m_diag_consumer_name.IsEmpty() && m_diag_consumer_retries < 8)) {
+    if (m_diag_consumer_pending && m_diag_consumer_refresh_budget > 0) {
         // The outer filter may not have copied the consumer name into its
-        // options yet when Connect() runs; retry a bounded number of frames
-        // so the presentation contract is not lost, without putting a COM
+        // options yet when Connect() runs; ConsumerIdentity retries a bounded
+        // number of frames, so the contract is not lost and there is no COM
         // call on every frame.
-        if (!m_diag_consumer_pending) {
-            ++m_diag_consumer_retries;
-        }
         RefreshConsumerDiagnostics();
+        --m_diag_consumer_refresh_budget;
+        m_diag_consumer_pending = false;
+        if (!m_consumer_identity.HasName()
+            && m_diag_consumer_refresh_budget > 0) {
+            m_diag_consumer_pending = true;
+        }
     }
 
     bool use_dst_alpha = false;
@@ -332,17 +332,19 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         video_size = design_size;
     }
     const RECT video_rect = { 0, 0, video_size.cx, video_size.cy };
+    SubtitleDisplayLayout::BitmapFrameInput input;
+    ReadBitmapCanvasInput(m_consumer, video_rect, &input);
     if (!m_canvas_cached
         || m_canvas_design_size.cx != design_size.cx
         || m_canvas_design_size.cy != design_size.cy
         || m_canvas_video_size.cx != video_size.cx
         || m_canvas_video_size.cy != video_size.cy
-        || m_canvas_enabled != m_canvas_input.enabled
-        || m_canvas_display_area.cx != m_canvas_input.display_area.cx
-        || m_canvas_display_area.cy != m_canvas_input.display_area.cy)
+        || m_canvas_enabled != input.enabled
+        || m_canvas_display_area.cx != input.display_area.cx
+        || m_canvas_display_area.cy != input.display_area.cy
+        || !EqualRect(&m_canvas_input.fullscreen_rect,
+            &input.fullscreen_rect))
     {
-        SubtitleDisplayLayout::BitmapFrameInput input;
-        ReadBitmapCanvasInput(m_consumer, video_rect, &input);
         const SubtitleDisplayLayout::BitmapFrameResult frame =
             SubtitleDisplayLayout::ResolveBitmapFrame(input);
         // The display canvas is the publication surface. The stream's design
@@ -358,6 +360,12 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_canvas_input = input;
         m_canvas_enabled = input.enabled;
         m_canvas_display_area = input.display_area;
+        // Report where the canvas actually got its display size from, not
+        // merely whether the persisted size was non-zero.
+        m_canvas_display_source = frame.canvas.uses_display_area
+            ? (input.display_area.cx > 0 && input.display_area.cy > 0
+                ? 1 : 2)
+            : 0;
         m_canvas_design_size = design_size;
         m_canvas_video_size = video_size;
         m_canvas_cached = true;
@@ -382,7 +390,7 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
     // the consumer name cached at connection time. No per-frame COM call.
     const SubtitleDisplayLayout::ConsumerContract contract =
         SubtitleDisplayLayout::ResolveConsumerContract(
-            SubtitleDisplayLayout::ClassifyConsumer(m_diag_consumer_name),
+            m_consumer_identity.Family(),
             m_canvas_active, true);
     if (m_prefer_single_bitmap != contract.prefer_single_bitmap) {
         m_prefer_single_bitmap = contract.prefer_single_bitmap;
@@ -614,7 +622,7 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         alloc_hr,
         m_canvas_design_size.cx, m_canvas_design_size.cy,
         m_canvas_video_size.cx, m_canvas_video_size.cy,
-        m_canvas_display_area.cx > 0 && m_canvas_display_area.cy > 0 ? 1 : 0,
+        m_canvas_display_source,
         m_canvas_display_area.cx, m_canvas_display_area.cy,
         m_canvas_rect.left, m_canvas_rect.top,
         m_canvas_rect.right, m_canvas_rect.bottom,
@@ -654,7 +662,7 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         m_diag_partitions[1].right, m_diag_partitions[1].bottom,
         m_diag_partitions[2].left, m_diag_partitions[2].top,
         m_diag_partitions[2].right, m_diag_partitions[2].bottom,
-        m_diag_consumer_name.IsEmpty() ? L"?" : m_diag_consumer_name.GetString(),
+        m_consumer_identity.HasName() ? m_consumer_identity.Name() : L"?",
         m_diag_consumer_version.IsEmpty() ? L"?" : m_diag_consumer_version.GetString(),
         m_diag_presented_bitmap,
         m_diag_presented_movable,

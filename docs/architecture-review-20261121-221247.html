@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XY-SubFilter · 架构深化机会</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { background:#0b0d10; color:#e6e9ee; font-family: ui-sans-serif, "Segoe UI", "Microsoft YaHei UI", sans-serif; }
+  .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .card { background:linear-gradient(180deg,#12161b 0%,#0e1216 100%); border:1px solid #232a33; }
+  .hair { border-color:#232a33; }
+  .badge-strong { background:#0f3d2a; color:#6ee7a8; border:1px solid #1c6b48; }
+  .badge-worth { background:#3a2f10; color:#f5cf6b; border:1px solid #6b551c; }
+  .badge-spec { background:#2a2233; color:#c3a6ff; border:1px solid #4a3a66; }
+  .before { background:#1a1113; border:1px dashed #6b2b33; }
+  .after  { background:#0f1a16; border:1px dashed #2f6b52; }
+  .box { border:1px solid #2c3540; background:#12171d; }
+  .box-hot { border-color:#7a3b44; background:#1b1215; }
+  .box-good { border-color:#2f6b52; background:#101a16; }
+  .arrow { color:#5b6675; }
+  .tag { background:#171d24; border:1px solid #26303b; color:#9aa6b6; }
+  table.matrix td, table.matrix th { border-bottom:1px solid #232a33; }
+  details > summary { cursor:pointer; }
+</style>
+</head>
+<body class="antialiased">
+<div class="max-w-[1180px] mx-auto px-6 py-12">
+
+  <header class="mb-12">
+    <div class="mono text-xs tracking-[0.2em] text-emerald-400/80 mb-3">ARCHITECTURE REVIEW · XY-SUBFILTER</div>
+    <h1 class="text-4xl font-semibold leading-tight mb-3">把浅模块变成深模块：<span class="text-emerald-300">字幕画布与 consumer 适配</span></h1>
+    <p class="text-slate-400 max-w-3xl leading-relaxed">
+      扫描范围取自最近 40 个提交的热点：<span class="mono text-slate-300">xy_sub_filter.cpp</span>（13 次）、
+      <span class="mono text-slate-300">hdmv_subtitle_provider.cpp</span>（12 次）、
+      <span class="mono text-slate-300">subtitle_display_layout</span>（11+8 次）。
+      每个候选都只用 <span class="text-slate-200">module / interface / depth / seam / adapter / leverage / locality</span> 这套词汇描述。
+    </p>
+    <div class="mt-5 flex flex-wrap gap-2 mono text-xs">
+      <span class="tag px-2 py-1 rounded">37 个布局单测</span>
+      <span class="tag px-2 py-1 rounded">13 个重采样单测</span>
+      <span class="tag px-2 py-1 rounded">36 个 m_diag_* 成员</span>
+      <span class="tag px-2 py-1 rounded">164 处诊断引用</span>
+      <span class="tag px-2 py-1 rounded">53 处 display_area 读取</span>
+    </div>
+  </header>
+
+  <section class="card rounded-2xl p-6 mb-10">
+    <h2 class="text-sm mono tracking-[0.18em] text-slate-400 mb-4">当前形状（问题所在）</h2>
+    <div class="grid md:grid-cols-3 gap-4 text-sm">
+      <div class="box box-hot rounded-xl p-4">
+        <div class="mono text-xs text-rose-300 mb-2">同一决策，四处实现</div>
+        <p class="text-slate-300 leading-relaxed">“字幕画布用多大的显示尺寸”在 <span class="mono">ReadBitmapCanvasInput</span>、<span class="mono">ResolveConsumerCanvas</span>、<span class="mono">LogHdrConfiguration</span>、<span class="mono">ResolveBitmapFrame</span> 各自推导一遍，判据还互不相同。</p>
+      </div>
+      <div class="box box-hot rounded-xl p-4">
+        <div class="mono text-xs text-rose-300 mb-2">同一身份，三种缓存</div>
+        <p class="text-slate-300 leading-relaxed">consumer 名称/家族被 provider（<span class="mono">m_diag_consumer_name</span> + 8 次重试）、wrapper（<span class="mono">m_consumer_name</span> + 8 次重试）、filter（<span class="mono">m_xy_str_opt</span>）分别缓存与分类。</p>
+      </div>
+      <div class="box box-hot rounded-xl p-4">
+        <div class="mono text-xs text-rose-300 mb-2">发布几何，渲染与日志各算一遍</div>
+        <p class="text-slate-300 leading-relaxed">真正发布的 output/clip/offset 在 <span class="mono">Render()</span> 里分支决定，<span class="mono">LogBitmapFrame()</span> 又重新推导一份“published_*”，两者靠人工同步。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== CANDIDATE 1 ===================== -->
+  <article class="card rounded-2xl p-7 mb-8" id="c1">
+    <div class="flex items-start justify-between gap-4 mb-4">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">候选 01</div>
+        <h3 class="text-2xl font-semibold">CanvasRequest：把“显示尺寸 → 画布”收敛成一个深模块</h3>
+      </div>
+      <span class="badge-strong mono text-xs px-3 py-1 rounded-full whitespace-nowrap">Strong</span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">FILES</div>
+        <ul class="text-sm text-slate-300 space-y-1">
+          <li class="mono">src/subtitles/hdmv_subtitle_provider.cpp:23-63</li>
+          <li class="mono">src/subpic/XySubRenderProviderWrapper.cpp:15-76</li>
+          <li class="mono">src/filters/transform/vsfilter/xy_sub_filter.cpp:2242-2267</li>
+          <li class="mono">src/subpic/subtitle_display_layout.cpp:300-330</li>
+        </ul>
+      </div>
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">PROBLEM</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          四份实现读同一组选项，却给出不同的“可用性”判据：位图路径要求 fullscreen 两个方向都严格变大；
+          wrapper 用 <span class="mono">ContainsRect</span> 且任一方向变大即可；日志又自己写了一套。
+          共享的 <span class="mono">subtitle_display_layout</span> 只拿到“已被解读过的输入”，所以真正的分歧留在调用方，
+          <span class="text-rose-300">locality</span> 被破坏：想知道画布怎么算，必须同时读四个文件。
+        </p>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4 mb-6">
+      <div class="before rounded-xl p-4">
+        <div class="mono text-xs text-rose-300 mb-3">BEFORE · 四份策略，接口很浅</div>
+        <svg viewBox="0 0 320 190" class="w-full">
+          <g font-family="monospace" font-size="9" fill="#c9d2dd">
+            <rect x="6" y="8" width="308" height="30" rx="5" fill="#151b22" stroke="#2c3540"/>
+            <text x="14" y="27">IXyOptions: SIZE_DISPLAY_AREA / RECT_FULLSCREEN / aspect</text>
+            <line x1="80" y1="38" x2="80" y2="62" stroke="#7a3b44"/>
+            <line x1="160" y1="38" x2="160" y2="62" stroke="#7a3b44"/>
+            <line x1="240" y1="38" x2="240" y2="62" stroke="#7a3b44"/>
+            <rect x="10" y="62" width="135" height="40" rx="5" fill="#1b1215" stroke="#7a3b44"/>
+            <text x="16" y="79">ReadBitmapCanvasInput</text>
+            <text x="16" y="92" fill="#e39aa5">both dims strictly &gt;</text>
+            <rect x="155" y="62" width="155" height="40" rx="5" fill="#1b1215" stroke="#7a3b44"/>
+            <text x="161" y="79">ResolveConsumerCanvas</text>
+            <text x="161" y="92" fill="#e39aa5">ContainsRect + either &gt;</text>
+            <rect x="10" y="112" width="135" height="40" rx="5" fill="#1b1215" stroke="#7a3b44"/>
+            <text x="16" y="129">LogHdrConfiguration</text>
+            <text x="16" y="142" fill="#e39aa5">inline third copy</text>
+            <rect x="155" y="112" width="155" height="40" rx="5" fill="#1b1215" stroke="#7a3b44"/>
+            <text x="161" y="129">ResolveBitmapFrame</text>
+            <text x="161" y="142" fill="#e39aa5">trusts caller input</text>
+            <text x="10" y="176" fill="#7d8898">4 implementations · 3 validity rules · 0 shared seam</text>
+          </g>
+        </svg>
+      </div>
+      <div class="after rounded-xl p-4">
+        <div class="mono text-xs text-emerald-300 mb-3">AFTER · 一个深模块，一个 seam</div>
+        <svg viewBox="0 0 320 190" class="w-full">
+          <g font-family="monospace" font-size="9" fill="#c9d2dd">
+            <rect x="6" y="8" width="308" height="30" rx="5" fill="#151b22" stroke="#2c3540"/>
+            <text x="14" y="27">IXyOptions 适配器（唯一读选项的地方）</text>
+            <line x1="160" y1="38" x2="160" y2="60" stroke="#2f6b52"/>
+            <rect x="34" y="60" width="252" height="72" rx="7" fill="#101a16" stroke="#2f6b52"/>
+            <text x="44" y="79" fill="#6ee7a8">CanvasRequest</text>
+            <text x="44" y="94">CanvasPlan { canvas, active, reason }</text>
+            <text x="44" y="108" fill="#9aa6b6">纯函数 · 可直接单测</text>
+            <text x="44" y="122" fill="#9aa6b6">位图 / 文本 / 日志共用</text>
+            <line x1="80" y1="132" x2="80" y2="152" stroke="#2f6b52"/>
+            <line x1="160" y1="132" x2="160" y2="152" stroke="#2f6b52"/>
+            <line x1="240" y1="132" x2="240" y2="152" stroke="#2f6b52"/>
+            <rect x="16" y="152" width="80" height="26" rx="5" fill="#12171d" stroke="#2c3540"/>
+            <text x="26" y="169">bitmap</text>
+            <rect x="116" y="152" width="88" height="26" rx="5" fill="#12171d" stroke="#2c3540"/>
+            <text x="126" y="169">text</text>
+            <rect x="216" y="152" width="80" height="26" rx="5" fill="#12171d" stroke="#2c3540"/>
+            <text x="226" y="169">log</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">SOLUTION</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          新增 <span class="mono text-emerald-300">CanvasRequest::Resolve(const CanvasOptions&amp;, const VideoGeometry&amp;)</span>：
+          输入是一个只含原始值的结构（显示尺寸、fullscreen、aspect、video rect），输出
+          <span class="mono">CanvasPlan</span>（画布矩形、是否启用、回退原因、采用的显示尺寸来源）。
+          读取 <span class="mono">IXyOptions</span> 的 adapter 只有一份，放在 seam 的这一侧；所有调用方只消费 <span class="mono">CanvasPlan</span>。
+        </p>
+      </div>
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">BENEFITS</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          <span class="text-slate-200">locality</span>：画布策略只在一个文件里。现在真有 37 个布局单测，但多数测的是“给定输入算几何”，
+          真正会分歧的“输入怎么来”没有测试面；seam 移到选项适配之后，这一层可以用假的
+          <span class="mono">CanvasOptions</span> 直接测。<span class="text-slate-200">leverage</span>：未来新增 consumer 只改 adapter，不动渲染。
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <!-- ===================== CANDIDATE 2 ===================== -->
+  <article class="card rounded-2xl p-7 mb-8" id="c2">
+    <div class="flex items-start justify-between gap-4 mb-4">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">候选 02</div>
+        <h3 class="text-2xl font-semibold">ConsumerIdentity：把“这是谁、要什么”变成一个模块</h3>
+      </div>
+      <span class="badge-strong mono text-xs px-3 py-1 rounded-full whitespace-nowrap">Strong</span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">FILES</div>
+        <ul class="text-sm text-slate-300 space-y-1">
+          <li class="mono">src/subpic/subtitle_display_layout.cpp:442-497</li>
+          <li class="mono">src/filters/transform/vsfilter/DirectVobSub.cpp:892-907</li>
+          <li class="mono">src/filters/transform/vsfilter/xy_sub_filter.cpp:808-827</li>
+          <li class="mono">src/subpic/XySubRenderProviderWrapper.cpp:364-405</li>
+          <li class="mono">src/subtitles/hdmv_subtitle_provider.cpp:175-242</li>
+        </ul>
+      </div>
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">PROBLEM</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          “consumer 是谁”被三套缓存各自持有，每套都带一个 8 帧重试循环；分类结果又在四处重新
+          <span class="mono">ClassifyConsumer</span>。最近一轮 <span class="mono">isBitmap</span> 反复，正是因为
+          “身份 / 呈现契约 / HDR 归属”这组知识没有单一归属：改一处，另一处仍按旧假设走。
+        </p>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4 mb-6">
+      <div class="before rounded-xl p-4">
+        <div class="mono text-xs text-rose-300 mb-3">BEFORE · 概念分散，接口重复</div>
+        <div class="space-y-2 text-xs mono">
+          <div class="box box-hot rounded-lg p-2">XySubFilter · m_xy_str_opt[name] <span class="text-rose-300">→ Classify → Contract</span></div>
+          <div class="box box-hot rounded-lg p-2">Wrapper2 · m_consumer_name + retries <span class="text-rose-300">→ Classify</span></div>
+          <div class="box box-hot rounded-lg p-2">HDMV provider · m_diag_consumer_name + retries <span class="text-rose-300">→ Classify</span></div>
+          <div class="box box-hot rounded-lg p-2">DirectVobSub · IsMpcVr / ConsumerOwnsHdr <span class="text-rose-300">→ Classify</span></div>
+          <div class="text-slate-500 pt-1">3 caches · 3 retry loops · 5 classification sites</div>
+        </div>
+      </div>
+      <div class="after rounded-xl p-4">
+        <div class="mono text-xs text-emerald-300 mb-3">AFTER · 一套身份，一个契约</div>
+        <div class="space-y-2 text-xs mono">
+          <div class="box box-good rounded-lg p-2">ConsumerIdentity { family, name, version }</div>
+          <div class="box box-good rounded-lg p-2">ConsumerContract { overlay, singleBitmap, hdrOwner }</div>
+          <div class="box rounded-lg p-2 text-slate-400">采样 / 缓存 / 重试：只在 identity 内</div>
+          <div class="text-slate-500 pt-1">所有调用方拿同一个值对象</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">SOLUTION</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          把名称采样、限次重试、<span class="mono">ClassifyConsumer</span>、<span class="mono">ResolveConsumerContract</span>
+          收进一个 <span class="mono">ConsumerIdentity</span> 模块：构造时接收一个最小的“名称读取”函数指针，
+          之后只暴露 <span class="mono">Identity()</span> 与 <span class="mono">Contract(canvas, isBitmap)</span>。
+          三个缓存与三个重试循环删掉，改为各持有一个 <span class="mono">ConsumerIdentity</span>。
+        </p>
+      </div>
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">BENEFITS</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          删除测试通过：删掉三套缓存，复杂度集中到一处而不是转移。测试面从“构造 COM consumer”变成
+          “喂名称字符串”，于是 <span class="mono">isBitmap</span> 这类策略可以先用单测钉住语义，再谈实机。
+          <span class="text-slate-200">locality</span> 也回来了：想知道 MPCVR 为什么直通 HDR，只读一个文件。
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <!-- ===================== CANDIDATE 3 ===================== -->
+  <article class="card rounded-2xl p-7 mb-8" id="c3">
+    <div class="flex items-start justify-between gap-4 mb-4">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">候选 03</div>
+        <h3 class="text-2xl font-semibold">BitmapPublication：发布的几何只算一次</h3>
+      </div>
+      <span class="badge-worth mono text-xs px-3 py-1 rounded-full whitespace-nowrap">Worth exploring</span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">FILES</div>
+        <ul class="text-sm text-slate-300 space-y-1">
+          <li class="mono">src/subtitles/hdmv_subtitle_provider.cpp:848-900</li>
+          <li class="mono">src/subtitles/hdmv_subtitle_provider.cpp:509-529</li>
+          <li class="mono">src/subtitles/hdmv_subtitle_provider.cpp:531-553</li>
+        </ul>
+      </div>
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">PROBLEM</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          <span class="mono">Render()</span> 自己决定“MPCVR 单张画布”还是“madVR 分区”，而
+          <span class="mono">LogBitmapFrame()</span> 为了写日志，把同一组 <span class="mono">published_output/clip/offset</span>
+          再推导一遍。两处一旦不同步，日志会说“发布正常”而画面是坏的——这正是历史上多轮定位困难的形态。
+        </p>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4 mb-6">
+      <div class="before rounded-xl p-4">
+        <div class="mono text-xs text-rose-300 mb-3">BEFORE · 渲染与日志各算一遍</div>
+        <pre class="text-[11px] mono text-slate-300 leading-relaxed">
+Render():
+  if (prefer_single) { output = canvas; ... }
+  else { output = m_canvas_publish_output; ... }
+        ↓
+LogBitmapFrame():
+  published_output = prefer_single ? canvas : ...
+  published_clip   = prefer_single ? canvas : ...
+  <span class="text-rose-300">published_offset = prefer_single ? 0 : ...</span></pre>
+      </div>
+      <div class="after rounded-xl p-4">
+        <div class="mono text-xs text-emerald-300 mb-3">AFTER · 一个值对象，两处消费</div>
+        <pre class="text-[11px] mono text-slate-300 leading-relaxed">
+BitmapPublication p = ResolvePublication(...);
+Render(p);
+LogBitmapFrame(p);   <span class="text-emerald-300">// 不再推导</span>
+
+struct BitmapPublication {
+  enum Kind { Partitioned, SingleCanvas };
+  Kind kind;
+  RECT output, clip; POINT offset;
+  RECT partitions[3]; int count;
+};</pre>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">SOLUTION</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          把“这次发布长什么样”抽成纯值对象 <span class="mono">BitmapPublication</span>，由纯函数从
+          画布 + 合同 + dirty rect 计算；渲染只负责按它发布，日志只负责序列化它。
+          去重比较也改为比较该值对象，删掉手写的 20 余项字段比较。
+        </p>
+      </div>
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">BENEFITS</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          <span class="text-slate-200">seam</span> 落在“算发布几何”与“发布 / 记录”之间，前者可以直接单测：
+          madVR 分区、MPCVR 单张、画布关闭三种形态各一个用例。
+          <span class="text-slate-200">leverage</span>：第三个 consumer 到来时不必再改日志。
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <!-- ===================== CANDIDATE 4 ===================== -->
+  <article class="card rounded-2xl p-7 mb-8" id="c4">
+    <div class="flex items-start justify-between gap-4 mb-4">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">候选 04</div>
+        <h3 class="text-2xl font-semibold">BitmapFrameTrace：让诊断不再寄生在渲染状态里</h3>
+      </div>
+      <span class="badge-worth mono text-xs px-2 py-1 rounded-full whitespace-nowrap">Worth exploring</span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">FILES</div>
+        <ul class="text-sm text-slate-300 space-y-1">
+          <li class="mono">src/subtitles/hdmv_subtitle_provider.h:59-88</li>
+          <li class="mono">src/subtitles/hdmv_subtitle_provider.cpp:465-674</li>
+          <li class="mono">src/subpic/XySubRenderFrameWrapper.cpp:8-17</li>
+          <li class="mono">src/filters/transform/vsfilter/xy_sub_filter.cpp:58-67</li>
+        </ul>
+      </div>
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">PROBLEM</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          provider 里有 36 个 <span class="mono">m_diag_*</span> 成员、164 处引用；<span class="mono">LogBitmapFrame()</span>
+          做的是“20 多个字段逐一相等才早退”。诊断路径还与 <span class="mono">Invalidate()</span>、
+          <span class="mono">Connect()</span> 交错。日志文件路径函数在两处重复实现。
+          结果：改动渲染逻辑时很难判断哪些状态是“给日志的”，哪些是“渲染真的需要的”。
+        </p>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4 mb-6">
+      <div class="before rounded-xl p-4">
+        <div class="mono text-xs text-rose-300 mb-3">BEFORE · 状态与渲染混住</div>
+        <svg viewBox="0 0 320 170" class="w-full">
+          <g font-family="monospace" font-size="9" fill="#c9d2dd">
+            <rect x="8" y="10" width="150" height="150" rx="6" fill="#1b1215" stroke="#7a3b44"/>
+            <text x="16" y="28" fill="#e39aa5">HdmvSubtitleProviderImpl</text>
+            <text x="16" y="46">m_render_size</text>
+            <text x="16" y="60">m_canvas_* (6)</text>
+            <text x="16" y="74" fill="#e39aa5">m_diag_* (36)</text>
+            <text x="16" y="88" fill="#e39aa5">m_diag_consumer_retries</text>
+            <text x="16" y="106" fill="#7d8898">Render() 与 LogBitmapFrame()</text>
+            <text x="16" y="120" fill="#7d8898">读写同一批成员</text>
+            <text x="16" y="142" fill="#7d8898">==== 约 1200 行 ====</text>
+            <rect x="172" y="10" width="140" height="60" rx="6" fill="#151b22" stroke="#2c3540"/>
+            <text x="180" y="28">路径函数 ×2</text>
+            <text x="180" y="44" fill="#7d8898">XySubRenderFrameWrapper</text>
+            <text x="180" y="58" fill="#7d8898">xy_sub_filter</text>
+          </g>
+        </svg>
+      </div>
+      <div class="after rounded-xl p-4">
+        <div class="mono text-xs text-emerald-300 mb-3">AFTER · 快照与去重集中</div>
+        <svg viewBox="0 0 320 170" class="w-full">
+          <g font-family="monospace" font-size="9" fill="#c9d2dd">
+            <rect x="8" y="10" width="150" height="86" rx="6" fill="#101a16" stroke="#2f6b52"/>
+            <text x="16" y="28" fill="#6ee7a8">provider（渲染状态）</text>
+            <text x="16" y="46">m_render_size</text>
+            <text x="16" y="60">m_canvas_plan</text>
+            <text x="16" y="74">m_publication</text>
+            <rect x="8" y="104" width="150" height="56" rx="6" fill="#101a16" stroke="#2f6b52"/>
+            <text x="16" y="122" fill="#6ee7a8">BitmapFrameTrace</text>
+            <text x="16" y="138">Snapshot(pub, stats, identity)</text>
+            <text x="16" y="152">operator== 去重</text>
+            <rect x="172" y="10" width="140" height="46" rx="6" fill="#12171d" stroke="#2c3540"/>
+            <text x="180" y="28">diagnostic_log</text>
+            <text x="180" y="44" fill="#7d8898">唯一路径实现</text>
+            <line x1="158" y1="130" x2="172" y2="120" stroke="#2f6b52"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">SOLUTION</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          引入 <span class="mono">BitmapFrameTrace</span> 值对象：由只读的
+          <span class="mono">Snapshot(publication, stats, identity)</span> 构造，自带
+          <span class="mono">operator==</span>；<span class="mono">LogBitmapFrame()</span> 只剩“变化则追加”。
+          <span class="mono">m_diag_*</span> 仅保留上一次快照一个成员。把重复的路径函数并入
+          <span class="mono">diagnostic_log</span>，并让 <span class="mono">AppendXyDiagnostic</span> 接受
+          <span class="mono">wchar_t*</span> 缓冲区以避免中间 <span class="mono">CStringW</span> 拼接。
+        </p>
+      </div>
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">BENEFITS</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          <span class="text-slate-200">locality</span>：日志字段与去重规则在同一文件；
+          渲染代码不再为了“让日志好看”而改变结构。测试面：快照可以直接构造并与字符串比对，
+          不必启动 provider。<span class="text-slate-200">depth</span>：接口从“36 个字段”收敛为“一个值”。
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <!-- ===================== CANDIDATE 5 ===================== -->
+  <article class="card rounded-2xl p-7 mb-8" id="c5">
+    <div class="flex items-start justify-between gap-4 mb-4">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">候选 05</div>
+        <h3 class="text-2xl font-semibold">OptionSurface：给 XySubFilter 的 45 处选项直读加一道 seam</h3>
+      </div>
+      <span class="badge-spec mono text-xs px-2 py-1 rounded-full whitespace-nowrap">Speculative</span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">FILES</div>
+        <ul class="text-sm text-slate-300 space-y-1">
+          <li class="mono">src/filters/transform/vsfilter/xy_sub_filter.cpp（3871 行）</li>
+          <li class="mono">src/filters/transform/vsfilter/DirectVobSub.cpp</li>
+        </ul>
+      </div>
+      <div>
+        <div class="mono text-xs text-slate-500 mb-2">PROBLEM / 为什么只是“待探索”</div>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          两个文件里 45 处直接读 <span class="mono">m_xy_bool_opt[...]</span> /
+          <span class="mono">m_xy_int_opt[...]</span>，锁的约定靠注释。
+          但这个数组是既有 ABI 的一部分，抽象过头会引入不必要的间接层，所以先不推荐大改；
+          如果候选 01/02 落地后仍有 20+ 处裸读，再考虑一个 <span class="mono">const OptionsView&amp;</span> 参数。
+        </p>
+      </div>
+    </div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="before rounded-xl p-4">
+        <div class="mono text-xs text-rose-300 mb-2">BEFORE</div>
+        <pre class="text-[11px] mono text-slate-300">m_xy_bool_opt[BOOL_IS_BITMAP]
+m_xy_int_opt[INT_PGS_HDR_MODE]
+m_xy_size_opt[SIZE_DISPLAY_AREA]
+<span class="text-rose-300">// 锁由调用者记住</span></pre>
+      </div>
+      <div class="after rounded-xl p-4">
+        <div class="mono text-xs text-emerald-300 mb-2">AFTER（若真要做）</div>
+        <pre class="text-[11px] mono text-slate-300">OptionsView view(m_xy_*);
+view.IsBitmap();
+view.PgsHdrMode();
+<span class="text-emerald-300">// 锁在 view 构造处</span></pre>
+      </div>
+    </div>
+  </article>
+
+  <!-- ===================== TOP ===================== -->
+  <section class="rounded-2xl p-7" style="background:linear-gradient(135deg,#0f1a16,#101720);border:1px solid #2f6b52">
+    <div class="mono text-xs tracking-[0.18em] text-emerald-400/80 mb-3">TOP RECOMMENDATION</div>
+    <h2 class="text-2xl font-semibold mb-3">先做候选 01（CanvasRequest），再做候选 02（ConsumerIdentity）</h2>
+    <p class="text-sm text-slate-300 leading-relaxed max-w-3xl">
+      理由是可验证性，而不是“代码更整洁”：<span class="mono">subtitle_display_layout</span> 已有 37 个单测，
+      说明这层确实值得测，但真正出错的“输入怎么来”仍散在四处。把 seam 移到选项适配之后，
+      画布分歧第一次能在单测里复现——过去几轮“Auto/16:9 字幕消失”的排查正是卡在这里。
+      候选 02 紧随其后：它能把“consumer 语义”从实机试错变成可单测的策略表，最近一次
+      <span class="mono">isBitmap</span> 的反复就是缺少这块测试面的代价。
+    </p>
+    <p class="mt-4 text-xs text-slate-500">
+      本报告未改动任何仓库文件。候选 03–05 在 01/02 落地后再评估；05 与既有 ABI 约束相关，默认不做。
+    </p>
+  </section>
+
+  <footer class="mt-10 text-xs text-slate-600 mono">
+    XY-SubFilter · architecture review · evidence from git log (last 40 commits) and current source
+  </footer>
+</div>
+
+<script type="module">
+  // Mermaid only where a graph is genuinely clearer; cards above use hand-built SVG.
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+  const host = document.createElement('div');
+  host.className = 'card rounded-2xl p-7 mb-8';
+  host.innerHTML = '<div class="mono text-xs text-slate-500 mb-3">依赖形状（consumer 知识流向）</div>' +
+    '<pre class="mermaid" style="background:transparent">' +
+    'flowchart LR\n' +
+    '  A[IXyOptions] --> B[CanvasRequest]\n' +
+    '  A --> C[ConsumerIdentity]\n' +
+    '  C --> D[ConsumerContract]\n' +
+    '  B --> E[CanvasPlan]\n' +
+    '  E --> F[BitmapPublication]\n' +
+    '  D --> F\n' +
+    '  F --> G[Render]\n' +
+    '  F --> H[BitmapFrameTrace]\n' +
+    '</pre>';
+  document.querySelector('footer').before(host);
+  await mermaid.run({ nodes: host.querySelectorAll('.mermaid') });
+</script>
+</body>
+</html>

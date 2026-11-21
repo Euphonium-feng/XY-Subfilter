@@ -142,6 +142,9 @@ public:
     // MPCVR texture path (single canvas bitmap, consumer-side PQ conversion).
     bool IsMpcVrConsumer() const;
 
+    // The one place the filter classifies STRING_CONNECTED_CONSUMER.
+    SubtitleDisplayLayout::ConsumerFamily ConsumerFamily() const;
+
     // Applies INT_UI_LANGUAGE to the calling thread's resource language.
     static void ApplyUiLanguage(int ui_language);
 

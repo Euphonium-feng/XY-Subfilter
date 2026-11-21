@@ -305,6 +305,17 @@ video 原点，因此可以进入黑边。不能把物理显示尺寸（2560×14
 
 ## Consumer 呈现契约
 
+`SubtitleDisplayLayout::ResolveCanvasRequest()` 是“显示尺寸 → 画布”的唯一决策点：
+输入为原始值 `CanvasRequest`（启用、画幅、video/target/fullscreen 矩形、持久化
+显示尺寸），输出 `CanvasPlan`（画布、是否启用、`DisplaySizeSource`）。
+读取 `IXyOptions` 的适配器按模块各一份（`ReadBitmapCanvasInput`、
+`XySubRenderProviderWrapper2`、`XySubFilter::LogHdrConfiguration`），但策略只有
+这一处，所以位图与文本不会再出现不同判据。
+
+`SubtitleDisplayLayout::ConsumerIdentity` 收拢 consumer 名称采样、限次重试、
+`ClassifyConsumer` 与 `ResolveConsumerContract`；wrapper 与 HDMV provider 各持
+一个实例，不再维护自己的名称缓存与重试计数。
+
 `SubtitleDisplayLayout::ResolveConsumerContract()` 是纯函数，按 consumer 名称
 给出三个标志：`present_oversized_bitmap`（madVR：画布启用时伪装
 `isBitmap=false`）、`prefer_single_bitmap`（MPCVR：只发布第 0 张整幅画布）、

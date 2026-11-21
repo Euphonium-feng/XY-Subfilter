@@ -499,6 +499,23 @@ D46 的多 bitmap 拆分实现已落地但尚未运行 CI、也未经实机确�
 MPCVR 黑边布局按源码推断不可达（目标矩形恒为画面矩形）；若实机画面
 仍被压回视频区，记录该限制，不改用 `isBitmap=false` 伪装。
 
+### 架构深化（报告见 `docs/architecture-review-20261121-221247.html`）
+
+已完成候选 01（CanvasRequest）与候选 02（ConsumerIdentity）：
+
+1. `SubtitleDisplayLayout::ResolveCanvasRequest()` 成为“显示尺寸 → 画布”的
+   唯一决策点；位图、文本包装器、HDR 诊断三处不再各自推导。
+   `DisplaySizeSource` 明确区分持久化尺寸与 consumer `fullscreenRect`。
+2. `BitmapFrameInput` 增加 `fullscreen_rect`；位图与文本现在接受同一条
+   “有效、包含视频、至少一轴更大”的 fullscreen 判据（此前位图要求两轴都更大）。
+3. `ConsumerIdentity` 收拢名称采样、限次重试、分类与契约；wrapper 与
+   HDMV provider 的两套缓存和两个重试循环已删除。
+4. 修复审计发现的三处缺陷：`ResolvePresentationContract()` 曾只认持久化尺寸，
+   与 provider 的画布判断不一致；wrapper 的画布缓存键漏掉显示尺寸/fullscreen；
+   诊断 `fullscreen` 曾把“来源是 consumer 矩形”当成“全屏已启用”。
+
+未闭环：本次为纯重构 + 三处缺陷修复，云端三矩阵待跑；候选 03–05 未动。
+
 ### 深层 Auto HDR
 
 阶段一+二代码已合并；run `40658251653` 已确认

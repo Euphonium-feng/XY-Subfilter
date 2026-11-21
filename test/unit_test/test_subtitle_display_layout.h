@@ -538,6 +538,114 @@ TEST(SubtitleDisplayLayoutTest, ClassifyConsumerPrefersMadVrPrefix)
         SubtitleDisplayLayout::ClassifyConsumer(L"madVR (MPC-HC)"));
 }
 
+TEST(SubtitleDisplayLayoutTest, CanvasRequestPrefersPersistedDisplaySize)
+{
+    SubtitleDisplayLayout::CanvasRequest request;
+    request.enabled = true;
+    request.aspect_mode = SubtitleDisplayLayout::ASPECT_AUTO;
+    request.video_rect = RECT{ 0, 0, 1920, 800 };
+    request.display_area.cx = 2560;
+    request.display_area.cy = 1440;
+    // A consumer rect that would also be usable must not win over the
+    // persisted size.
+    request.fullscreen_rect = RECT{ 0, 0, 2560, 1440 };
+
+    const SubtitleDisplayLayout::CanvasPlan plan =
+        SubtitleDisplayLayout::ResolveCanvasRequest(request);
+
+    EXPECT_TRUE(plan.active);
+    EXPECT_EQ(SubtitleDisplayLayout::DISPLAY_SIZE_PERSISTED,
+        plan.display_size_source);
+    EXPECT_EQ(2560, plan.display_size.cx);
+    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, plan.canvas_rect);
+}
+
+TEST(SubtitleDisplayLayoutTest, CanvasRequestUsesConsumerFullscreenWhenLarger)
+{
+    SubtitleDisplayLayout::CanvasRequest request;
+    request.enabled = true;
+    request.aspect_mode = SubtitleDisplayLayout::ASPECT_AUTO;
+    request.video_rect = RECT{ 0, 0, 1920, 800 };
+    request.fullscreen_rect = RECT{ 0, 0, 2560, 1440 };
+
+    const SubtitleDisplayLayout::CanvasPlan plan =
+        SubtitleDisplayLayout::ResolveCanvasRequest(request);
+
+    EXPECT_TRUE(plan.active);
+    EXPECT_EQ(SubtitleDisplayLayout::DISPLAY_SIZE_CONSUMER,
+        plan.display_size_source);
+    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, plan.canvas_rect);
+}
+
+TEST(SubtitleDisplayLayoutTest, CanvasRequestRejectsFullscreenEqualToVideo)
+{
+    // A consumer that reports source pixels in every rect gives fullscreen ==
+    // video; that must not be taken as a display size.
+    SubtitleDisplayLayout::CanvasRequest request;
+    request.enabled = true;
+    request.aspect_mode = SubtitleDisplayLayout::ASPECT_AUTO;
+    request.video_rect = RECT{ 0, 0, 1920, 800 };
+    request.fullscreen_rect = RECT{ 0, 0, 1920, 800 };
+    request.subtitle_target_rect = RECT{ 0, 0, 1920, 800 };
+
+    const SubtitleDisplayLayout::CanvasPlan plan =
+        SubtitleDisplayLayout::ResolveCanvasRequest(request);
+
+    EXPECT_FALSE(plan.active);
+    EXPECT_EQ(SubtitleDisplayLayout::DISPLAY_SIZE_NONE,
+        plan.display_size_source);
+    ExpectRectEquals(request.video_rect, plan.canvas_rect);
+}
+
+TEST(SubtitleDisplayLayoutTest, CanvasRequestRejectsFullscreenNotContainingVideo)
+{
+    SubtitleDisplayLayout::CanvasRequest request;
+    request.enabled = true;
+    request.aspect_mode = SubtitleDisplayLayout::ASPECT_AUTO;
+    request.video_rect = RECT{ 100, 100, 2020, 900 };
+    request.fullscreen_rect = RECT{ 0, 0, 1920, 800 };
+
+    const SubtitleDisplayLayout::CanvasPlan plan =
+        SubtitleDisplayLayout::ResolveCanvasRequest(request);
+
+    EXPECT_FALSE(plan.active);
+    ExpectRectEquals(request.video_rect, plan.canvas_rect);
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapFrameUsesConsumerFullscreenRect)
+{
+    // The bitmap entry point must accept the same fullscreen rect the text
+    // path does; previously only a strictly larger rect on both axes counted.
+    SubtitleDisplayLayout::BitmapFrameInput input;
+    input.enabled = true;
+    input.video_rect = RECT{ 0, 0, 1920, 800 };
+    input.fullscreen_rect = RECT{ 0, 0, 2560, 1440 };
+
+    const SubtitleDisplayLayout::BitmapFrameResult frame =
+        SubtitleDisplayLayout::ResolveBitmapFrame(input);
+
+    EXPECT_TRUE(frame.canvas.uses_display_area);
+    EXPECT_TRUE(frame.canvas_active);
+    EXPECT_EQ(1920, frame.buffer_size.cx);
+    EXPECT_EQ(1080, frame.buffer_size.cy);
+}
+
+TEST(SubtitleDisplayLayoutTest, CanvasRequestTextFallsBackToTargetWithoutDisplaySize)
+{
+    SubtitleDisplayLayout::CanvasRequest request;
+    request.enabled = true;
+    request.aspect_mode = SubtitleDisplayLayout::ASPECT_AUTO;
+    request.use_subtitle_target_when_off = true;
+    request.video_rect = RECT{ 0, 0, 1920, 800 };
+    request.subtitle_target_rect = RECT{ 0, -140, 1920, 940 };
+
+    const SubtitleDisplayLayout::CanvasPlan plan =
+        SubtitleDisplayLayout::ResolveCanvasRequest(request);
+
+    EXPECT_TRUE(plan.active);
+    ExpectRectEquals(request.subtitle_target_rect, plan.canvas_rect);
+}
+
 TEST(SubtitleDisplayLayoutTest, MadVrContractMasksBitmapOnlyWithCanvas)
 {
     const SubtitleDisplayLayout::ConsumerContract bitmap =
@@ -619,6 +727,83 @@ TEST(SubtitleDisplayLayoutTest, MpcVrPassesSdrThroughRegardlessOfMode)
         SubtitleDisplayLayout::CONSUMER_MADVR));
     EXPECT_FALSE(SubtitleDisplayLayout::ShouldPassThroughSdrForConsumer(
         SubtitleDisplayLayout::CONSUMER_UNKNOWN));
+}
+
+namespace
+{
+struct FakeNameSource
+{
+    const wchar_t* name;
+    int calls;
+};
+
+bool ReadFakeName(void* context, wchar_t* buffer, int capacity)
+{
+    FakeNameSource* source = static_cast<FakeNameSource*>(context);
+    if (!source || !source->name || capacity <= 1) {
+        return false;
+    }
+    ++source->calls;
+    int i = 0;
+    for (; source->name[i] && i < capacity - 1; ++i) {
+        buffer[i] = source->name[i];
+    }
+    buffer[i] = 0;
+    return i > 0;
+}
+}
+
+TEST(SubtitleDisplayLayoutTest, ConsumerIdentitySamplesNameAndNormalizes)
+{
+    FakeNameSource source = { L"MPC Video Renderer", 0 };
+    SubtitleDisplayLayout::ConsumerIdentity identity;
+    identity.Refresh(ReadFakeName, &source);
+
+    EXPECT_TRUE(identity.HasName());
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MPC_VR, identity.Family());
+    // Diagnostics expect a single-token name.
+    EXPECT_STREQ(L"MPC_Video_Renderer", identity.Name());
+    EXPECT_TRUE(identity.OwnsHdrConversion());
+
+    const int calls = source.calls;
+    identity.Refresh(ReadFakeName, &source);
+    EXPECT_EQ(calls, source.calls) << "a known name must not be re-read";
+}
+
+TEST(SubtitleDisplayLayoutTest, ConsumerIdentityRetryIsBounded)
+{
+    FakeNameSource source = { NULL, 0 };
+    SubtitleDisplayLayout::ConsumerIdentity identity;
+    for (int i = 0; i < 32; ++i) {
+        identity.Refresh(ReadFakeName, &source);
+    }
+    EXPECT_FALSE(identity.HasName());
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_UNKNOWN, identity.Family());
+    // Retries stop after the module's bounded budget rather than every frame.
+    EXPECT_LE(source.calls, 8);
+
+    // A name that appears later is picked up once by Sample.
+    source.name = L"madVR";
+    EXPECT_TRUE(identity.Sample(ReadFakeName, &source));
+    EXPECT_EQ(SubtitleDisplayLayout::CONSUMER_MADVR, identity.Family());
+}
+
+TEST(SubtitleDisplayLayoutTest, ConsumerIdentityContractMatchesFamilyRules)
+{
+    FakeNameSource source = { L"MPC Video Renderer", 0 };
+    SubtitleDisplayLayout::ConsumerIdentity identity;
+    identity.Sample(ReadFakeName, &source);
+
+    const SubtitleDisplayLayout::ConsumerContract bitmap =
+        identity.Contract(true, true);
+    EXPECT_FALSE(bitmap.present_oversized_bitmap);
+    EXPECT_TRUE(bitmap.prefer_single_bitmap);
+    EXPECT_TRUE(bitmap.hdr_owned_by_consumer);
+
+    const SubtitleDisplayLayout::ConsumerContract text =
+        identity.Contract(true, false);
+    EXPECT_FALSE(text.prefer_single_bitmap);
+    EXPECT_TRUE(text.hdr_owned_by_consumer);
 }
 
 TEST(SubtitleDisplayLayoutTest, AspectMetadataIsComplete)

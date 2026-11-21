@@ -43,6 +43,8 @@ private :
     SubtitleDisplayLayout::BitmapFrameInput m_canvas_input;
     bool m_canvas_enabled;
     SIZE m_canvas_display_area;
+    // 0 = none, 1 = persisted SIZE_DISPLAY_AREA, 2 = consumer fullscreen rect.
+    int m_canvas_display_source;
     RECT m_canvas_publish_output;
     RECT m_canvas_publish_clip;
     RECT m_canvas_rect;
@@ -72,7 +74,7 @@ private :
     RECT m_diag_video_in_canvas;
     int m_diag_partition_count;
     RECT m_diag_partitions[3];
-    CStringW m_diag_consumer_name;
+    SubtitleDisplayLayout::ConsumerIdentity m_consumer_identity;
     CStringW m_diag_consumer_version;
     int m_diag_presented_bitmap;
     int m_diag_presented_movable;
@@ -85,7 +87,7 @@ private :
     double m_diag_consumer_scale_x;
     double m_diag_consumer_scale_y;
     bool m_diag_consumer_pending;
-    int m_diag_consumer_retries;
+    int m_diag_consumer_refresh_budget;
 
     CComPtr<ISubPicExAllocator> m_allocator;
     CComPtr<ISubPicEx>          m_pSubPic;

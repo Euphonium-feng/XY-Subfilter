@@ -3,8 +3,6 @@
 #include "XySubRenderIntf.h"
 #include "subtitle_display_layout.h"
 
-#include <string>
-
 interface ISubPicProviderEx;
 interface IXyOptions;
 interface ISubPicEx;
@@ -66,18 +64,18 @@ private:
     bool m_use_display_canvas;
     SubtitleDisplayLayout::FrameLayout m_frame_layout;
     bool m_canvas_cached;
-    RECT m_canvas_video_rect;
-    RECT m_canvas_target_rect;
-    CSize m_canvas_video_size;
+    // Every input that can change the canvas is part of the cache key;
+    // comparing only the video/target rects left a stale canvas after a
+    // display-size or fullscreen-rect change.
+    SubtitleDisplayLayout::CanvasRequest m_canvas_request;
     SubtitleDisplayLayout::CanvasResult m_canvas_value;
     CSize m_original_video_size;
     bool m_use_dst_alpha;
     bool m_render_to_original_video_size;
     SubtitleDisplayLayout::CanvasResult m_display_canvas;
-    // Consumer name sampled once per connection; used to pick the
-    // presentation contract without a per-frame COM round trip.
-    std::wstring m_consumer_name;
-    int m_consumer_name_retries;
+    // Sampling, the bounded retry and the contract live in one module so the
+    // provider, this wrapper and the filter share the same identity.
+    SubtitleDisplayLayout::ConsumerIdentity m_consumer_identity;
 
     double m_fps;
 

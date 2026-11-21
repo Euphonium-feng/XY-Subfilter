@@ -44,6 +44,53 @@ namespace SubtitleDisplayLayout
         CanvasInput();
     };
 
+    // Raw values the provider can read from a consumer, before any policy is
+    // applied. Adapters fill this from IXyOptions; the resolver below is pure
+    // so the same rules can be tested without a COM consumer.
+    struct CanvasRequest
+    {
+        bool enabled;
+        int aspect_mode;
+        // Text path only: when false, an ASPECT_OFF request falls back to the
+        // consumer's subtitle target rect instead of the video rect. Bitmap
+        // frames set this to false because they never use the target rect.
+        bool use_subtitle_target_when_off;
+        RECT video_rect;
+        RECT subtitle_target_rect;
+        SIZE display_area;
+        RECT fullscreen_rect;
+
+        CanvasRequest();
+    };
+
+    // Where the display size used for the canvas came from. Diagnostics and
+    // the property page must report the same source the renderer used.
+    enum DisplaySizeSource
+    {
+        DISPLAY_SIZE_NONE = 0,
+        DISPLAY_SIZE_PERSISTED, // SIZE_DISPLAY_AREA from the property page
+        DISPLAY_SIZE_CONSUMER   // RECT_FULLSCREEN from a fullscreen consumer
+    };
+
+    struct CanvasPlan
+    {
+        CanvasResult canvas;
+        // The canvas the caller must actually render into: the resolved canvas
+        // when the display area is usable, otherwise the video rect.
+        RECT canvas_rect;
+        SIZE display_size;
+        DisplaySizeSource display_size_source;
+        bool active;
+
+        CanvasPlan();
+    };
+
+    // Single decision point for "which canvas does this frame use". Text and
+    // bitmap frames share the display-size rules; only the aspect mode differs.
+    // A consumer fullscreen rect counts only when it is valid, contains the
+    // video and is larger on at least one axis.
+    CanvasPlan ResolveCanvasRequest(const CanvasRequest& request);
+
     struct CanvasResult
     {
         RECT canvas_rect;
@@ -77,16 +124,10 @@ namespace SubtitleDisplayLayout
     // Returns the largest centered rect with the requested aspect inside bounds.
     RECT FitAspectRect(const RECT& bounds, int width, int height);
 
-    // Resolves the canvas used to lay out text subtitles. AUTO uses the
-    // consumer target; explicit aspect modes fit inside it. Never returns a
-    // canvas that is outside the target.
-    //
-    // Some consumers (notably madVR) report every consumer rect in source
-    // pixels, so the target is identical to the video even in fullscreen. When
-    // a real display size is supplied, the canvas is therefore built from the
-    // display ratio instead: it stays in video pixel space, contains the video
-    // and is centred on it, e.g. 1920x800 on a 16:9 display becomes 1920x1080
-    // at y=-140.
+    // Fallback resolver when no display size is known: AUTO uses the consumer
+    // target; explicit aspect modes fit inside it. Never returns a canvas that
+    // is outside the target. Callers that can read SIZE_DISPLAY_AREA or
+    // RECT_FULLSCREEN should go through ResolveCanvasRequest instead.
     CanvasResult ResolveCanvas(const CanvasInput& input);
 
     CanvasResult ResolveCanvasForAspect(
@@ -102,6 +143,7 @@ namespace SubtitleDisplayLayout
         bool enabled;
         RECT video_rect;
         SIZE display_area;
+        RECT fullscreen_rect;
 
         BitmapFrameInput();
     };
@@ -183,6 +225,42 @@ namespace SubtitleDisplayLayout
     // textures themselves. Returns true when the caller must keep the SDR
     // code values regardless of the requested mode.
     bool ShouldPassThroughSdrForConsumer(ConsumerFamily family);
+
+    // Caches the connected consumer's identity from a self-reported name and
+    // turns it into the presentation contract. The caller supplies the name
+    // reader; this type owns sampling, the bounded retry and the contract
+    // resolution, so the provider, the text wrapper and the filter cannot
+    // drift apart.
+    class ConsumerIdentity
+    {
+    public:
+        typedef bool (*NameReader)(void* context, wchar_t* buffer, int capacity);
+
+        ConsumerIdentity();
+
+        // Drops the cached name; call on (re)connect.
+        void Reset();
+
+        // Samples the name through reader when it is not known yet. Retries
+        // are bounded so this never becomes a per-frame COM call.
+        void Refresh(NameReader reader, void* context);
+
+        // Reads the name once, ignoring any cache.
+        bool Sample(NameReader reader, void* context);
+
+        // For diagnostics: the raw name with whitespace replaced by '_'.
+        const wchar_t* Name() const;
+        ConsumerFamily Family() const;
+        bool HasName() const;
+
+        ConsumerContract Contract(bool canvas_active, bool is_bitmap) const;
+        bool OwnsHdrConversion() const;
+
+    private:
+        enum { kMaxNameChars = 128, kMaxRetries = 8 };
+        wchar_t m_name[kMaxNameChars];
+        int m_retries;
+    };
 
     // Builds the published text frame geometry from the consumer's video rect
     // and the resolved canvas. Text positions are shifted by

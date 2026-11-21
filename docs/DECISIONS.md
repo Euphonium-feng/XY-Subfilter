@@ -709,6 +709,28 @@ MPCVR-Plus 0.11.1 在 HDR 输出时选择 `IDF_PS_11_CONVERT_BITMAP_TO_PQ*`，
 
 ## D52：MPCVR 黑边布局先做实机取证，不预设结论
 
+## D53：画布决策与 consumer 身份各收敛为一个模块
+
+架构审阅发现“显示尺寸 → 画布”在四个地方各推导一次，判据还不一致（位图要求
+fullscreen 两轴都更大，文本包装器只要求任一轴更大），而真正出错的“输入怎么来”
+没有任何单测覆盖。
+
+现在 `SubtitleDisplayLayout::ResolveCanvasRequest()` 是唯一决策点：输入是原始值
+（`CanvasRequest`），输出 `CanvasPlan`（画布、是否启用、显示尺寸来源）。
+读取 `IXyOptions` 的适配器按模块各一份（subpic 不能被 subtitles 反向依赖），
+但策略只有一份。位图、文本包装器与 HDR 诊断共用它。
+
+consumer 身份同样收敛为 `ConsumerIdentity`：名称采样、限次重试、分类、
+呈现契约与 HDR 归属都在一个模块内。这直接针对 2026-11-18 `isBitmap` 反复的
+根因——当时“身份 / 契约 / HDR 归属”分散在五处，改一处另一处仍按旧假设走。
+
+被否方案：把 `ResolveCanvas*` 的旧函数删掉。它们仍是纯几何原语，且被单测直接
+覆盖；保留它们、只让 `ResolveCanvasRequest` 调用，比把几何与选项策略混在一起更浅。
+
+顺带修复：`ResolvePresentationContract()` 曾只看 `SIZE_DISPLAY_AREA`，当画布来自
+consumer `fullscreenRect` 时会与 provider 的发布几何不一致；wrapper 的画布缓存键
+漏掉显示尺寸与 fullscreen，运行时改动会留旧画布。
+
 MPCVR 的 `subtitleTargetRect` 与 `videoOutputRect` 都等于 `m_videoRect`，
 且非文本字幕的目标矩形固定为 `m_videoRect`（`SubPicImpl.cpp:122`）。
 provider 无法通过 clip 让内容进入黑边；单张整幅画布在比例一致时不会被拉伸，

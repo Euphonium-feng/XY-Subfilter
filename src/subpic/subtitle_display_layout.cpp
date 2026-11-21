@@ -52,6 +52,71 @@ namespace SubtitleDisplayLayout
         layout_size.cy = 0;
     }
 
+    CanvasRequest::CanvasRequest()
+        : enabled(false)
+        , aspect_mode(ASPECT_OFF)
+        , use_subtitle_target_when_off(false)
+    {
+        video_rect = RECT();
+        subtitle_target_rect = RECT();
+        display_area.cx = 0;
+        display_area.cy = 0;
+        fullscreen_rect = RECT();
+    }
+
+    CanvasPlan::CanvasPlan()
+        : display_size_source(DISPLAY_SIZE_NONE)
+        , active(false)
+    {
+        canvas_rect = RECT();
+        display_size.cx = 0;
+        display_size.cy = 0;
+    }
+
+    CanvasPlan ResolveCanvasRequest(const CanvasRequest& request)
+    {
+        CanvasPlan plan;
+
+        // Persisted display size wins: it is the only source that works for
+        // every consumer, including those that report source-pixel rects.
+        if (request.display_area.cx > 0 && request.display_area.cy > 0) {
+            plan.display_size = request.display_area;
+            plan.display_size_source = DISPLAY_SIZE_PERSISTED;
+        }
+        else if (IsValidRect(request.fullscreen_rect)
+            && ContainsRect(request.fullscreen_rect, request.video_rect)
+            && (RectWidth(request.fullscreen_rect) > RectWidth(request.video_rect)
+                || RectHeight(request.fullscreen_rect) > RectHeight(request.video_rect))) {
+            plan.display_size.cx = RectWidth(request.fullscreen_rect);
+            plan.display_size.cy = RectHeight(request.fullscreen_rect);
+            plan.display_size_source = DISPLAY_SIZE_CONSUMER;
+        }
+
+        if (plan.display_size_source != DISPLAY_SIZE_NONE) {
+            plan.canvas = ResolveCanvasForAspect(
+                request.enabled, request.aspect_mode, true, request.video_rect,
+                plan.display_size.cx, plan.display_size.cy);
+        }
+        else {
+            CanvasInput input;
+            // Without a display size the consumer target is the only canvas
+            // information available. Text falls back to it when ASPECT_OFF;
+            // bitmaps keep the video rect because their objects carry their
+            // own coordinates.
+            input.enabled = request.use_subtitle_target_when_off;
+            input.aspect_mode = request.enabled
+                ? request.aspect_mode : ASPECT_OFF;
+            input.video_output_rect = request.video_rect;
+            input.subtitle_target_rect = request.subtitle_target_rect;
+            plan.canvas = ResolveCanvas(input);
+        }
+
+        plan.active = plan.canvas.uses_display_area;
+        plan.canvas_rect = plan.active
+            ? plan.canvas.canvas_rect : request.video_rect;
+        return plan;
+    }
+
     FrameLayout::FrameLayout()
     {
         output_rect = RECT();
@@ -288,6 +353,7 @@ namespace SubtitleDisplayLayout
     {
         display_area.cx = 0;
         display_area.cy = 0;
+        fullscreen_rect = RECT();
     }
 
     BitmapFrameResult::BitmapFrameResult()
@@ -303,13 +369,17 @@ namespace SubtitleDisplayLayout
         BitmapFrameResult result;
         // The bitmap canvas is the display area expressed in source pixels,
         // exactly like the text path: 1920x800 video on a 16:9 display gets a
-        // 1920x1080 canvas. The aspect mode is not consulted here; bitmap
-        // subtitles always use the whole display area.
-        result.canvas = ResolveCanvasForAspect(
-            input.enabled, ASPECT_AUTO, true, input.video_rect,
-            input.display_area.cx, input.display_area.cy);
-        const RECT canvas = result.canvas.uses_display_area
-            ? result.canvas.canvas_rect : input.video_rect;
+        // 1920x1080 canvas. ASPECT_AUTO keeps the display's own ratio; bitmap
+        // subtitles never use an explicit letterbox aspect.
+        CanvasRequest request;
+        request.enabled = input.enabled;
+        request.aspect_mode = ASPECT_AUTO;
+        request.video_rect = input.video_rect;
+        request.display_area = input.display_area;
+        request.fullscreen_rect = input.fullscreen_rect;
+        const CanvasPlan plan = ResolveCanvasRequest(request);
+        result.canvas = plan.canvas;
+        const RECT canvas = plan.canvas_rect;
         // Match the verified text path exactly: the output stays the video
         // reference rect, the clip is the centred canvas extending into the
         // bars, and bitmap positions are moved by the canvas origin. Each
@@ -494,5 +564,73 @@ namespace SubtitleDisplayLayout
         // Pre-encoding the subtitle would apply the transfer function twice.
         return ResolveConsumerContract(family, true, true)
             .hdr_owned_by_consumer;
+    }
+
+    ConsumerIdentity::ConsumerIdentity()
+        : m_retries(0)
+    {
+        m_name[0] = 0;
+    }
+
+    void ConsumerIdentity::Reset()
+    {
+        m_name[0] = 0;
+        m_retries = 0;
+    }
+
+    bool ConsumerIdentity::Sample(NameReader reader, void* context)
+    {
+        if (!reader) {
+            return false;
+        }
+        wchar_t raw[kMaxNameChars] = {};
+        if (!reader(context, raw, kMaxNameChars) || raw[0] == 0) {
+            return false;
+        }
+        int i = 0;
+        for (; raw[i] && i < kMaxNameChars - 1; ++i) {
+            const wchar_t ch = raw[i];
+            m_name[i] = (ch == L' ' || ch == L'\t' || ch == L'\r' || ch == L'\n')
+                ? L'_' : ch;
+        }
+        m_name[i] = 0;
+        return true;
+    }
+
+    void ConsumerIdentity::Refresh(NameReader reader, void* context)
+    {
+        if (HasName() || m_retries >= kMaxRetries) {
+            return;
+        }
+        if (Sample(reader, context)) {
+            return;
+        }
+        ++m_retries;
+    }
+
+    bool ConsumerIdentity::HasName() const
+    {
+        return m_name[0] != 0;
+    }
+
+    const wchar_t* ConsumerIdentity::Name() const
+    {
+        return m_name;
+    }
+
+    ConsumerFamily ConsumerIdentity::Family() const
+    {
+        return ClassifyConsumer(m_name);
+    }
+
+    ConsumerContract ConsumerIdentity::Contract(
+        bool canvas_active, bool is_bitmap) const
+    {
+        return ResolveConsumerContract(Family(), canvas_active, is_bitmap);
+    }
+
+    bool ConsumerIdentity::OwnsHdrConversion() const
+    {
+        return ShouldPassThroughSdrForConsumer(Family());
     }
 }

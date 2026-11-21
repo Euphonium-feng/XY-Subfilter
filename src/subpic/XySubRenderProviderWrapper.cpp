@@ -12,67 +12,28 @@
 
 namespace
 {
-SubtitleDisplayLayout::CanvasResult ResolveConsumerCanvas(
-    IXyOptions* consumer, const RECT& video_output_rect,
-    const RECT& subtitle_target_rect)
+// Adapter between IXyOptions and ConsumerIdentity's name reader. Only the raw
+// string is read here; classification and retry policy live in the module.
+bool ReadConsumerName(void* context, wchar_t* buffer, int capacity)
 {
-    SubtitleDisplayLayout::CanvasInput input;
-    input.video_output_rect = video_output_rect;
-    input.subtitle_target_rect = subtitle_target_rect;
-
-    if (!consumer
-        || FAILED(consumer->XyGetBool(
-            DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
-            &input.enabled))
-        || !input.enabled) {
-        return SubtitleDisplayLayout::ResolveCanvas(input);
+    IXyOptions* consumer = static_cast<IXyOptions*>(context);
+    if (!consumer || !buffer || capacity <= 1) {
+        return false;
     }
-
-    if (FAILED(consumer->XyGetInt(
-            DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
-            &input.aspect_mode))
-        || input.aspect_mode == DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF) {
-        return SubtitleDisplayLayout::ResolveCanvas(input);
+    LPWSTR name = NULL;
+    int chars = 0;
+    if (FAILED(consumer->XyGetString(
+            DirectVobSubXyOptions::STRING_CONNECTED_CONSUMER,
+            &name, &chars)) || !name) {
+        return false;
     }
-
-    // Exactly one decision: the display size. madVR publishes the real monitor
-    // rect in fullscreenRect; MPC VR and windowed playback fall back to the
-    // size persisted by the property page. No window or monitor query happens
-    // here, so this is safe on the playback thread.
-    SIZE display_area = {};
-    bool has_display_area =
-        SUCCEEDED(consumer->XyGetSize(
-            DirectVobSubXyOptions::SIZE_DISPLAY_AREA, &display_area))
-        && display_area.cx > 0
-        && display_area.cy > 0;
-
-    if (!has_display_area) {
-        RECT fullscreen = {};
-        if (SUCCEEDED(consumer->XyGetRect(
-                DirectVobSubXyOptions::RECT_FULLSCREEN, &fullscreen))
-            && SubtitleDisplayLayout::IsValidRect(fullscreen)
-            && SubtitleDisplayLayout::ContainsRect(
-                fullscreen, video_output_rect)
-            && (fullscreen.right - fullscreen.left
-                    > video_output_rect.right - video_output_rect.left
-                || fullscreen.bottom - fullscreen.top
-                    > video_output_rect.bottom - video_output_rect.top)) {
-            display_area.cx = fullscreen.right - fullscreen.left;
-            display_area.cy = fullscreen.bottom - fullscreen.top;
-            has_display_area = true;
-        }
+    int i = 0;
+    for (; i < chars && name[i] && i < capacity - 1; ++i) {
+        buffer[i] = name[i];
     }
-
-    if (!has_display_area) {
-        return SubtitleDisplayLayout::ResolveCanvas(input);
-    }
-
-    // A display size is known, so lay out on a canvas of its ratio centred on
-    // the video instead of trusting consumer rects that may all be source
-    // pixels.
-    return SubtitleDisplayLayout::ResolveCanvasForAspect(
-        true, input.aspect_mode, true, video_output_rect,
-        display_area.cx, display_area.cy);
+    buffer[i] = 0;
+    LocalFree(name);
+    return i > 0;
 }
 }
 
@@ -330,14 +291,10 @@ XySubRenderProviderWrapper2::XySubRenderProviderWrapper2( ISubPicProviderEx2 *pr
     , m_render_to_original_video_size(0)
     , m_use_display_canvas(false)
     , m_canvas_cached(false)
-    , m_consumer_name_retries(0)
     , m_fps(0)
     , m_max_bitmap_count2(0)
 {
-    m_canvas_video_rect = RECT();
-    m_canvas_target_rect = RECT();
-    m_canvas_video_size.cx = 0;
-    m_canvas_video_size.cy = 0;
+    m_canvas_request = SubtitleDisplayLayout::CanvasRequest();
     HRESULT hr = NOERROR;
     if (!provider)
     {
@@ -364,16 +321,8 @@ STDMETHODIMP XySubRenderProviderWrapper2::Connect( IXyOptions *consumer )
     {
         hr = m_consumer != consumer ? S_OK : S_FALSE;
         m_consumer = consumer;
-        m_consumer_name.clear();
-        m_consumer_name_retries = 0;
-        LPWSTR name = NULL;
-        int name_chars = 0;
-        if (SUCCEEDED(consumer->XyGetString(
-                DirectVobSubXyOptions::STRING_CONNECTED_CONSUMER,
-                &name, &name_chars)) && name) {
-            m_consumer_name.assign(name, name_chars);
-            LocalFree(name);
-        }
+        m_consumer_identity.Reset();
+        m_consumer_identity.Sample(ReadConsumerName, consumer);
     }
     else
     {
@@ -389,21 +338,9 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     CheckPointer(subRenderFrame, E_POINTER);
     *subRenderFrame = NULL;
 
-    if (m_consumer_name.empty() && m_consumer
-        && m_consumer_name_retries < 8) {
-        // Connect() can run before the outer filter has copied the consumer
-        // name into its options; retry a bounded number of frames rather than
-        // losing the contract or putting a COM call on every frame.
-        ++m_consumer_name_retries;
-        LPWSTR name = NULL;
-        int name_chars = 0;
-        if (SUCCEEDED(m_consumer->XyGetString(
-                DirectVobSubXyOptions::STRING_CONNECTED_CONSUMER,
-                &name, &name_chars)) && name) {
-            m_consumer_name.assign(name, name_chars);
-            LocalFree(name);
-        }
-    }
+    // Connect() can run before the outer filter copies the name into its
+    // options; ConsumerIdentity retries a bounded number of frames.
+    m_consumer_identity.Refresh(ReadConsumerName, m_consumer);
 
     HRESULT hr = m_consumer->XyGetDouble(DirectVobSubXyOptions::DOUBLE_FPS, &fps);
     if (FAILED(hr))
@@ -427,19 +364,40 @@ STDMETHODIMP XySubRenderProviderWrapper2::RequestFrame( IXySubRenderFrame**subRe
     ASSERT(output_rect.Width()<=subtitle_target_rect.Width() && output_rect.Height()<=subtitle_target_rect.Height());
     hr = m_consumer->XyGetSize(DirectVobSubXyOptions::SIZE_LAYOUT_WITH, &original_video_size);
     ASSERT(SUCCEEDED(hr));
-    // The canvas only depends on the video rect, the consumer target and the
-    // injected display size. All three are stable for a whole playback
-    // session, so resolve once instead of on every frame request.
+    // Every input that can change the canvas is part of the key, so a display
+    // size or fullscreen-rect change cannot leave a stale canvas behind.
+    SubtitleDisplayLayout::CanvasRequest canvas_request;
+    canvas_request.use_subtitle_target_when_off = true;
+    canvas_request.video_rect = output_rect;
+    canvas_request.subtitle_target_rect = subtitle_target_rect;
+    m_consumer->XyGetBool(
+        DirectVobSubXyOptions::BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES,
+        &canvas_request.enabled);
+    m_consumer->XyGetInt(
+        DirectVobSubXyOptions::INT_SUBTITLE_DISPLAY_ASPECT,
+        &canvas_request.aspect_mode);
+    m_consumer->XyGetSize(
+        DirectVobSubXyOptions::SIZE_DISPLAY_AREA,
+        &canvas_request.display_area);
+    m_consumer->XyGetRect(
+        DirectVobSubXyOptions::RECT_FULLSCREEN,
+        &canvas_request.fullscreen_rect);
     const bool canvas_inputs_changed =
         !m_canvas_cached
-        || !EqualRect(&m_canvas_video_rect, &output_rect)
-        || !EqualRect(&m_canvas_target_rect, &subtitle_target_rect);
+        || !EqualRect(&m_canvas_request.video_rect, &canvas_request.video_rect)
+        || !EqualRect(&m_canvas_request.subtitle_target_rect,
+            &canvas_request.subtitle_target_rect)
+        || !EqualRect(&m_canvas_request.fullscreen_rect,
+            &canvas_request.fullscreen_rect)
+        || m_canvas_request.display_area.cx != canvas_request.display_area.cx
+        || m_canvas_request.display_area.cy != canvas_request.display_area.cy
+        || m_canvas_request.enabled != canvas_request.enabled
+        || m_canvas_request.aspect_mode != canvas_request.aspect_mode;
     if (canvas_inputs_changed)
     {
-        m_canvas_value = ResolveConsumerCanvas(
-            m_consumer, output_rect, subtitle_target_rect);
-        m_canvas_video_rect = output_rect;
-        m_canvas_target_rect = subtitle_target_rect;
+        m_canvas_value =
+            SubtitleDisplayLayout::ResolveCanvasRequest(canvas_request).canvas;
+        m_canvas_request = canvas_request;
         m_canvas_cached = true;
     }
     const SubtitleDisplayLayout::CanvasResult& display_canvas =
@@ -603,7 +561,7 @@ HRESULT XySubRenderProviderWrapper2::Render( REFERENCE_TIME now, POSITION pos )
             dynamic_cast<XySubRenderFrame*>(m_xy_sub_render_frame.p);
         if (xy_frame)
         {
-            if (SubtitleDisplayLayout::ClassifyConsumer(m_consumer_name.c_str())
+            if (m_consumer_identity.Family()
                     == SubtitleDisplayLayout::CONSUMER_MPC_VR)
             {
                 // MPCVR drops the clip origin and maps the whole texture onto

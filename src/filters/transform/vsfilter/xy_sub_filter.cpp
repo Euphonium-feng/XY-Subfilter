@@ -807,20 +807,26 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
 
 SubtitleDisplayLayout::ConsumerFamily XySubFilter::GetConsumerFamily() const
 {
-    return SubtitleDisplayLayout::ClassifyConsumer(
-        m_xy_str_opt[STRING_CONNECTED_CONSUMER]);
+    return ConsumerFamily();
 }
 
 SubtitleDisplayLayout::ConsumerContract
 XySubFilter::ResolvePresentationContract() const
 {
-    // The canvas only matters while a bitmap is actually being presented from
-    // it; the display size is the same gate the provider uses before it
-    // publishes canvas geometry.
+    // Ask the same resolver the provider uses. Gating on SIZE_DISPLAY_AREA
+    // alone missed a canvas built from the consumer's fullscreen rect, which
+    // made the overlay contract disagree with the published geometry.
+    SubtitleDisplayLayout::CanvasRequest request;
+    request.enabled =
+        m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
+    request.aspect_mode = m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT];
+    request.use_subtitle_target_when_off = true;
+    request.video_rect = m_xy_rect_opt[RECT_VIDEO_OUTPUT];
+    request.subtitle_target_rect = m_xy_rect_opt[RECT_SUBTITLE_TARGET];
+    request.display_area = m_xy_size_opt[SIZE_DISPLAY_AREA];
+    request.fullscreen_rect = m_xy_rect_opt[RECT_FULLSCREEN];
     const bool canvas_active =
-        m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES]
-        && m_xy_size_opt[SIZE_DISPLAY_AREA].cx > 0
-        && m_xy_size_opt[SIZE_DISPLAY_AREA].cy > 0;
+        SubtitleDisplayLayout::ResolveCanvasRequest(request).active;
     return SubtitleDisplayLayout::ResolveConsumerContract(
         GetConsumerFamily(), canvas_active,
         m_xy_bool_opt[BOOL_IS_BITMAP] != false);
@@ -2222,47 +2228,25 @@ void XySubFilter::LogHdrConfiguration(
             && !(bitmap_canvas_overlay && mask_bitmap_flag);
         const SIZE display_mode = m_xy_size_opt[SIZE_DISPLAY_MODE];
         const int max_bitmap_count = m_xy_int_opt[INT_MAX_BITMAP_COUNT2];
-        const bool display_rect_valid =
-            display_rect.right > display_rect.left
-            && display_rect.bottom > display_rect.top;
+        // The renderer, the bitmap provider and this log all use one resolver;
+        // mirroring the rules here by hand is how "log says fine, picture is
+        // broken" happened before.
+        SubtitleDisplayLayout::CanvasRequest canvas_request;
+        canvas_request.enabled = use_display_area;
+        canvas_request.aspect_mode = display_aspect;
+        canvas_request.use_subtitle_target_when_off = true;
+        canvas_request.video_rect = video_rect;
+        canvas_request.subtitle_target_rect = subtitle_target;
+        canvas_request.display_area = display_area;
+        canvas_request.fullscreen_rect = display_rect;
+        const SubtitleDisplayLayout::CanvasPlan canvas_plan =
+            SubtitleDisplayLayout::ResolveCanvasRequest(canvas_request);
+        const SubtitleDisplayLayout::CanvasResult& canvas = canvas_plan.canvas;
         const bool consumer_is_fullscreen =
-            display_rect_valid
-            && display_rect.left <= video_rect.left
-            && display_rect.top <= video_rect.top
-            && display_rect.right >= video_rect.right
-            && display_rect.bottom >= video_rect.bottom
-            && (display_rect.right - display_rect.left
-                    > video_rect.right - video_rect.left
-                || display_rect.bottom - display_rect.top
-                    > video_rect.bottom - video_rect.top);
-
-        // Mirror the provider's decision exactly: with a known display size
-        // the canvas comes from the display ratio, otherwise from the consumer
-        // rects.
-        SubtitleDisplayLayout::CanvasResult canvas;
-        if (use_display_area && has_display_area) {
-            canvas = SubtitleDisplayLayout::ResolveCanvasForAspect(
-                true, display_aspect, true, video_rect,
-                display_area.cx, display_area.cy);
-        }
-        else if (use_display_area && consumer_is_fullscreen) {
-            canvas = SubtitleDisplayLayout::ResolveCanvasForAspect(
-                true, display_aspect, true, video_rect,
-                display_rect.right - display_rect.left,
-                display_rect.bottom - display_rect.top);
-        }
-        else {
-            SubtitleDisplayLayout::CanvasInput canvas_input;
-            canvas_input.enabled = use_display_area;
-            canvas_input.aspect_mode = use_display_area
-                ? display_aspect
-                : DirectVobSubXyOptions::SUBTITLE_DISPLAY_ASPECT_OFF;
-            canvas_input.video_output_rect = video_rect;
-            canvas_input.subtitle_target_rect = subtitle_target;
-            canvas = SubtitleDisplayLayout::ResolveCanvas(canvas_input);
-        }
-        const RECT canvas_rect = canvas.uses_display_area
-            ? canvas.canvas_rect : video_rect;
+            use_display_area
+            && canvas_plan.display_size_source
+                == SubtitleDisplayLayout::DISPLAY_SIZE_CONSUMER;
+        const RECT canvas_rect = canvas_plan.canvas_rect;
         const SubtitleDisplayLayout::FrameLayout frame_layout =
             SubtitleDisplayLayout::BuildFrameLayout(video_rect, canvas_rect);
         const bool pgs_1_to_1 =

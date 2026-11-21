@@ -891,9 +891,7 @@ void DirectVobSubImpl::ApplyActiveUiLanguageToCurrentThread()
 
 bool DirectVobSubImpl::IsMpcVrConsumer() const
 {
-    return SubtitleDisplayLayout::ClassifyConsumer(
-        m_xy_str_opt[STRING_CONNECTED_CONSUMER])
-        == SubtitleDisplayLayout::CONSUMER_MPC_VR;
+    return ConsumerFamily() == SubtitleDisplayLayout::CONSUMER_MPC_VR;
 }
 
 bool DirectVobSubImpl::ConsumerOwnsHdrConversion() const
@@ -902,8 +900,16 @@ bool DirectVobSubImpl::ConsumerOwnsHdrConversion() const
     // textures to PQ on its own HDR output path. Handing it PQ-encoded codes
     // would apply the transfer function a second time.
     return SubtitleDisplayLayout::ShouldPassThroughSdrForConsumer(
-        SubtitleDisplayLayout::ClassifyConsumer(
-            m_xy_str_opt[STRING_CONNECTED_CONSUMER]));
+        ConsumerFamily());
+}
+
+SubtitleDisplayLayout::ConsumerFamily
+DirectVobSubImpl::ConsumerFamily() const
+{
+    // Single classification site inside the filter: every caller above holds
+    // whatever lock it needs, and the name is only read here.
+    return SubtitleDisplayLayout::ClassifyConsumer(
+        m_xy_str_opt[STRING_CONNECTED_CONSUMER]);
 }
 
 HdrColor::Config DirectVobSubImpl::ResolvePgsHdrConfig() const
