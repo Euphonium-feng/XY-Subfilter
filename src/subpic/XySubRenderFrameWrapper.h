@@ -10,6 +10,14 @@ interface IXySubRenderFrame;
 class XySubRenderFrameWrapper : public CUnknown, public IXySubRenderFrame
 {
 public:
+    struct Bitmap
+    {
+        RECT rect;      // buffer-local pixel range
+        POINT position; // published output coordinates
+        SIZE size;
+        ULONGLONG id;
+    };
+
     XySubRenderFrameWrapper(CMemSubPic * inner_obj, const CRect& output_rect, const CRect& clip_rect,
         ULONGLONG id,
         HRESULT *phr=NULL, POINT bitmap_offset = POINT());
@@ -31,6 +39,11 @@ public:
     STDMETHODIMP GetBitmapCount(int *count);
     STDMETHODIMP GetBitmap(int index, ULONGLONG *id, POINT *position, SIZE *size, LPCVOID *pixels, int *pitch);
     STDMETHODIMP GetBitmapExtra(int index, LPVOID extra_info);
+
+    // Reads back what GetBitmap() will publish, without copying pixels. The
+    // provider uses this for diagnostics so the log cannot derive geometry
+    // independently from the frame it actually handed to the consumer.
+    HRESULT DescribeBitmap(int index, Bitmap* bitmap) const;
 private:
     CComPtr<CMemSubPic> m_inner_obj;
     CRect m_output_rect, m_clip_rect;

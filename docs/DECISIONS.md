@@ -731,6 +731,60 @@ consumer 身份同样收敛为 `ConsumerIdentity`：名称采样、限次重试�
 consumer `fullscreenRect` 时会与 provider 的发布几何不一致；wrapper 的画布缓存键
 漏掉显示尺寸与 fullscreen，运行时改动会留旧画布。
 
+## D54：位图发布几何只解析一次，日志消费同一值
+
+`Render()` 原本自己决定“MPCVR 单张画布 / madVR 分区 / 画布关闭”，
+`LogBitmapFrame()` 又为日志重新推导 `published_output/clip/offset` 和
+`partitionCount`。两处不同步时，日志会显示“发布正常”而帧已被裁切；这正是
+MPCVR 单张画布接入后暴露的真实漂移：实际发布 `(0,0,canvas)`，日志仍打印
+madVR 的视频 output 与分区。
+
+现在 `SubtitleDisplayLayout::BitmapPublication` 是唯一发布规格：
+
+| Kind | output / clip | bitmap rects | partitionCount |
+| --- | --- | --- | --- |
+| `SingleRect` | 视频 output / 视频 clip | inner dirty rect | 0 |
+| `Partitioned` | 视频 output / 画布 clip | 最多 3 段画布局部矩形 | 2–3 |
+| `SingleCanvas` | 整张零基画布 | 第 0 张为整张画布 | 0 |
+
+`ResolveBitmapPublication()` 是纯函数，`Render()` 按它构造
+`XySubRenderFrameWrapper`，日志按同一个 `m_publication` 序列化。空脏区或
+无效画布返回 false，调用方不发布帧。`XySubRenderFrameWrapper::DescribeBitmap()`
+只用于从已发布帧回读 buffer-local rect 与 output position，不复制像素。
+
+`xy-bitmap-frame/1` 的字段名与顺序不变；本次修正的是字段值：MPCVR 分支的
+`publishOutput/publishClip` 现在是实际整张画布，`partitionCount=0`。
+`contract=mpcvr-texture` 表示 consumer 家族（与画布是否启用无关），
+`usesOversizedBitmap` 才表示本帧是否真的发布了整幅画布；画布关闭时后者为 0。
+依赖旧错误值的判读需要按新语义复核。
+
+## D55：日志去重收敛为 FrameTrace
+
+provider 原先把 20 多项日志字段逐一存成 `m_diag_*`，再用手写相等比较去重。
+新增一个字段就要同时改成员、赋值和比较三处，容易漏；改渲染时也难判断哪些
+状态是“给日志的”。
+
+`FrameTrace` 由只读快照构造，自带 `operator==`；`LogBitmapFrame()` 只在
+快照变化时追加。`m_trace_valid` 只表示“有一份上一次快照”，不再维护逐字段
+镜像。consumer 名称采样和重试预算仍属于渲染状态，留在
+`m_diag_consumer_pending` / `m_diag_consumer_refresh_budget`，没有移进 trace。
+
+被否方案：把日志字段直接拼成字符串再比较。格式变化会造成假更新，且无法
+区分“几何变了”和“consumer 版本号变了”。
+
+## D56：HDR 选项按调用点取一次只读快照
+
+`DirectVobSubImpl` 的 HDR 决策、RGB 输出级别、状态文本与日志各自读取
+`m_pgs_mode`、`m_text_mode`、`m_white_nits`、consumer 名称和画布矩形。
+这些读取目前由调用方持 `m_propsLock`（或 `m_csFilter` + `m_csProviderFields`），
+但同一段逻辑里重复索引容易让后来者误以为需要另加锁。
+
+新增 `HdrOptionValues` 与 `SnapshotHdrOptions()`：快照本身不加锁，只要求
+调用方在已持锁作用域内使用。`ResolveHdrMode()`、`ConsumerFamily()`、
+`ConsumerOwnsHdrConversion()` 都有接收快照的重载；MPCVR 直通判断与
+`requested/resolved` 语义保持不变。没有把所有 `m_xy_*_opt` 包成通用
+`OptionsView`，因为那会掩盖锁的作用域并扩大 ABI 附近的改动面。
+
 MPCVR 的 `subtitleTargetRect` 与 `videoOutputRect` 都等于 `m_videoRect`，
 且非文本字幕的目标矩形固定为 `m_videoRect`（`SubPicImpl.cpp:122`）。
 provider 无法通过 clip 让内容进入黑边；单张整幅画布在比例一致时不会被拉伸，

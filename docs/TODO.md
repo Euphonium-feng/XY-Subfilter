@@ -519,7 +519,25 @@ MPCVR 黑边布局按源码推断不可达（目标矩形恒为画面矩形）�
 （run `44915520849`，C3646/C4430），已按依赖顺序修正。
 实机尚未复测：本次不改变已验收的 madVR 画面逻辑，但位图与文本现在接受
 同一条 fullscreen 判据，需确认 16:9 显示器播放 1920×800 片源时行为未变。
-候选 03–05 未动。
+
+候选 03–05 已实现，已补 `SubtitleDisplayLayoutTest.*` 到云端回归过滤器；尚未取得
+本轮云端结果：
+
+1. 候选 03：`BitmapPublication` / `ResolveBitmapPublication()` 成为发布几何
+   的唯一来源，`Render()` 与 `LogBitmapFrame()` 共用它。修正了 MPCVR 分支
+   日志继续打印 madVR output/分区、`usesOversizedBitmap` 在画布关闭时误报
+   的实际漂移。
+2. 候选 04：`FrameTrace` 合并日志快照与去重；仅诊断字段收敛，consumer
+   身份采样及重试预算仍保留为渲染状态。`BuildXyDiagnosticPath()` 收拢为唯一
+   日志路径实现。
+3. 候选 05：`HdrOptionValues` / `SnapshotHdrOptions()` 是 filter 内只读选项
+   快照，仅在已持锁调用点使用；未改 `IXyOptions` 数值 ABI，也未引入全局
+   `OptionsView`。
+
+新增单测覆盖 `SingleRect`、`Partitioned`、`SingleCanvas` 与空脏区；
+`xy-bitmap-frame/1` 字段名和顺序保持不变，但 MPCVR 的
+`publishOutput/publishClip/partitionCount/usesOversizedBitmap` 现在反映实际
+发布值。下一动作：提交后 push，盯三矩阵；绿后安排用户实机取证。
 
 ### 深层 Auto HDR
 

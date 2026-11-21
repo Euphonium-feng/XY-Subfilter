@@ -180,7 +180,8 @@ generation，在下一帧 `RequestFrame` 应用配置，不在每帧枚举引脚
 媒体类型读取和本地文件包装。`UpdateConsumerHdrSignal()` 只在连接或媒体签名变化后
 执行一次有界探测，不进入逐帧热路径。
 
-`DirectVobSubImpl::GetHdrDiagnosticPath()` 与日志写入共用
+`BuildXyDiagnosticPath()` 是日志路径的唯一实现，`AppendXyDiagnostic()` 与
+`DirectVobSubImpl::GetHdrDiagnosticPath()` 共用它。日志写入
 `%TEMP%\xy_hdr_diag.txt`。属性页的 `Open log` / “打开日志”按钮只打开已存在的日志；
 文件缺失或 `ShellExecuteW` 失败时显示本地化提示，不创建空文件。
 日志在每次进程启动后的第一次写入时截断，因此每次运行只保留本次证据；单次运行
@@ -314,7 +315,10 @@ video 原点，因此可以进入黑边。不能把物理显示尺寸（2560×14
 
 `SubtitleDisplayLayout::ConsumerIdentity` 收拢 consumer 名称采样、限次重试、
 `ClassifyConsumer` 与 `ResolveConsumerContract`；wrapper 与 HDMV provider 各持
-一个实例，不再维护自己的名称缓存与重试计数。
+一个实例，不再维护自己的名称缓存与重试计数。filter 侧另由
+`DirectVobSubImpl::SnapshotHdrOptions()` 在已持锁的调用点一次读出
+`HdrOptionValues`；HDR 状态、日志和 RGB 输出级别只消费这个只读快照，不再各自
+重复读取同一批 `m_xy_*_opt`。
 
 `SubtitleDisplayLayout::ResolveConsumerContract()` 是纯函数，按 consumer 名称
 给出三个标志：`present_oversized_bitmap`（madVR：画布启用时伪装
@@ -342,6 +346,19 @@ MPCVR 的 HDR 归属在 `DirectVobSubImpl::ResolvePgsHdrConfig()` /
 `(consumer PQ)`，`xy-hdr-config/1` 写入 `hdrOwner=consumer`。
 
 源码依据与行号见 `docs/mpcvr-adaptation.md`。
+
+位图发布的几何先由 `SubtitleDisplayLayout::ResolveBitmapPublication()` 解析成
+`BitmapPublication`：`SingleRect`（画布关闭）、`Partitioned`（madVR 分区）或
+`SingleCanvas`（MPCVR 单张）。`Render()` 只按这个值构造帧，
+`LogBitmapFrame()` 只序列化同一个值，不再各自推导 `output/clip/offset` 或
+重新计算分区。MPCVR 分支因此把 `publishOutput/publishClip` 报告为整张画布、
+`partitionCount=0`；madVR 分支仍报告视频 output 与分区。
+
+`xy-bitmap-frame/1` 的几何、位图 ID、渲染统计与 consumer 快照先合并成
+`HdmvSubtitleProviderImpl::FrameTrace`，由其 `operator==` 去重后才写日志。
+只用于日志的字段不再散落在多个 `m_diag_*` 成员中；consumer 名称采样与限次
+重试仍是渲染状态，继续由 `ConsumerIdentity` 管理。`contract` 表示 consumer
+家族契约；`usesOversizedBitmap` 才表示本帧是否发布了整幅画布。
 
 画布缓存只在输入变化时重算，`Invalidate()` 与 `Connect()` 会使其失效。
 画布或发布几何变化还会丢弃当前 `m_pSubPic`，因为 `Render()` 在字幕区间未变时

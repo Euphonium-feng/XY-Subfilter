@@ -894,13 +894,24 @@ bool DirectVobSubImpl::IsMpcVrConsumer() const
     return ConsumerFamily() == SubtitleDisplayLayout::CONSUMER_MPC_VR;
 }
 
+SubtitleDisplayLayout::ConsumerFamily
+DirectVobSubImpl::ConsumerFamily(const HdrOptionValues& values) const
+{
+    return SubtitleDisplayLayout::ClassifyConsumer(values.connected_consumer);
+}
+
+bool DirectVobSubImpl::ConsumerOwnsHdrConversion(
+    const HdrOptionValues& values) const
+{
+    return ShouldPassThroughSdrForConsumer(ConsumerFamily(values));
+}
+
 bool DirectVobSubImpl::ConsumerOwnsHdrConversion() const
 {
     // Verified on MPCVR-Plus 0.11.1: the renderer converts SDR subtitle
     // textures to PQ on its own HDR output path. Handing it PQ-encoded codes
     // would apply the transfer function a second time.
-    return SubtitleDisplayLayout::ShouldPassThroughSdrForConsumer(
-        ConsumerFamily());
+    return ConsumerOwnsHdrConversion(SnapshotHdrOptions());
 }
 
 SubtitleDisplayLayout::ConsumerFamily
@@ -912,32 +923,86 @@ DirectVobSubImpl::ConsumerFamily() const
         m_xy_str_opt[STRING_CONNECTED_CONSUMER]);
 }
 
+DirectVobSubImpl::HdrOptionValues::HdrOptionValues()
+    : pgs_mode(PGS_HDR_MODE_AUTO)
+    , text_mode(PGS_HDR_MODE_AUTO)
+    , white_nits(203)
+    , rgb_output_level(RGB_OUTPUT_LEVEL_AUTO)
+    , consumer_supported_levels(1)
+    , is_bitmap(false)
+    , is_movable(false)
+    , use_display_area(false)
+    , display_aspect(SubtitleDisplayLayout::ASPECT_OFF)
+    , max_bitmap_count(0)
+{
+    display_area.cx = 0;
+    display_area.cy = 0;
+    video_rect = RECT();
+    subtitle_target_rect = RECT();
+    fullscreen_rect = RECT();
+    display_mode.cx = 0;
+    display_mode.cy = 0;
+}
+
+DirectVobSubImpl::HdrOptionValues DirectVobSubImpl::SnapshotHdrOptions() const
+{
+    HdrOptionValues values;
+    values.pgs_mode = m_xy_int_opt[INT_PGS_HDR_MODE];
+    values.text_mode = m_xy_int_opt[INT_TEXT_HDR_MODE];
+    values.white_nits = m_xy_int_opt[INT_PGS_HDR_WHITE_NITS];
+    values.rgb_output_level = m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL];
+    values.consumer_supported_levels =
+        m_xy_int_opt[INT_CONSUMER_SUPPORTED_LEVELS];
+    values.connected_consumer = m_xy_str_opt[STRING_CONNECTED_CONSUMER];
+    values.consumer_yuv_matrix = m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX];
+    values.is_bitmap = m_xy_bool_opt[BOOL_IS_BITMAP];
+    values.is_movable = m_xy_bool_opt[BOOL_IS_MOVABLE];
+    values.use_display_area =
+        m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
+    values.display_aspect = m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT];
+    values.display_area = m_xy_size_opt[SIZE_DISPLAY_AREA];
+    values.video_rect = m_xy_rect_opt[RECT_VIDEO_OUTPUT];
+    values.subtitle_target_rect = m_xy_rect_opt[RECT_SUBTITLE_TARGET];
+    values.fullscreen_rect = m_xy_rect_opt[RECT_FULLSCREEN];
+    values.display_mode = m_xy_size_opt[SIZE_DISPLAY_MODE];
+    values.max_bitmap_count = m_xy_int_opt[INT_MAX_BITMAP_COUNT2];
+    return values;
+}
+
 HdrColor::Config DirectVobSubImpl::ResolvePgsHdrConfig() const
 {
-    if (ConsumerOwnsHdrConversion()) {
+    const HdrOptionValues values = SnapshotHdrOptions();
+    if (ConsumerOwnsHdrConversion(values)) {
         return HdrColor::NormalizeConfig(
             HdrColor::MAP_OFF,
-            double(m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]),
+            double(values.white_nits),
             GetHdrGeneration());
     }
-    return ResolveHdrMode(m_xy_int_opt[INT_PGS_HDR_MODE]);
+    return ResolveHdrMode(values.pgs_mode, values);
 }
 
 HdrColor::Config DirectVobSubImpl::ResolveTextHdrConfig() const
 {
-    if (ConsumerOwnsHdrConversion()) {
+    const HdrOptionValues values = SnapshotHdrOptions();
+    if (ConsumerOwnsHdrConversion(values)) {
         return HdrColor::NormalizeConfig(
             HdrColor::MAP_OFF,
-            double(m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]),
+            double(values.white_nits),
             GetHdrGeneration());
     }
-    return ResolveHdrMode(m_xy_int_opt[INT_TEXT_HDR_MODE]);
+    return ResolveHdrMode(values.text_mode, values);
 }
 
 HdrColor::Config DirectVobSubImpl::ResolveHdrMode(int mode) const
 {
+    return ResolveHdrMode(mode, SnapshotHdrOptions());
+}
+
+HdrColor::Config DirectVobSubImpl::ResolveHdrMode(
+    int mode, const HdrOptionValues& values) const
+{
     const HdrColor::Config normalized = HdrColor::NormalizeConfig(
-        mode, double(m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]), GetHdrGeneration());
+        mode, double(values.white_nits), GetHdrGeneration());
 
     switch (mode)
     {
@@ -958,7 +1023,7 @@ HdrColor::Config DirectVobSubImpl::ResolveHdrMode(int mode) const
     // bounded local MKV probe. Filename HDR remains a positive signal; a
     // BT.2020 matrix is only used when no transfer HDR/SDR evidence exists.
     const bool graph_bt2020_matrix = m_graph_bt2020_matrix
-        || m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].Right(4).CompareNoCase(L"2020") == 0;
+        || values.consumer_yuv_matrix.Right(4).CompareNoCase(L"2020") == 0;
     HdrDetection::AutoHdrSignals auto_signals;
     auto_signals.graph_signal = m_graph_hdr_signal;
     auto_signals.container_signal = m_container_hdr_signal;
@@ -982,10 +1047,15 @@ unsigned long long DirectVobSubImpl::GetHdrGeneration() const
 CStringW DirectVobSubImpl::GetHdrStatusText()
 {
     CAutoLock cAutoLock(m_propsLock);
-    const bool is_bitmap = m_xy_bool_opt[BOOL_IS_BITMAP];
+    const HdrOptionValues values = SnapshotHdrOptions();
+    const bool is_bitmap = values.is_bitmap;
     const int mode_option = is_bitmap ? INT_PGS_HDR_MODE : INT_TEXT_HDR_MODE;
-    const HdrColor::Config config =
-        is_bitmap ? ResolvePgsHdrConfig() : ResolveTextHdrConfig();
+    const bool consumer_owns_hdr = ConsumerOwnsHdrConversion(values);
+    const HdrColor::Config config = consumer_owns_hdr
+        ? HdrColor::NormalizeConfig(
+            HdrColor::MAP_OFF, double(values.white_nits), GetHdrGeneration())
+        : ResolveHdrMode(
+            is_bitmap ? values.pgs_mode : values.text_mode, values);
 
     const wchar_t* resolved = L"Off";
     if (config.mode == HdrColor::MAP_PQ) {
@@ -996,7 +1066,8 @@ CStringW DirectVobSubImpl::GetHdrStatusText()
     }
 
     CStringW mode;
-    switch (m_xy_int_opt[mode_option]) {
+    switch (mode_option == INT_PGS_HDR_MODE
+        ? values.pgs_mode : values.text_mode) {
     case PGS_HDR_MODE_PQ:
         mode = L"PQ";
         break;
@@ -1020,7 +1091,7 @@ CStringW DirectVobSubImpl::GetHdrStatusText()
         hash = CStringW(sha1.Left(7));
     }
     CStringW value;
-    if (ConsumerOwnsHdrConversion()) {
+    if (consumer_owns_hdr) {
         // The renderer applies the transfer function itself; printing the
         // provider's PQ/PQ-white wording here would claim an effect the
         // pipeline does not have.
@@ -1031,7 +1102,7 @@ CStringW DirectVobSubImpl::GetHdrStatusText()
     else {
         value.Format(L"%ls: %ls %d | %ls",
             is_bitmap ? L"Bitmap" : L"Text",
-            mode.GetString(), m_xy_int_opt[INT_PGS_HDR_WHITE_NITS],
+            mode.GetString(), values.white_nits,
             hash.GetString());
     }
     return value;

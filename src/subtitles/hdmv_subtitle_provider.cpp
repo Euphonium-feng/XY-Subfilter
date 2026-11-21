@@ -86,21 +86,11 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     , m_canvas_active(false)
     , m_canvas_fallback(0)
     , m_frame_geometry_dirty(false)
-    , m_diag_valid(false)
-    , m_diag_bitmap_id(0)
-    , m_diag_bitmap_count(0)
-    , m_diag_object_count(0)
-    , m_diag_drawn_objects(0)
-    , m_diag_skipped_objects(0)
-    , m_diag_canvas_active(false)
-    , m_diag_video_in_canvas()
-    , m_diag_partition_count(0)
+    , m_publication_valid(false)
+    , m_trace_valid(false)
     , m_diag_presented_bitmap(-1)
     , m_diag_presented_movable(-1)
     , m_diag_max_bitmap_count(-1)
-    , m_diag_oversized_bitmap(-1)
-    , m_diag_consumer_scale_x(0.0)
-    , m_diag_consumer_scale_y(0.0)
     , m_diag_consumer_pending(true)
     , m_diag_consumer_refresh_budget(8)
 {
@@ -117,39 +107,19 @@ HdmvSubtitleProviderImpl::HdmvSubtitleProviderImpl( CBaseSub* pSub, bool cleanOl
     m_canvas_display_area.cy = 0;
     m_canvas_display_source = 0;
     m_prefer_single_bitmap = false;
-    m_canvas_publish_output = RECT();
-    m_canvas_publish_clip = RECT();
     m_canvas_rect = RECT();
     m_canvas_video_in_canvas = RECT();
-    m_canvas_bitmap_offset.x = 0;
-    m_canvas_bitmap_offset.y = 0;
-    m_diag_bitmap_rect = RECT();
-    m_diag_buffer_size.cx = 0;
-    m_diag_buffer_size.cy = 0;
-    m_diag_output = RECT();
-    m_diag_clip = RECT();
-    m_diag_offset.x = 0;
-    m_diag_offset.y = 0;
-    m_diag_video_in_canvas = RECT();
-    for (int i = 0; i < 3; ++i) {
-        m_diag_bitmap_rects[i] = RECT();
-        m_diag_partitions[i] = RECT();
-    }
+    m_canvas_frame_layout = SubtitleDisplayLayout::FrameLayout();
     m_diag_consumer_fullscreen = RECT();
     m_diag_consumer_display_mode.cx = 0;
     m_diag_consumer_display_mode.cy = 0;
     m_diag_consumer_subtitle_target = RECT();
-    m_diag_contract.Empty();
-    m_diag_oversized_bitmap = -1;
-    m_diag_consumer_scale_x = 0.0;
-    m_diag_consumer_scale_y = 0.0;
     m_design_spd = SubPicDesc();
     m_design_spd_size.cx = 0;
     m_design_spd_size.cy = 0;
     m_design_spd_valid = false;
     m_scale_design_canvas = false;
     m_scale_filter = DirectVobSubXyOptions::BITMAP_SCALE_FILTER_BILINEAR;
-    m_diag_scale_filter = 0;
     m_diag_design_canvas.cx = 0;
     m_diag_design_canvas.cy = 0;
     m_diag_scale_canvas.cx = 0;
@@ -167,6 +137,111 @@ HdmvSubtitleProviderImpl::~HdmvSubtitleProviderImpl( void )
     }
 }
 
+HdmvSubtitleProviderImpl::FrameTrace::FrameTrace()
+    : bitmap_id(0)
+    , bitmap_count(0)
+    , object_count(0)
+    , drawn_objects(0)
+    , skipped_objects(0)
+    , canvas_active(false)
+    , partition_count(0)
+    , scale_filter(0)
+    , scale_factor(1.0)
+    , contract(0)
+    , oversized_bitmap(0)
+    , consumer_scale_x_milli(0)
+    , consumer_scale_y_milli(0)
+    , fallback(0)
+    , presented_bitmap(-1)
+    , presented_movable(-1)
+    , max_bitmap_count(-1)
+{
+    bitmaps[0] = RECT();
+    bitmaps[1] = RECT();
+    bitmaps[2] = RECT();
+    dirty_rect = RECT();
+    buffer_size.cx = 0;
+    buffer_size.cy = 0;
+    output = RECT();
+    clip = RECT();
+    offset.x = 0;
+    offset.y = 0;
+    video_in_canvas = RECT();
+    design_canvas.cx = 0;
+    design_canvas.cy = 0;
+    scale_canvas.cx = 0;
+    scale_canvas.cy = 0;
+    source_dirty = RECT();
+    scaled_dirty = RECT();
+    consumer_fullscreen = RECT();
+    consumer_display_mode.cx = 0;
+    consumer_display_mode.cy = 0;
+    consumer_subtitle_target = RECT();
+}
+
+namespace
+{
+bool SameRect(const RECT& first, const RECT& second)
+{
+    return first.left == second.left
+        && first.top == second.top
+        && first.right == second.right
+        && first.bottom == second.bottom;
+}
+
+bool SameSize(const SIZE& first, const SIZE& second)
+{
+    return first.cx == second.cx && first.cy == second.cy;
+}
+}
+
+bool HdmvSubtitleProviderImpl::FrameTrace::operator==(
+    const FrameTrace& other) const
+{
+    if (bitmap_id != other.bitmap_id
+        || bitmap_count != other.bitmap_count
+        || object_count != other.object_count
+        || drawn_objects != other.drawn_objects
+        || skipped_objects != other.skipped_objects
+        || canvas_active != other.canvas_active
+        || partition_count != other.partition_count
+        || scale_filter != other.scale_filter
+        || scale_factor != other.scale_factor
+        || contract != other.contract
+        || oversized_bitmap != other.oversized_bitmap
+        || consumer_scale_x_milli != other.consumer_scale_x_milli
+        || consumer_scale_y_milli != other.consumer_scale_y_milli
+        || fallback != other.fallback
+        || presented_bitmap != other.presented_bitmap
+        || presented_movable != other.presented_movable
+        || max_bitmap_count != other.max_bitmap_count
+        || !SameSize(buffer_size, other.buffer_size)
+        || !SameSize(design_canvas, other.design_canvas)
+        || !SameSize(scale_canvas, other.scale_canvas)
+        || !SameSize(consumer_display_mode, other.consumer_display_mode)
+        || !SameRect(dirty_rect, other.dirty_rect)
+        || !SameRect(output, other.output)
+        || !SameRect(clip, other.clip)
+        || !SameRect(video_in_canvas, other.video_in_canvas)
+        || !SameRect(source_dirty, other.source_dirty)
+        || !SameRect(scaled_dirty, other.scaled_dirty)
+        || !SameRect(consumer_fullscreen, other.consumer_fullscreen)
+        || !SameRect(consumer_subtitle_target, other.consumer_subtitle_target)
+        || offset.x != other.offset.x
+        || offset.y != other.offset.y
+        || consumer_name != other.consumer_name
+        || consumer_version != other.consumer_version) {
+        return false;
+    }
+    for (int i = 0; i < 3; ++i) {
+        if (!SameRect(bitmaps[i], other.bitmaps[i])
+            || !SameRect(partitions[i], other.partitions[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
 {
     HRESULT hr = NOERROR;
@@ -175,7 +250,8 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Connect( IXyOptions *consumer )
         hr = m_consumer != consumer ? S_OK : S_FALSE;
         m_consumer = consumer;
         m_canvas_cached = false;
-        m_diag_valid = false;
+        m_trace_valid = false;
+        m_publication_valid = false;
         m_diag_consumer_pending = true;
         m_diag_consumer_refresh_budget = 8;
         m_consumer_identity.Reset();
@@ -350,12 +426,10 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         // The display canvas is the publication surface. The stream's design
         // canvas is rendered at its own coordinates and then scaled into it.
         m_canvas_active = frame.canvas_active;
-        m_canvas_publish_output = frame.frame.output_rect;
-        m_canvas_publish_clip = frame.frame.clip_rect;
         m_canvas_rect = frame.canvas.uses_display_area
             ? frame.canvas.canvas_rect : video_rect;
         m_canvas_video_in_canvas = frame.video_in_canvas;
-        m_canvas_bitmap_offset = frame.frame.bitmap_offset;
+        m_canvas_frame_layout = frame.frame;
         m_canvas_fallback = int(frame.canvas.fallback_reason);
         m_canvas_input = input;
         m_canvas_enabled = input.enabled;
@@ -397,7 +471,8 @@ STDMETHODIMP HdmvSubtitleProviderImpl::RequestFrame( IXySubRenderFrame**subRende
         m_frame_geometry_dirty = true;
         m_pSubPic = NULL;
         m_xy_sub_render_frame = NULL;
-        m_diag_valid = false;
+        m_trace_valid = false;
+        m_publication_valid = false;
     }
 
     // The display canvas is the publication surface. Bitmap objects are
@@ -483,107 +558,127 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
 
     int bitmap_count = 0;
     ULONGLONG bitmap_id = 0;
-    RECT bitmap_rect = {};
     RECT bitmap_rects[3] = {};
+    POINT bitmap_positions[3] = {};
+    SIZE bitmap_sizes[3] = {};
     if (m_xy_sub_render_frame) {
         m_xy_sub_render_frame->GetBitmapCount(&bitmap_count);
         const int wanted = bitmap_count < 3 ? bitmap_count : 3;
         for (int i = 0; i < wanted; ++i) {
-            POINT position = {};
-            SIZE bitmap_size = {};
             m_xy_sub_render_frame->GetBitmap(
-                i, i == 0 ? &bitmap_id : NULL, &position, &bitmap_size,
+                i, i == 0 ? &bitmap_id : NULL,
+                &bitmap_positions[i], &bitmap_sizes[i],
                 NULL, NULL);
             bitmap_rects[i] = {
-                position.x, position.y,
-                position.x + bitmap_size.cx,
-                position.y + bitmap_size.cy
+                bitmap_positions[i].x, bitmap_positions[i].y,
+                bitmap_positions[i].x + bitmap_sizes[i].cx,
+                bitmap_positions[i].y + bitmap_sizes[i].cy
             };
         }
-        bitmap_rect = bitmap_rects[0];
     }
 
-    RECT partitions[3] = {};
-    int partition_count = 0;
-    if (m_canvas_active && dirty_rect) {
-        const RECT canvas_bounds = {
-            0, 0, m_render_size.cx, m_render_size.cy
-        };
-        partition_count = SubtitleDisplayLayout::PartitionBitmapRects(
-            *dirty_rect, canvas_bounds, m_canvas_video_in_canvas,
-            partitions);
+    // The contract is the consumer family, not this frame's geometry. MPCVR
+    // stays on the texture contract even when the canvas is disabled; only
+    // usesOversizedBitmap reports whether this frame published a full canvas.
+    const bool mpcvr_texture = m_prefer_single_bitmap;
+    const bool oversized =
+        m_publication_valid
+        && m_publication.kind
+            == SubtitleDisplayLayout::BitmapPublication::SingleCanvas;
+    RECT published_output = {};
+    RECT published_clip = {};
+    POINT published_offset = {};
+    if (m_publication_valid) {
+        published_output = m_publication.output_rect;
+        published_clip = m_publication.clip_rect;
+        published_offset = m_publication.bitmap_offset;
     }
-
-    const RECT published_canvas = {
-        0, 0, m_render_size.cx, m_render_size.cy
-    };
-    m_diag_contract = m_prefer_single_bitmap
-        ? CStringW(L"mpcvr-texture") : CStringW(L"default");
-    m_diag_oversized_bitmap = m_prefer_single_bitmap ? 1 : 0;
-    m_diag_consumer_scale_x =
-        m_canvas_video_size.cx > 0
-            ? double(m_render_size.cx) / double(m_canvas_video_size.cx) : 0.0;
-    m_diag_consumer_scale_y =
-        m_canvas_video_size.cy > 0
-            ? double(m_render_size.cy) / double(m_canvas_video_size.cy) : 0.0;
-    const RECT published_output = m_prefer_single_bitmap
-        ? published_canvas : m_canvas_publish_output;
-    const RECT published_clip = m_prefer_single_bitmap
-        ? published_canvas : m_canvas_publish_clip;
-    POINT published_offset = m_canvas_bitmap_offset;
-    if (m_prefer_single_bitmap) {
+    else if (!m_canvas_active) {
+        const RECT video_rect = { 0, 0, m_render_size.cx, m_render_size.cy };
+        published_output = video_rect;
+        published_clip = video_rect;
         published_offset.x = 0;
         published_offset.y = 0;
     }
-
-    if (m_diag_valid
-        && m_diag_bitmap_id == bitmap_id
-        && m_diag_bitmap_count == bitmap_count
-        && EqualRect(&m_diag_bitmap_rect, &bitmap_rect)
-        && EqualRect(&m_diag_bitmap_rects[1], &bitmap_rects[1])
-        && EqualRect(&m_diag_bitmap_rects[2], &bitmap_rects[2])
-        && m_diag_buffer_size.cx == m_render_size.cx
-        && m_diag_buffer_size.cy == m_render_size.cy
-        && m_diag_scale_filter == m_scale_filter
-        && EqualRect(&m_diag_output, &published_output)
-        && EqualRect(&m_diag_clip, &published_clip)
-        && m_diag_offset.x == published_offset.x
-        && m_diag_offset.y == published_offset.y
-        && m_diag_object_count == object_count
-        && m_diag_drawn_objects == drawn_objects
-        && m_diag_skipped_objects == skipped_objects
-        && EqualRect(&m_diag_video_in_canvas, &m_canvas_video_in_canvas)
-        && m_diag_partition_count == partition_count
-        && EqualRect(&m_diag_partitions[0], &partitions[0])
-        && EqualRect(&m_diag_partitions[1], &partitions[1])
-        && EqualRect(&m_diag_partitions[2], &partitions[2])
-        && m_diag_canvas_active == m_canvas_active) {
+    if (m_xy_sub_render_frame) {
+        RECT frame_output = {};
+        RECT frame_clip = {};
+        if (SUCCEEDED(m_xy_sub_render_frame->GetOutputRect(&frame_output))) {
+            published_output = frame_output;
+        }
+        if (SUCCEEDED(m_xy_sub_render_frame->GetClipRect(&frame_clip))) {
+            published_clip = frame_clip;
+        }
+    }
+    RECT partitions[3] = {};
+    int partition_count = 0;
+    if (m_publication_valid) {
+        partition_count = m_publication.partition_count;
+        for (int i = 0; i < 3; ++i) {
+            partitions[i] = m_publication.partitions[i];
+        }
+    }
+    const double consumer_scale_x =
+        m_canvas_video_size.cx > 0
+            ? double(m_render_size.cx) / double(m_canvas_video_size.cx) : 0.0;
+    const double consumer_scale_y =
+        m_canvas_video_size.cy > 0
+            ? double(m_render_size.cy) / double(m_canvas_video_size.cy) : 0.0;
+    if (m_xy_sub_render_frame) {
+        XySubRenderFrameWrapper* wrapper =
+            dynamic_cast<XySubRenderFrameWrapper*>(m_xy_sub_render_frame.p);
+        if (wrapper) {
+            XySubRenderFrameWrapper::Bitmap bitmap;
+            if (SUCCEEDED(wrapper->DescribeBitmap(0, &bitmap))) {
+                published_offset.x = bitmap.position.x - bitmap.rect.left;
+                published_offset.y = bitmap.position.y - bitmap.rect.top;
+            }
+        }
+    }
+    FrameTrace trace;
+    trace.bitmap_id = bitmap_id;
+    trace.bitmap_count = bitmap_count;
+    for (int i = 0; i < 3; ++i) {
+        trace.bitmaps[i] = bitmap_rects[i];
+        trace.partitions[i] = partitions[i];
+    }
+    trace.dirty_rect = dirty_rect ? *dirty_rect : RECT();
+    trace.buffer_size = m_render_size;
+    trace.output = published_output;
+    trace.clip = published_clip;
+    trace.offset = published_offset;
+    trace.object_count = object_count;
+    trace.drawn_objects = drawn_objects;
+    trace.skipped_objects = skipped_objects;
+    trace.canvas_active = m_canvas_active;
+    trace.video_in_canvas = m_canvas_video_in_canvas;
+    trace.partition_count = partition_count;
+    trace.design_canvas = m_diag_design_canvas;
+    trace.scale_canvas = m_diag_scale_canvas;
+    trace.scale_filter = m_scale_filter;
+    trace.scale_factor = m_diag_scale_factor;
+    trace.source_dirty = m_diag_source_dirty;
+    trace.scaled_dirty = m_diag_scaled_dirty;
+    trace.contract = mpcvr_texture ? 1 : 0;
+    trace.oversized_bitmap = oversized ? 1 : 0;
+    trace.consumer_scale_x_milli = int(consumer_scale_x * 1000.0 + 0.5);
+    trace.consumer_scale_y_milli = int(consumer_scale_y * 1000.0 + 0.5);
+    trace.fallback = m_canvas_fallback;
+    trace.consumer_name =
+        m_consumer_identity.HasName() ? m_consumer_identity.Name() : L"?";
+    trace.consumer_version =
+        m_diag_consumer_version.IsEmpty() ? L"?" : m_diag_consumer_version;
+    trace.presented_bitmap = m_diag_presented_bitmap;
+    trace.presented_movable = m_diag_presented_movable;
+    trace.max_bitmap_count = m_diag_max_bitmap_count;
+    trace.consumer_fullscreen = m_diag_consumer_fullscreen;
+    trace.consumer_display_mode = m_diag_consumer_display_mode;
+    trace.consumer_subtitle_target = m_diag_consumer_subtitle_target;
+    if (m_trace_valid && m_last_trace == trace) {
         return;
     }
-
-    m_diag_valid = true;
-    m_diag_bitmap_id = bitmap_id;
-    m_diag_bitmap_count = bitmap_count;
-    m_diag_bitmap_rect = bitmap_rect;
-    m_diag_bitmap_rects[0] = bitmap_rects[0];
-    m_diag_bitmap_rects[1] = bitmap_rects[1];
-    m_diag_bitmap_rects[2] = bitmap_rects[2];
-    m_diag_buffer_size = m_render_size;
-    // The diagnostic mirrors what was actually published: the MPCVR path
-    // reports the zero-based canvas, not the madVR partition geometry.
-    m_diag_output = published_output;
-    m_diag_clip = published_clip;
-    m_diag_offset = published_offset;
-    m_diag_object_count = object_count;
-    m_diag_drawn_objects = drawn_objects;
-    m_diag_skipped_objects = skipped_objects;
-    m_diag_canvas_active = m_canvas_active;
-    m_diag_scale_filter = m_scale_filter;
-    m_diag_video_in_canvas = m_canvas_video_in_canvas;
-    m_diag_partition_count = partition_count;
-    for (int i = 0; i < 3; ++i) {
-        m_diag_partitions[i] = partitions[i];
-    }
+    m_trace_valid = true;
+    m_last_trace = trace;
 
     CStringW diagnostic;
     diagnostic.Format(
@@ -626,59 +721,57 @@ void HdmvSubtitleProviderImpl::LogBitmapFrame(
         m_canvas_display_area.cx, m_canvas_display_area.cy,
         m_canvas_rect.left, m_canvas_rect.top,
         m_canvas_rect.right, m_canvas_rect.bottom,
-        m_diag_design_canvas.cx, m_diag_design_canvas.cy,
-        m_diag_scale_canvas.cx, m_diag_scale_canvas.cy,
-        m_diag_scale_factor,
-        (int)m_scale_filter,
-        m_diag_source_dirty.left, m_diag_source_dirty.top,
-        m_diag_source_dirty.right, m_diag_source_dirty.bottom,
-        m_diag_scaled_dirty.left, m_diag_scaled_dirty.top,
-        m_diag_scaled_dirty.right, m_diag_scaled_dirty.bottom,
-        m_canvas_active ? 1 : 0,
-        m_render_size.cx, m_render_size.cy,
-        m_canvas_publish_output.left, m_canvas_publish_output.top,
-        m_canvas_publish_output.right, m_canvas_publish_output.bottom,
-        m_canvas_publish_clip.left, m_canvas_publish_clip.top,
-        m_canvas_publish_clip.right, m_canvas_publish_clip.bottom,
-        m_canvas_bitmap_offset.x, m_canvas_bitmap_offset.y,
-        dirty_rect ? dirty_rect->left : 0,
-        dirty_rect ? dirty_rect->top : 0,
-        dirty_rect ? dirty_rect->right : 0,
-        dirty_rect ? dirty_rect->bottom : 0,
-        object_count, drawn_objects, skipped_objects,
-        bitmap_count,
-        bitmap_rect.left, bitmap_rect.top,
-        bitmap_rect.right, bitmap_rect.bottom,
-        bitmap_rects[1].left, bitmap_rects[1].top,
-        bitmap_rects[1].right, bitmap_rects[1].bottom,
-        bitmap_rects[2].left, bitmap_rects[2].top,
-        bitmap_rects[2].right, bitmap_rects[2].bottom,
-        m_canvas_video_in_canvas.left, m_canvas_video_in_canvas.top,
-        m_canvas_video_in_canvas.right, m_canvas_video_in_canvas.bottom,
-        m_diag_partition_count,
-        m_diag_partitions[0].left, m_diag_partitions[0].top,
-        m_diag_partitions[0].right, m_diag_partitions[0].bottom,
-        m_diag_partitions[1].left, m_diag_partitions[1].top,
-        m_diag_partitions[1].right, m_diag_partitions[1].bottom,
-        m_diag_partitions[2].left, m_diag_partitions[2].top,
-        m_diag_partitions[2].right, m_diag_partitions[2].bottom,
-        m_consumer_identity.HasName() ? m_consumer_identity.Name() : L"?",
-        m_diag_consumer_version.IsEmpty() ? L"?" : m_diag_consumer_version.GetString(),
-        m_diag_presented_bitmap,
-        m_diag_presented_movable,
-        m_diag_max_bitmap_count,
-        m_diag_consumer_fullscreen.left, m_diag_consumer_fullscreen.top,
-        m_diag_consumer_fullscreen.right, m_diag_consumer_fullscreen.bottom,
-        m_diag_consumer_display_mode.cx, m_diag_consumer_display_mode.cy,
-        m_diag_consumer_subtitle_target.left,
-        m_diag_consumer_subtitle_target.top,
-        m_diag_consumer_subtitle_target.right,
-        m_diag_consumer_subtitle_target.bottom,
-        m_diag_contract.IsEmpty() ? L"default" : m_diag_contract.GetString(),
-        m_diag_oversized_bitmap,
-        m_diag_consumer_scale_x,
-        m_diag_consumer_scale_y,
-        m_canvas_fallback);
+        trace.design_canvas.cx, trace.design_canvas.cy,
+        trace.scale_canvas.cx, trace.scale_canvas.cy,
+        trace.scale_factor,
+        trace.scale_filter,
+        trace.source_dirty.left, trace.source_dirty.top,
+        trace.source_dirty.right, trace.source_dirty.bottom,
+        trace.scaled_dirty.left, trace.scaled_dirty.top,
+        trace.scaled_dirty.right, trace.scaled_dirty.bottom,
+        trace.canvas_active ? 1 : 0,
+        trace.buffer_size.cx, trace.buffer_size.cy,
+        trace.output.left, trace.output.top,
+        trace.output.right, trace.output.bottom,
+        trace.clip.left, trace.clip.top,
+        trace.clip.right, trace.clip.bottom,
+        trace.offset.x, trace.offset.y,
+        trace.dirty_rect.left, trace.dirty_rect.top,
+        trace.dirty_rect.right, trace.dirty_rect.bottom,
+        trace.object_count, trace.drawn_objects, trace.skipped_objects,
+        trace.bitmap_count,
+        trace.bitmaps[0].left, trace.bitmaps[0].top,
+        trace.bitmaps[0].right, trace.bitmaps[0].bottom,
+        trace.bitmaps[1].left, trace.bitmaps[1].top,
+        trace.bitmaps[1].right, trace.bitmaps[1].bottom,
+        trace.bitmaps[2].left, trace.bitmaps[2].top,
+        trace.bitmaps[2].right, trace.bitmaps[2].bottom,
+        trace.video_in_canvas.left, trace.video_in_canvas.top,
+        trace.video_in_canvas.right, trace.video_in_canvas.bottom,
+        trace.partition_count,
+        trace.partitions[0].left, trace.partitions[0].top,
+        trace.partitions[0].right, trace.partitions[0].bottom,
+        trace.partitions[1].left, trace.partitions[1].top,
+        trace.partitions[1].right, trace.partitions[1].bottom,
+        trace.partitions[2].left, trace.partitions[2].top,
+        trace.partitions[2].right, trace.partitions[2].bottom,
+        trace.consumer_name.GetString(),
+        trace.consumer_version.GetString(),
+        trace.presented_bitmap,
+        trace.presented_movable,
+        trace.max_bitmap_count,
+        trace.consumer_fullscreen.left, trace.consumer_fullscreen.top,
+        trace.consumer_fullscreen.right, trace.consumer_fullscreen.bottom,
+        trace.consumer_display_mode.cx, trace.consumer_display_mode.cy,
+        trace.consumer_subtitle_target.left,
+        trace.consumer_subtitle_target.top,
+        trace.consumer_subtitle_target.right,
+        trace.consumer_subtitle_target.bottom,
+        trace.contract ? L"mpcvr-texture" : L"default",
+        trace.oversized_bitmap,
+        double(trace.consumer_scale_x_milli) / 1000.0,
+        double(trace.consumer_scale_y_milli) / 1000.0,
+        trace.fallback);
     AppendXyDiagnostic(diagnostic.GetString());
 }
 
@@ -687,7 +780,8 @@ STDMETHODIMP HdmvSubtitleProviderImpl::Invalidate( REFERENCE_TIME rtInvalidate /
     // Layout options and display size live on the consumer. Re-read them the
     // next time a frame is requested instead of caching the old geometry.
     m_canvas_cached = false;
-    m_diag_valid = false;
+    m_trace_valid = false;
+    m_publication_valid = false;
     m_frame_geometry_dirty = true;
     if (m_pSubPic )
     {
@@ -746,6 +840,11 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     {
         return S_OK;
     }
+
+    // A failed allocation must not describe the geometry of the previous
+    // frame. Clear the publication snapshot before any early error path.
+    m_publication_valid = false;
+    m_xy_sub_render_frame = NULL;
 
     //should always re-alloc one for the old be in used by the consumer
     m_pSubPic = NULL;
@@ -865,61 +964,72 @@ HRESULT HdmvSubtitleProviderImpl::Render( REFERENCE_TIME now, POSITION pos )
     }
     if (hr == S_OK)
     {
-        if (m_canvas_active)
+        SubtitleDisplayLayout::BitmapPublicationInput publication_input;
+        publication_input.canvas_active = m_canvas_active;
+        publication_input.prefer_single_bitmap = m_prefer_single_bitmap;
+        publication_input.buffer_size = m_render_size;
+        publication_input.frame_output_rect =
+            m_canvas_frame_layout.output_rect;
+        publication_input.frame_clip_rect =
+            m_canvas_frame_layout.clip_rect;
+        publication_input.frame_bitmap_offset =
+            m_canvas_frame_layout.bitmap_offset;
+        publication_input.video_in_canvas = m_canvas_video_in_canvas;
+        publication_input.dirty_rect = dirty_rect;
+        m_publication_valid =
+            SubtitleDisplayLayout::ResolveBitmapPublication(
+                publication_input, &m_publication);
+        const SubtitleDisplayLayout::BitmapPublication& publication =
+            m_publication;
+        const bool has_publication = m_publication_valid;
+        if (has_publication)
         {
-            if (m_prefer_single_bitmap) {
+            if (publication.kind
+                == SubtitleDisplayLayout::BitmapPublication::SingleCanvas) {
                 // MPCVR reads only GetBitmap(0) and drops the clip origin, so
                 // the canvas has to be published as one zero-based texture.
                 // Its own GetSourceAndDest then maps that texture onto the
                 // video rect with independent X/Y scale factors.
-                const RECT canvas_rect = {
-                    0, 0, m_render_size.cx, m_render_size.cy
-                };
                 // The wrapper otherwise derives the bitmap rect from the
                 // dirty rect; publishing only the drawn band would hand
                 // MPCVR a cropped texture, so the whole canvas is declared
                 // explicitly.
-                const RECT canvas_rects[1] = { canvas_rect };
                 HRESULT wrapper_hr = S_OK;
                 m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
-                    mem_subpic, canvas_rect, canvas_rect, now,
-                    canvas_rects, 1, &wrapper_hr);
+                    mem_subpic, publication.output_rect,
+                    publication.clip_rect, now,
+                    publication.bitmap_rects, publication.bitmap_count,
+                    &wrapper_hr, publication.bitmap_offset);
+                if (FAILED(wrapper_hr)) {
+                    m_xy_sub_render_frame = NULL;
+                    hr = wrapper_hr;
+                }
+            }
+            else if (publication.kind
+                == SubtitleDisplayLayout::BitmapPublication::Partitioned) {
+                HRESULT wrapper_hr = S_OK;
+                m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
+                    mem_subpic, publication.output_rect,
+                    publication.clip_rect, now, publication.bitmap_rects,
+                    publication.bitmap_count, &wrapper_hr,
+                    publication.bitmap_offset);
                 if (FAILED(wrapper_hr)) {
                     m_xy_sub_render_frame = NULL;
                     hr = wrapper_hr;
                 }
             }
             else {
-                const RECT canvas_bounds = {
-                    0, 0, m_render_size.cx, m_render_size.cy
-                };
-                RECT partitions[3] = {};
-                const int partition_count =
-                    SubtitleDisplayLayout::PartitionBitmapRects(
-                        dirty_rect, canvas_bounds, m_canvas_video_in_canvas,
-                        partitions);
-                if (partition_count > 0) {
-                    HRESULT wrapper_hr = S_OK;
-                    m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
-                        mem_subpic, m_canvas_publish_output,
-                        m_canvas_publish_clip, now, partitions,
-                        partition_count, &wrapper_hr, m_canvas_bitmap_offset);
-                    if (FAILED(wrapper_hr)) {
-                        m_xy_sub_render_frame = NULL;
-                        hr = wrapper_hr;
-                    }
-                } else {
-                    m_xy_sub_render_frame = NULL;
-                    dirty_rect.SetRectEmpty();
-                    hr = S_FALSE;
-                }
+                m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
+                    mem_subpic, CRect(publication.output_rect),
+                    CRect(publication.clip_rect), now, &hr,
+                    publication.bitmap_offset);
             }
         }
         else
         {
-            CRect video_rect(CPoint(0,0), m_render_size);
-            m_xy_sub_render_frame = DEBUG_NEW XySubRenderFrameWrapper(
-                mem_subpic, video_rect, video_rect, now, &hr);
+            m_xy_sub_render_frame = NULL;
+            dirty_rect.SetRectEmpty();
+            hr = S_FALSE;
         }
         LogBitmapFrame(L"frame", now, hr, &dirty_rect, lock_hr, alloc_hr);
     }

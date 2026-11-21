@@ -209,4 +209,7 @@ x = pow(x, m2)                     // PQ OETF
 
 `xy-hdr-config/1` 中的 `hdrOwner`、`contract` 由 `XySubFilter::LogHdrConfiguration` 写入；
 `xy-bitmap-frame/1` 中的 `contract`、`usesOversizedBitmap`、`consumerScale` 由
-`HdmvSubtitleProviderImpl::LogBitmapFrame` 写入。
+`HdmvSubtitleProviderImpl::LogBitmapFrame` 写入。两者现在都消费
+`BitmapPublication` / `FrameTrace`，日志值与实际发布帧同源；此前 MPCVR 分支
+曾把 madVR 的 `publishOutput` 与 `partitionCount` 写进日志，修复后应看到
+`publishOutput=(0,0,canvasW,canvasH)` 且 `partitionCount=0`。

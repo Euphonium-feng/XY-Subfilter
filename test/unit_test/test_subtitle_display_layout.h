@@ -347,6 +347,121 @@ TEST(SubtitleDisplayLayoutTest, BitmapFrameKeepsCanvasWhenDesignDiffers)
     ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, frame.frame.clip_rect);
 }
 
+TEST(SubtitleDisplayLayoutTest, BitmapPublicationPartitionsMadVrCanvas)
+{
+    SubtitleDisplayLayout::BitmapPublicationInput input;
+    input.canvas_active = true;
+    input.prefer_single_bitmap = false;
+    input.buffer_size.cx = 1920;
+    input.buffer_size.cy = 1080;
+    input.frame_output_rect = RECT{ 0, 0, 1920, 800 };
+    input.frame_clip_rect = RECT{ 0, -140, 1920, 940 };
+    input.frame_bitmap_offset = POINT{ 0, -140 };
+    input.video_in_canvas = RECT{ 0, 140, 1920, 940 };
+    input.dirty_rect = RECT{ 690, 930, 1230, 1020 };
+
+    SubtitleDisplayLayout::BitmapPublication publication;
+    ASSERT_TRUE(SubtitleDisplayLayout::ResolveBitmapPublication(
+        input, &publication));
+    EXPECT_EQ(
+        SubtitleDisplayLayout::BitmapPublication::Partitioned,
+        publication.kind);
+    ExpectRectEquals(RECT{ 0, 0, 1920, 800 }, publication.output_rect);
+    ExpectRectEquals(RECT{ 0, -140, 1920, 940 }, publication.clip_rect);
+    EXPECT_EQ(0, publication.bitmap_offset.x);
+    EXPECT_EQ(-140, publication.bitmap_offset.y);
+    EXPECT_EQ(2, publication.partition_count);
+    EXPECT_EQ(2, publication.bitmap_count);
+    ExpectRectEquals(
+        RECT{ 690, 930, 1230, 940 }, publication.partitions[0]);
+    ExpectRectEquals(
+        RECT{ 690, 940, 1230, 1020 }, publication.partitions[1]);
+    ExpectRectEquals(
+        RECT{ 690, 930, 1230, 940 }, publication.bitmap_rects[0]);
+    ExpectRectEquals(
+        RECT{ 690, 940, 1230, 1020 }, publication.bitmap_rects[1]);
+
+    const SubtitleDisplayLayout::BitmapSlice first =
+        SubtitleDisplayLayout::ResolveBitmapSlice(
+            publication.bitmap_rects[0], publication.bitmap_offset);
+    const SubtitleDisplayLayout::BitmapSlice second =
+        SubtitleDisplayLayout::ResolveBitmapSlice(
+            publication.bitmap_rects[1], publication.bitmap_offset);
+    EXPECT_EQ(690, first.position.x);
+    EXPECT_EQ(790, first.position.y);
+    EXPECT_EQ(1230, second.position.x);
+    EXPECT_EQ(800, second.position.y);
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapPublicationPublishesOneMpcVrCanvas)
+{
+    SubtitleDisplayLayout::BitmapPublicationInput input;
+    input.canvas_active = true;
+    input.prefer_single_bitmap = true;
+    input.buffer_size.cx = 1920;
+    input.buffer_size.cy = 1080;
+    input.frame_output_rect = RECT{ 0, 0, 1920, 800 };
+    input.frame_clip_rect = RECT{ 0, -140, 1920, 940 };
+    input.frame_bitmap_offset = POINT{ 0, -140 };
+    input.video_in_canvas = RECT{ 0, 140, 1920, 940 };
+    input.dirty_rect = RECT{ 690, 930, 1230, 1020 };
+
+    SubtitleDisplayLayout::BitmapPublication publication;
+    ASSERT_TRUE(SubtitleDisplayLayout::ResolveBitmapPublication(
+        input, &publication));
+    EXPECT_EQ(
+        SubtitleDisplayLayout::BitmapPublication::SingleCanvas,
+        publication.kind);
+    ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, publication.output_rect);
+    ExpectRectEquals(RECT{ 0, 0, 1920, 1080 }, publication.clip_rect);
+    EXPECT_EQ(0, publication.bitmap_offset.x);
+    EXPECT_EQ(0, publication.bitmap_offset.y);
+    EXPECT_EQ(0, publication.partition_count);
+    EXPECT_EQ(1, publication.bitmap_count);
+    ExpectRectEquals(
+        RECT{ 0, 0, 1920, 1080 }, publication.bitmap_rects[0]);
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapPublicationWithoutCanvasIsVideoSized)
+{
+    SubtitleDisplayLayout::BitmapPublicationInput input;
+    input.canvas_active = false;
+    input.prefer_single_bitmap = true;
+    input.buffer_size.cx = 1920;
+    input.buffer_size.cy = 800;
+    input.frame_output_rect = RECT{ 0, 0, 1920, 800 };
+    input.frame_clip_rect = RECT{ 0, 0, 1920, 800 };
+    input.dirty_rect = RECT{ 690, 700, 1230, 780 };
+
+    SubtitleDisplayLayout::BitmapPublication publication;
+    ASSERT_TRUE(SubtitleDisplayLayout::ResolveBitmapPublication(
+        input, &publication));
+    EXPECT_EQ(
+        SubtitleDisplayLayout::BitmapPublication::SingleRect,
+        publication.kind);
+    ExpectRectEquals(RECT{ 0, 0, 1920, 800 }, publication.output_rect);
+    ExpectRectEquals(RECT{ 0, 0, 1920, 800 }, publication.clip_rect);
+    EXPECT_EQ(0, publication.partition_count);
+    EXPECT_EQ(1, publication.bitmap_count);
+    ExpectRectEquals(
+        RECT{ 690, 700, 1230, 780 }, publication.bitmap_rects[0]);
+}
+
+TEST(SubtitleDisplayLayoutTest, BitmapPublicationRejectsEmptyDirtyRect)
+{
+    SubtitleDisplayLayout::BitmapPublicationInput input;
+    input.canvas_active = true;
+    input.prefer_single_bitmap = true;
+    input.buffer_size.cx = 1920;
+    input.buffer_size.cy = 1080;
+    input.dirty_rect = RECT{ 690, 940, 690, 1020 };
+
+    SubtitleDisplayLayout::BitmapPublication publication;
+    EXPECT_FALSE(SubtitleDisplayLayout::ResolveBitmapPublication(
+        input, &publication));
+    EXPECT_EQ(0, publication.bitmap_count);
+}
+
 TEST(SubtitleDisplayLayoutTest, PartitionKeepsVideoOnlyDirtyRectWhole)
 {
     RECT parts[3] = {};

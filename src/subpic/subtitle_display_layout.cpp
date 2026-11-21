@@ -492,6 +492,99 @@ namespace SubtitleDisplayLayout
         return result;
     }
 
+    BitmapPublication::BitmapPublication()
+        : kind(SingleRect)
+        , bitmap_count(0)
+        , partition_count(0)
+    {
+        output_rect = RECT();
+        clip_rect = RECT();
+        bitmap_offset.x = 0;
+        bitmap_offset.y = 0;
+        for (int i = 0; i < 3; ++i) {
+            bitmap_rects[i] = RECT();
+            partitions[i] = RECT();
+        }
+    }
+
+    BitmapPublicationInput::BitmapPublicationInput()
+        : canvas_active(false)
+        , prefer_single_bitmap(false)
+        , frame_output_rect()
+        , frame_clip_rect()
+        , video_in_canvas()
+        , dirty_rect()
+    {
+        buffer_size.cx = 0;
+        buffer_size.cy = 0;
+        frame_bitmap_offset.x = 0;
+        frame_bitmap_offset.y = 0;
+    }
+
+    bool ResolveBitmapPublication(
+        const BitmapPublicationInput& input, BitmapPublication* publication)
+    {
+        if (!publication) {
+            return false;
+        }
+        BitmapPublication result;
+        if (!IsPositiveSize(input.dirty_rect)) {
+            *publication = result;
+            return false;
+        }
+
+        if (!input.canvas_active) {
+            result.kind = BitmapPublication::SingleRect;
+            result.output_rect = input.frame_output_rect;
+            result.clip_rect = input.frame_clip_rect;
+            result.bitmap_offset = input.frame_bitmap_offset;
+            result.bitmap_rects[0] = input.dirty_rect;
+            result.bitmap_count = 1;
+            *publication = result;
+            return true;
+        }
+
+        const RECT canvas_bounds = {
+            0, 0, input.buffer_size.cx, input.buffer_size.cy
+        };
+        if (input.prefer_single_bitmap) {
+            // MPCVR reads only bitmap 0 and ignores the clip origin. Publish
+            // the complete zero-based canvas so the texture is not cropped.
+            if (!IsPositiveSize(canvas_bounds)) {
+                *publication = result;
+                return false;
+            }
+            result.kind = BitmapPublication::SingleCanvas;
+            result.output_rect = canvas_bounds;
+            result.clip_rect = canvas_bounds;
+            result.bitmap_rects[0] = canvas_bounds;
+            result.bitmap_count = 1;
+            *publication = result;
+            return true;
+        }
+
+        RECT partitions[3] = {};
+        const int count = PartitionBitmapRects(
+            input.dirty_rect, canvas_bounds, input.video_in_canvas,
+            partitions);
+        if (count <= 0) {
+            *publication = result;
+            return false;
+        }
+        result.kind = BitmapPublication::Partitioned;
+        result.output_rect = input.frame_output_rect;
+        result.clip_rect = input.frame_clip_rect;
+        result.bitmap_offset = input.frame_bitmap_offset;
+        result.partition_count = count;
+        for (int i = 0; i < count; ++i) {
+            result.partitions[i] = partitions[i];
+            result.bitmap_rects[i] = partitions[i];
+        }
+        result.bitmap_count = count;
+        *publication = result;
+        return true;
+    }
+
     namespace
     {
         bool ContainsNoCase(const wchar_t* haystack, const wchar_t* needle)

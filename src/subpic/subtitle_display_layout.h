@@ -188,6 +188,51 @@ namespace SubtitleDisplayLayout
     BitmapSlice ResolveBitmapSlice(
         const RECT& bitmap_rect, const POINT& bitmap_offset);
 
+    // Everything a bitmap frame publishes. Resolved once from the canvas and
+    // the consumer contract; rendering and diagnostics must both consume this
+    // value instead of deriving the geometry a second time.
+    struct BitmapPublication
+    {
+        enum Kind
+        {
+            SingleRect,   // no canvas: the inner dirty rect is the publication
+            Partitioned,  // madVR: grey-band partitions inside the canvas
+            SingleCanvas  // MPCVR: one zero-based full-canvas texture
+        };
+
+        Kind kind;
+        RECT output_rect;
+        RECT clip_rect;
+        POINT bitmap_offset;
+        RECT bitmap_rects[3];
+        int bitmap_count;
+        // Canvas-local bands, kept separate from bitmap_rects because
+        // xy-bitmap-frame/1 reports them in a different coordinate space.
+        RECT partitions[3];
+        int partition_count;
+
+        BitmapPublication();
+    };
+
+    struct BitmapPublicationInput
+    {
+        bool canvas_active;
+        bool prefer_single_bitmap;
+        SIZE buffer_size;
+        RECT frame_output_rect;
+        RECT frame_clip_rect;
+        POINT frame_bitmap_offset;
+        RECT video_in_canvas;
+        RECT dirty_rect;
+
+        BitmapPublicationInput();
+    };
+
+    // Returns false when the dirty rect does not intersect the publication
+    // surface, which means the caller must not publish a frame.
+    bool ResolveBitmapPublication(
+        const BitmapPublicationInput& input, BitmapPublication* publication);
+
     enum ConsumerFamily
     {
         CONSUMER_UNKNOWN = 0,

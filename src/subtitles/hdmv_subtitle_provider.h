@@ -18,6 +18,47 @@ public:
     STDMETHODIMP Invalidate  (REFERENCE_TIME rtInvalidate = -1);
     HRESULT SetHdrConfig(const HdrColor::Config& config);
 private:
+    struct FrameTrace
+    {
+        ULONGLONG bitmap_id;
+        int bitmap_count;
+        RECT bitmaps[3];
+        RECT dirty_rect;
+        SIZE buffer_size;
+        RECT output;
+        RECT clip;
+        POINT offset;
+        int object_count;
+        int drawn_objects;
+        int skipped_objects;
+        bool canvas_active;
+        RECT video_in_canvas;
+        int partition_count;
+        RECT partitions[3];
+        SIZE design_canvas;
+        SIZE scale_canvas;
+        int scale_filter;
+        double scale_factor;
+        RECT source_dirty;
+        RECT scaled_dirty;
+        int contract;
+        int oversized_bitmap;
+        int consumer_scale_x_milli;
+        int consumer_scale_y_milli;
+        int fallback;
+        CStringW consumer_name;
+        CStringW consumer_version;
+        int presented_bitmap;
+        int presented_movable;
+        int max_bitmap_count;
+        RECT consumer_fullscreen;
+        SIZE consumer_display_mode;
+        RECT consumer_subtitle_target;
+
+        FrameTrace();
+        bool operator==(const FrameTrace& other) const;
+    };
+
     HRESULT ResetAllocator();
     HRESULT Render(REFERENCE_TIME now, POSITION pos);
     void RefreshConsumerDiagnostics();
@@ -45,35 +86,24 @@ private :
     SIZE m_canvas_display_area;
     // 0 = none, 1 = persisted SIZE_DISPLAY_AREA, 2 = consumer fullscreen rect.
     int m_canvas_display_source;
-    RECT m_canvas_publish_output;
-    RECT m_canvas_publish_clip;
     RECT m_canvas_rect;
     RECT m_canvas_video_in_canvas;
-    POINT m_canvas_bitmap_offset;
+    SubtitleDisplayLayout::FrameLayout m_canvas_frame_layout;
     bool m_canvas_active;
     int m_canvas_fallback;
     bool m_frame_geometry_dirty;
+    // Resolved once per rendered frame. Render() publishes from it and
+    // LogBitmapFrame() serializes it, so geometry cannot drift between the
+    // frame handed to the consumer and the frame described in the log.
+    SubtitleDisplayLayout::BitmapPublication m_publication;
+    bool m_publication_valid;
     // Consumer contract (resolved in RequestFrame): MPCVR reads only the
     // first bitmap, so canvas frames are published as one canvas-sized
     // texture instead of the madVR band partition.
     bool m_prefer_single_bitmap;
 
-    bool m_diag_valid;
-    ULONGLONG m_diag_bitmap_id;
-    int m_diag_bitmap_count;
-    RECT m_diag_bitmap_rect;
-    RECT m_diag_bitmap_rects[3];
-    SIZE m_diag_buffer_size;
-    RECT m_diag_output;
-    RECT m_diag_clip;
-    POINT m_diag_offset;
-    int m_diag_object_count;
-    int m_diag_drawn_objects;
-    int m_diag_skipped_objects;
-    bool m_diag_canvas_active;
-    RECT m_diag_video_in_canvas;
-    int m_diag_partition_count;
-    RECT m_diag_partitions[3];
+    bool m_trace_valid;
+    FrameTrace m_last_trace;
     SubtitleDisplayLayout::ConsumerIdentity m_consumer_identity;
     CStringW m_diag_consumer_version;
     int m_diag_presented_bitmap;
@@ -82,10 +112,6 @@ private :
     RECT m_diag_consumer_fullscreen;
     SIZE m_diag_consumer_display_mode;
     RECT m_diag_consumer_subtitle_target;
-    CStringW m_diag_contract;
-    int m_diag_oversized_bitmap;
-    double m_diag_consumer_scale_x;
-    double m_diag_consumer_scale_y;
     bool m_diag_consumer_pending;
     int m_diag_consumer_refresh_budget;
 
@@ -98,7 +124,8 @@ private :
     bool m_design_spd_valid;
     bool m_scale_design_canvas;
     int m_scale_filter;
-    int m_diag_scale_filter;
+    // Scale statistics are updated by Render() and copied into FrameTrace.
+    // They are not publication geometry.
     SIZE m_diag_design_canvas;
     SIZE m_diag_scale_canvas;
     double m_diag_scale_factor;

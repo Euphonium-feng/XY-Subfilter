@@ -151,6 +151,45 @@ public:
     // Shared implementation behind the PGS and text resolvers.
     HdrColor::Config ResolveHdrMode(int mode) const;
 
+    // Immutable view of the option fields that one HDR decision needs. The
+    // caller already holds m_propsLock (or m_csFilter plus m_csProviderFields),
+    // so this only removes repeated index lookups; it does not add locking.
+    struct HdrOptionValues
+    {
+        int pgs_mode;
+        int text_mode;
+        int white_nits;
+        int rgb_output_level;
+        int consumer_supported_levels;
+        CStringW connected_consumer;
+        CStringW consumer_yuv_matrix;
+        bool is_bitmap;
+        bool is_movable;
+        bool use_display_area;
+        int display_aspect;
+        SIZE display_area;
+        RECT video_rect;
+        RECT subtitle_target_rect;
+        RECT fullscreen_rect;
+        SIZE display_mode;
+        int max_bitmap_count;
+
+        HdrOptionValues();
+    };
+
+    // Reads one coherent set of option fields. No lock is acquired here.
+    HdrOptionValues SnapshotHdrOptions() const;
+
+    // Consumer family derived from an already-snapshotted name.
+    SubtitleDisplayLayout::ConsumerFamily ConsumerFamily(
+        const HdrOptionValues& values) const;
+
+    HdrColor::Config ResolveHdrMode(
+        int mode, const HdrOptionValues& values) const;
+
+    bool ConsumerOwnsHdrConversion(
+        const HdrOptionValues& values) const;
+
     // Monotonic revision changed whenever an HDR option or consumer HDR hint
     // changes. It is carried into every renderer cache and bitmap id.
     unsigned long long GetHdrGeneration() const;

@@ -18,6 +18,9 @@
     <ClCompile Include="CoordGeom.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="diagnostic_log.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="DX9SubPic.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -84,6 +87,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CoordGeom.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="diagnostic_log.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="DX9SubPic.h">

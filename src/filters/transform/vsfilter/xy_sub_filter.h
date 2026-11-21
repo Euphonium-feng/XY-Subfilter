@@ -95,7 +95,6 @@ private:
     // Presentation contract for the connected consumer, derived from its
     // self-reported name. All provider-side branches share this resolver.
     SubtitleDisplayLayout::ConsumerContract ResolvePresentationContract() const;
-    SubtitleDisplayLayout::ConsumerFamily GetConsumerFamily() const;
     HRESULT RefreshConsumerCache();
     void LogHdrConfiguration(const wchar_t* event, unsigned field);
     bool UpdateConsumerHdrSignal(

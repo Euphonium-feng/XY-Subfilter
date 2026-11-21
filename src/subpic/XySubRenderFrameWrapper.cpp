@@ -3,65 +3,6 @@
 #include "subtitle_display_layout.h"
 #include "diagnostic_log.h"
 
-namespace
-{
-CStringW BuildDiagnosticPath()
-{
-    wchar_t temp_path[MAX_PATH] = { 0 };
-    if (!GetTempPathW(_countof(temp_path), temp_path)) {
-        return CStringW();
-    }
-    CStringW path(temp_path);
-    path += L"xy_hdr_diag.txt";
-    return path;
-}
-}
-
-void AppendXyDiagnostic(const wchar_t* text)
-{
-    const CStringW path = BuildDiagnosticPath();
-    if (path.IsEmpty() || !text) {
-        return;
-    }
-
-    // Each process starts a fresh diagnostic file. The file is not an
-    // accumulating history across runs: one launch, one log.
-    static volatile LONG s_started = 0;
-    const bool first_write = InterlockedCompareExchange(&s_started, 1, 0) == 0;
-
-    const DWORD max_file_size = 512UL * 1024UL;
-    bool truncate = false;
-    WIN32_FILE_ATTRIBUTE_DATA attributes = {};
-    if (GetFileAttributesExW(
-            path.GetString(), GetFileExInfoStandard, &attributes)
-        && attributes.nFileSizeHigh == 0
-        && attributes.nFileSizeLow > max_file_size) {
-        truncate = true;
-    }
-
-    FILE* file = NULL;
-    if (_wfopen_s(
-            &file,
-            path.GetString(),
-            (first_write || truncate) ? L"w, ccs=UTF-8" : L"a, ccs=UTF-8") == 0
-        && file) {
-        SYSTEMTIME local_time = {};
-        GetLocalTime(&local_time);
-        fwprintf(
-            file,
-            L"\r\n[%04u-%02u-%02u %02u:%02u:%02u.%03u]\r\n",
-            local_time.wYear,
-            local_time.wMonth,
-            local_time.wDay,
-            local_time.wHour,
-            local_time.wMinute,
-            local_time.wSecond,
-            local_time.wMilliseconds);
-        fwprintf(file, L"%ls", text);
-        fclose(file);
-    }
-}
-
 #if ENABLE_XY_LOG_SUB_RENDER_FRAME
 #  define TRACE_SUB_RENDER_FRAME(msg) XY_LOG_TRACE(msg)
 #else
@@ -239,6 +180,34 @@ STDMETHODIMP XySubRenderFrameWrapper::GetBitmap( int index, ULONGLONG *id, POINT
     }
     TRACE_SUB_RENDER_FRAME(index<<" id: "<<(m_id + index)<<" "<<bitmap_rect<<" pitch:"<<m_inner_obj->m_spd.pitch<<" pixels:"<<(pixels?*pixels:NULL)
         <<XY_LOG_VAR_2_STR(m_inner_obj->m_spd.bits) );
+    return S_OK;
+}
+
+HRESULT XySubRenderFrameWrapper::DescribeBitmap(int index, Bitmap* bitmap) const
+{
+    if (!bitmap || index < 0
+        || index >= (m_has_bitmap_rects
+            ? static_cast<int>(m_bitmap_rects.size()) : 1)) {
+        return E_INVALIDARG;
+    }
+
+    CRect bitmap_rect;
+    if (m_has_bitmap_rects) {
+        bitmap_rect = m_bitmap_rects[
+            static_cast<std::vector<RECT>::size_type>(index)];
+    } else {
+        const HRESULT hr = m_inner_obj->GetDirtyRect(&bitmap_rect);
+        if (FAILED(hr)) {
+            return hr;
+        }
+    }
+
+    const SubtitleDisplayLayout::BitmapSlice slice =
+        SubtitleDisplayLayout::ResolveBitmapSlice(bitmap_rect, m_bitmap_offset);
+    bitmap->rect = bitmap_rect;
+    bitmap->position = slice.position;
+    bitmap->size = slice.size;
+    bitmap->id = m_id + static_cast<ULONGLONG>(index);
     return S_OK;
 }
 

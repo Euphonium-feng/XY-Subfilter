@@ -55,17 +55,6 @@ const SubRenderOptionsImpl::OptionMap options[] =
 
 namespace
 {
-CStringW BuildHdrDiagnosticPath()
-{
-    wchar_t temp_path[MAX_PATH] = { 0 };
-    if (!GetTempPathW(_countof(temp_path), temp_path)) {
-        return CStringW();
-    }
-    CStringW path(temp_path);
-    path += L"xy_hdr_diag.txt";
-    return path;
-}
-
 CStringW GuidToString(const GUID& guid)
 {
     wchar_t buffer[64] = { 0 };
@@ -805,17 +794,13 @@ HRESULT XySubFilter::OnOptionChanged( unsigned field )
     return hr;
 }
 
-SubtitleDisplayLayout::ConsumerFamily XySubFilter::GetConsumerFamily() const
-{
-    return ConsumerFamily();
-}
-
 SubtitleDisplayLayout::ConsumerContract
 XySubFilter::ResolvePresentationContract() const
 {
     // Ask the same resolver the provider uses. Gating on SIZE_DISPLAY_AREA
     // alone missed a canvas built from the consumer's fullscreen rect, which
-    // made the overlay contract disagree with the published geometry.
+    // made the overlay contract disagree with the published geometry. All
+    // callers hold m_csProviderFields; this function acquires nothing.
     SubtitleDisplayLayout::CanvasRequest request;
     request.enabled =
         m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
@@ -828,7 +813,7 @@ XySubFilter::ResolvePresentationContract() const
     const bool canvas_active =
         SubtitleDisplayLayout::ResolveCanvasRequest(request).active;
     return SubtitleDisplayLayout::ResolveConsumerContract(
-        GetConsumerFamily(), canvas_active,
+        ConsumerFamily(), canvas_active,
         m_xy_bool_opt[BOOL_IS_BITMAP] != false);
 }
 
@@ -2039,19 +2024,20 @@ void XySubFilter::SetRgbOutputLevel()
     CAutoLock cAutolock(&m_csFilter);
     CAutoLock cAutoLock(&m_csProviderFields);
 
+    const HdrOptionValues values = SnapshotHdrOptions();
     XySubRenderFrameCreater * sub_frame_creater = XySubRenderFrameCreater::GetDefaultCreater();
     if (dynamic_cast<CRenderedTextSubtitle*>(m_curSubStream)!=NULL)
     {
         // Same reasoning as the bitmap path: PQ code values are absolute, so
         // they must not be rescaled into TV levels afterwards.
-        if (ResolveTextHdrConfig().mode == HdrColor::MAP_PQ
-            || ConsumerOwnsHdrConversion())
+        if (ResolveHdrMode(values.text_mode, values).mode == HdrColor::MAP_PQ
+            || ConsumerOwnsHdrConversion(values))
         {
             sub_frame_creater->SetRgbOutputTvLevel(false);
         }
-        else if (m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL]==RGB_OUTPUT_LEVEL_AUTO)
+        else if (values.rgb_output_level==RGB_OUTPUT_LEVEL_AUTO)
         {
-            if (m_xy_int_opt[INT_CONSUMER_SUPPORTED_LEVELS]==PREFERED_TV)
+            if (values.consumer_supported_levels==PREFERED_TV)
             {
                 sub_frame_creater->SetRgbOutputTvLevel(true);
             }
@@ -2060,7 +2046,7 @@ void XySubFilter::SetRgbOutputLevel()
                 sub_frame_creater->SetRgbOutputTvLevel(false);
             }
         }
-        else if (m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL]==RGB_OUTPUT_LEVEL_FORCE_TV)
+        else if (values.rgb_output_level==RGB_OUTPUT_LEVEL_FORCE_TV)
         {
             sub_frame_creater->SetRgbOutputTvLevel(true);
         }
@@ -2078,18 +2064,18 @@ void XySubFilter::SetRgbOutputLevel()
         // A PQ palette already carries absolute code values. Squeezing it into
         // TV levels would rescale those codes and shift the white point, so the
         // PQ mode always outputs full-range RGB.
-        if (ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ
-            || ConsumerOwnsHdrConversion())
+        if (ResolveHdrMode(values.pgs_mode, values).mode == HdrColor::MAP_PQ
+            || ConsumerOwnsHdrConversion(values))
         {
             // MPCVR reads the subtitle texture as full-range RGB and applies
             // the transfer function itself; TV-range expansion here would
             // shift its input.
             CompositionObject::m_output_tv_range_rgb = false;
         }
-        else if (m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL]==RGB_OUTPUT_LEVEL_AUTO)
+        else if (values.rgb_output_level==RGB_OUTPUT_LEVEL_AUTO)
         {
-            if (m_xy_int_opt[INT_CONSUMER_SUPPORTED_LEVELS]==PREFERED_TV || 
-                m_xy_int_opt[INT_CONSUMER_SUPPORTED_LEVELS]==NO_PREFERENCE)
+            if (values.consumer_supported_levels==PREFERED_TV ||
+                values.consumer_supported_levels==NO_PREFERENCE)
             {
                 CompositionObject::m_output_tv_range_rgb = true;
             }
@@ -2098,7 +2084,7 @@ void XySubFilter::SetRgbOutputLevel()
                 CompositionObject::m_output_tv_range_rgb = false;
             }
         }
-        else if (m_xy_int_opt[INT_RGB_OUTPUT_TV_LEVEL]==RGB_OUTPUT_LEVEL_FORCE_TV)
+        else if (values.rgb_output_level==RGB_OUTPUT_LEVEL_FORCE_TV)
         {
             CompositionObject::m_output_tv_range_rgb = true;
         }
@@ -2202,32 +2188,28 @@ void XySubFilter::LogHdrConfiguration(
     CStringW diagnostic;
     {
         CAutoLock cProviderLock(&m_csProviderFields);
-        const int pgs_mode = m_xy_int_opt[INT_PGS_HDR_MODE];
-        const int text_mode = m_xy_int_opt[INT_TEXT_HDR_MODE];
-        const int white_nits = m_xy_int_opt[INT_PGS_HDR_WHITE_NITS];
-        const HdrColor::Config bitmap_config = ResolvePgsHdrConfig();
-        const HdrColor::Config text_config = ResolveTextHdrConfig();
-        const RECT video_rect = m_xy_rect_opt[RECT_VIDEO_OUTPUT];
-        const RECT display_rect = m_xy_rect_opt[RECT_FULLSCREEN];
-        const int display_aspect = m_xy_int_opt[INT_SUBTITLE_DISPLAY_ASPECT];
-        const bool use_display_area =
-            m_xy_bool_opt[BOOL_USE_DISPLAY_AREA_FOR_SUBTITLES];
-        const RECT subtitle_target = m_xy_rect_opt[RECT_SUBTITLE_TARGET];
-        const SIZE display_area = m_xy_size_opt[SIZE_DISPLAY_AREA];
-        const bool has_display_area =
-            display_area.cx > 0 && display_area.cy > 0;
-        const bool bitmap_canvas_overlay =
-            m_xy_bool_opt[BOOL_IS_BITMAP]
-            && use_display_area
-            && has_display_area;
-        const SubtitleDisplayLayout::ConsumerContract contract =
-            ResolvePresentationContract();
-        const bool mask_bitmap_flag = contract.present_oversized_bitmap;
-        const bool presented_bitmap =
-            m_xy_bool_opt[BOOL_IS_BITMAP]
-            && !(bitmap_canvas_overlay && mask_bitmap_flag);
-        const SIZE display_mode = m_xy_size_opt[SIZE_DISPLAY_MODE];
-        const int max_bitmap_count = m_xy_int_opt[INT_MAX_BITMAP_COUNT2];
+        const HdrOptionValues values = SnapshotHdrOptions();
+        const int pgs_mode = values.pgs_mode;
+        const int text_mode = values.text_mode;
+        const int white_nits = values.white_nits;
+        const bool consumer_owns_hdr =
+            ConsumerOwnsHdrConversion(values);
+        const HdrColor::Config bitmap_config = consumer_owns_hdr
+            ? HdrColor::NormalizeConfig(
+                HdrColor::MAP_OFF, double(values.white_nits),
+                GetHdrGeneration())
+            : ResolveHdrMode(values.pgs_mode, values);
+        const HdrColor::Config text_config = consumer_owns_hdr
+            ? HdrColor::NormalizeConfig(
+                HdrColor::MAP_OFF, double(values.white_nits),
+                GetHdrGeneration())
+            : ResolveHdrMode(values.text_mode, values);
+        const RECT video_rect = values.video_rect;
+        const RECT display_rect = values.fullscreen_rect;
+        const int display_aspect = values.display_aspect;
+        const bool use_display_area = values.use_display_area;
+        const RECT subtitle_target = values.subtitle_target_rect;
+        const SIZE display_area = values.display_area;
         // The renderer, the bitmap provider and this log all use one resolver;
         // mirroring the rules here by hand is how "log says fine, picture is
         // broken" happened before.
@@ -2242,13 +2224,18 @@ void XySubFilter::LogHdrConfiguration(
         const SubtitleDisplayLayout::CanvasPlan canvas_plan =
             SubtitleDisplayLayout::ResolveCanvasRequest(canvas_request);
         const SubtitleDisplayLayout::CanvasResult& canvas = canvas_plan.canvas;
+        const SubtitleDisplayLayout::ConsumerContract contract =
+            SubtitleDisplayLayout::ResolveConsumerContract(
+                ConsumerFamily(values), canvas_plan.active, values.is_bitmap);
+        const bool presented_bitmap =
+            values.is_bitmap && !contract.present_oversized_bitmap;
+        const SIZE display_mode = values.display_mode;
+        const int max_bitmap_count = values.max_bitmap_count;
         const bool consumer_is_fullscreen =
             use_display_area
             && canvas_plan.display_size_source
                 == SubtitleDisplayLayout::DISPLAY_SIZE_CONSUMER;
         const RECT canvas_rect = canvas_plan.canvas_rect;
-        const SubtitleDisplayLayout::FrameLayout frame_layout =
-            SubtitleDisplayLayout::BuildFrameLayout(video_rect, canvas_rect);
         const bool pgs_1_to_1 =
             video_rect.right > video_rect.left
             && video_rect.bottom > video_rect.top
@@ -2290,10 +2277,10 @@ void XySubFilter::LogHdrConfiguration(
             event ? event : L"unknown",
             field,
             backend_name,
-            m_xy_bool_opt[BOOL_IS_BITMAP] ? 1 : 0,
+            values.is_bitmap ? 1 : 0,
             presented_bitmap ? 1 : 0,
-            m_xy_bool_opt[BOOL_IS_MOVABLE] ? 1 : 0,
-            m_xy_str_opt[STRING_CONNECTED_CONSUMER].GetString(),
+            values.is_movable ? 1 : 0,
+            values.connected_consumer.GetString(),
             m_xy_str_opt[STRING_CONSUMER_VERSION].GetString(),
             max_bitmap_count,
             display_rect.left, display_rect.top,
@@ -2307,16 +2294,17 @@ void XySubFilter::LogHdrConfiguration(
             bitmap_config.mode,
             text_config.mode,
             GetHdrGeneration(),
-            ConsumerOwnsHdrConversion() ? L"consumer" : L"provider",
-            IsMpcVrConsumer() ? L"mpcvr-texture" : L"default",
+            ConsumerOwnsHdrConversion(values) ? L"consumer" : L"provider",
+            ConsumerFamily(values) == SubtitleDisplayLayout::CONSUMER_MPC_VR
+                ? L"mpcvr-texture" : L"default",
             int(m_graph_hdr_signal),
             int(m_container_hdr_signal),
             m_video_filename_hdr ? 1 : 0,
             m_video_side_data_hdr ? 1 : 0,
             m_graph_bt2020_matrix ? 1 : 0,
             m_container_bt2020_matrix ? 1 : 0,
-            m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].IsEmpty()
-                ? L"?" : m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString(),
+            values.consumer_yuv_matrix.IsEmpty()
+                ? L"?" : values.consumer_yuv_matrix.GetString(),
             video_rect.left, video_rect.top, video_rect.right, video_rect.bottom,
             display_rect.left, display_rect.top, display_rect.right, display_rect.bottom,
             display_aspect,
@@ -2327,8 +2315,8 @@ void XySubFilter::LogHdrConfiguration(
             canvas.uses_display_area ? 1 : 0,
             canvas_rect.left, canvas_rect.top,
             canvas_rect.right, canvas_rect.bottom,
-            m_xy_size_opt[SIZE_DISPLAY_AREA].cx,
-            m_xy_size_opt[SIZE_DISPLAY_AREA].cy,
+            values.display_area.cx,
+            values.display_area.cy,
             pgs_1_to_1 ? 1 : 0,
             bitmap_scale_x, bitmap_scale_y,
             int(canvas.fallback_reason));
@@ -2341,12 +2329,16 @@ CStringW XySubFilter::GetHdrStatusText()
     CAutoLock cFilterLock(&m_csFilter);
     CAutoLock cProviderLock(&m_csProviderFields);
 
-    const bool is_bitmap = m_xy_bool_opt[BOOL_IS_BITMAP];
-    const int mode_option = is_bitmap ? INT_PGS_HDR_MODE : INT_TEXT_HDR_MODE;
-    const HdrColor::Config config =
-        is_bitmap ? ResolvePgsHdrConfig() : ResolveTextHdrConfig();
+    const HdrOptionValues values = SnapshotHdrOptions();
+    const bool is_bitmap = values.is_bitmap;
+    const bool consumer_owns_hdr = ConsumerOwnsHdrConversion(values);
+    const HdrColor::Config config = consumer_owns_hdr
+        ? HdrColor::NormalizeConfig(
+            HdrColor::MAP_OFF, double(values.white_nits), GetHdrGeneration())
+        : ResolveHdrMode(
+            is_bitmap ? values.pgs_mode : values.text_mode, values);
     CStringW mode;
-    switch (m_xy_int_opt[mode_option]) {
+    switch (is_bitmap ? values.pgs_mode : values.text_mode) {
     case PGS_HDR_MODE_PQ:
         mode = L"PQ";
         break;
@@ -2361,7 +2353,7 @@ CStringW XySubFilter::GetHdrStatusText()
         break;
     }
     if (config.mode == HdrColor::MAP_PQ) {
-        mode.AppendFormat(L" %d", m_xy_int_opt[INT_PGS_HDR_WHITE_NITS]);
+        mode.AppendFormat(L" %d", values.white_nits);
     }
 
     const wchar_t* clear_state = L"--";
@@ -2385,13 +2377,16 @@ CStringW XySubFilter::GetHdrStatusText()
     }
 
     CStringW signal;
-    signal.Format(L"tf%d/f%08x/b%d/n%d/sd%d/%ls", m_consumer_transfer_function,
-        m_consumer_control_flags, m_graph_bt2020_matrix ? 1 : 0,
-        m_video_filename_hdr ? 1 : 0, m_video_side_data_hdr ? 1 : 0,
-        m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].IsEmpty()
-            ? L"?" : m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString());
+    signal.Format(L"tf%d/f%08x/b%d/n%d/sd%d/%ls",
+        m_consumer_transfer_function,
+        m_consumer_control_flags,
+        m_graph_bt2020_matrix ? 1 : 0,
+        m_video_filename_hdr ? 1 : 0,
+        m_video_side_data_hdr ? 1 : 0,
+        values.consumer_yuv_matrix.IsEmpty()
+            ? L"?" : values.consumer_yuv_matrix.GetString());
     CStringW value;
-    if (ConsumerOwnsHdrConversion()) {
+    if (consumer_owns_hdr) {
         value.Format(L"%ls: %ls (consumer PQ) | %ls | clr %ls",
             is_bitmap ? L"Bitmap" : L"Text",
             mode.GetString(), signal.GetString(), clear_state);
@@ -2998,17 +2993,29 @@ HRESULT XySubFilter::UpdateParamFromConsumer( bool getNameAndVersion/*=false*/ )
         hdr_media_changed = true;
     }
     if (m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX]!=consumer_yuv_matrix) {
+        HdrOptionValues old_values;
+        old_values.pgs_mode = m_xy_int_opt[INT_PGS_HDR_MODE];
+        old_values.text_mode = m_xy_int_opt[INT_TEXT_HDR_MODE];
+        old_values.white_nits = m_xy_int_opt[INT_PGS_HDR_WHITE_NITS];
+        old_values.consumer_yuv_matrix =
+            m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX];
         const bool old_auto_pq =
-            ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ;
+            ResolveHdrMode(old_values.pgs_mode, old_values).mode
+                == HdrColor::MAP_PQ;
         const bool old_auto_text_pq =
-            ResolveTextHdrConfig().mode == HdrColor::MAP_PQ;
+            ResolveHdrMode(old_values.text_mode, old_values).mode
+                == HdrColor::MAP_PQ;
         XY_LOG_INFO(L"Consumer yuv matrix changed from "<<m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX].GetString()
         <<L" to "<<consumer_yuv_matrix.GetString());
         m_xy_str_opt[STRING_CONSUMER_YUV_MATRIX] = consumer_yuv_matrix;
+        HdrOptionValues new_values = old_values;
+        new_values.consumer_yuv_matrix = consumer_yuv_matrix;
         const bool new_auto_pq =
-            ResolvePgsHdrConfig().mode == HdrColor::MAP_PQ;
+            ResolveHdrMode(new_values.pgs_mode, new_values).mode
+                == HdrColor::MAP_PQ;
         const bool new_auto_text_pq =
-            ResolveTextHdrConfig().mode == HdrColor::MAP_PQ;
+            ResolveHdrMode(new_values.text_mode, new_values).mode
+                == HdrColor::MAP_PQ;
         if (old_auto_pq != new_auto_pq || old_auto_text_pq != new_auto_text_pq) {
             // The transfer-function hint did not change, but the matrix
             // fallback did. Bump the revision so bitmap/text caches cannot
@@ -3786,7 +3793,7 @@ bool XySubFilter::UpdateConsumerHdrSignal(
 
 CStringW XySubFilter::GetHdrDiagnosticPath() const
 {
-    return BuildHdrDiagnosticPath();
+    return BuildXyDiagnosticPath();
 }
 
 void XySubFilter::UpdateLanguageCount()

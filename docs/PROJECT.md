@@ -17,6 +17,8 @@ XY-SubFilter 是 DirectShow 字幕渲染滤镜，供 MPC-HC / MPC-BE / PotPlayer
 6. **按显示器区域排版字幕** —— 文本字幕已按完整显示画布排版并通过实机使用；
    PGS/SUP/DVB 位图的完整显示画布与设计画布缩放已通过 PotPlayer + madVR
    实机验收（2026-11-18）。
+7. **架构收敛（候选 03–05）** —— 位图发布几何、帧诊断快照与 filter 内
+   HDR 选项读取各收敛为一个 seam；不改 `IXyOptions` 数值 ABI。
 
 ## 需求
 

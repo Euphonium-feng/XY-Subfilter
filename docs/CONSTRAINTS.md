@@ -101,6 +101,20 @@
 - `%TEMP%\xy_hdr_diag.txt` 在探测或 HDR 配置刷新时生成并追加；每次进程启动后的
   第一次写入截断旧内容，单次运行超过 512 KiB 后重新开始；disconnect 不得覆盖
   本次有效证据。打开日志按钮本身不得创建空文件。
+- `BuildXyDiagnosticPath()` 是日志路径的唯一实现；`AppendXyDiagnostic()` 与
+  `GetHdrDiagnosticPath()` 必须共用它，不得再各自拼 `%TEMP%`。
+- 位图发布必须经 `SubtitleDisplayLayout::ResolveBitmapPublication()` 生成
+  `BitmapPublication`；`Render()` 与 `xy-bitmap-frame/1` 不得各自推导
+  output/clip/offset 或分区。`xy-bitmap-frame/1` 的字段名与顺序是对外诊断
+  契约，新增字段只能追加在末尾；MPCVR 分支必须报告实际整张画布与
+  `partitionCount=0`。`contract=mpcvr-texture` 只表示 consumer 家族，
+  `usesOversizedBitmap` 才表示本帧是否发布了整幅画布，画布关闭时必须为 0。
+- `FrameTrace` 的去重比较必须覆盖所有会改变日志文本的字段；consumer 名称
+  采样与限次重试属于渲染状态，不得移入纯诊断快照。
+- `HdrOptionValues` 是只读快照，本身不加锁；只能在已持
+  `m_propsLock` 或 `m_csFilter` + `m_csProviderFields` 的作用域内调用。
+  不得用它取代 `IXyOptions` 的数值 ABI，也不得在无锁热路径外新增消费者
+  回调。
 - HLG 当前与 PQ 共用 HDR 证据分类，个人范围不做专用映射或专项验收；文档不得把
   HLG 观感描述为已验证。
   - “按显示器区域排版字幕”默认关闭；关闭时不得改变任何现有输出。开启后文本
